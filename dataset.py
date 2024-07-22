@@ -6,7 +6,6 @@ from torch.utils.data import Dataset
 
 
 class XPSDataset(Dataset):
-
     def __init__(self, path, device='cpu'):
         super().__init__()
 
@@ -20,15 +19,15 @@ class XPSDataset(Dataset):
     def __getitem__(self, index):
         array = self.data[index]
 
-        x = array[:, 1]
+        x = array[:, 0]
         x = torch.tensor(x ,dtype=torch.float32, device=self.device).view(1, -1)
-        x = x / torch.max(x)
+        x = (x - x.min()) / (x.max() - x.min())
 
-        peak_mask = array[:, 2]
-        peak_mask = torch.tensor(peak_mask ,dtype=torch.float32, device=self.device)
+        peak_mask = array[:, 1]
+        peak_mask = torch.tensor(peak_mask, dtype=torch.float32, device=self.device)
 
-        max_mask = array[:, 3]
-        max_mask = torch.tensor(max_mask ,dtype=torch.float32, device=self.device)
+        max_mask = array[:, 2]
+        max_mask = torch.tensor(max_mask, dtype=torch.float32, device=self.device)
         
         return x, peak_mask, max_mask
     
