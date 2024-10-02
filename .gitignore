@@ -1,7 +1,11 @@
 /.vscode
 /WEIGHTS_OLD
 /__pycache__
-/articles
-/data
+/other
+/train_log
+/model/train/data/_data_to_test
+/model/train/data/_data_to_train
+/model/train/data/experimental
+/model/train/train_log
 /draft.py
 /todo.md

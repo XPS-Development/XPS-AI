@@ -133,7 +133,7 @@ class SynthGenerator():
         
         return y, peak_mask, max_mask
 
-
+#TODO: delete
 if __name__ == '__main__':
     import pandas as pd
     from matplotlib import pyplot as plt
@@ -142,16 +142,17 @@ if __name__ == '__main__':
     for i in range(3500, 4000):
         y, peak_mask, max_mask = g.gen_spectrum((1, 2), noise=1/10e2, shakeup=True, num_of_satellites=1)
         # view_labeled_data(x, y, (peak_mask, max_mask))
-        plt.rcParams['font.family'] = 'Times New Roman'
+        # plt.rcParams['font.family'] = 'Times New Roman'
         plt.rcParams['font.size'] = 16
         plt.plot(x, y, 'k')
-        plt.ylabel('Интенсивность', fontsize=20)
-        plt.xlabel('Энергия связи, эВ', fontsize=20)
+        plt.text(0, 0.97, '(b)', fontsize=16)
+        plt.ylabel('Normalized intensity', fontsize=20)
+        plt.xlabel('Binding energy (eV)', fontsize=20)
         min_to_fill = y.min()
         plt.fill_between(x, y, min_to_fill, where=peak_mask > 0, color='b', alpha=0.2, label='Область пика')
         plt.fill_between(x, y, min_to_fill, where=max_mask > 0, color='r', alpha=0.8, label='Область максимума пика')
+        plt.savefig('synth_2.png', format='png', bbox_inches='tight', dpi=1200)
         plt.show()
-        plt.savefig('synth.png', format='png', bbox_inches='tight', dpi=1200)
                 # array = np.stack((y, peak_mask, max_mask), axis=1)
         # df = pd.DataFrame(array)
         # df.to_csv(f'data/data_to_train/synth_{i}.csv', index=False, header=False)
