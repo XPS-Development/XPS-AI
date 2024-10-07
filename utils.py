@@ -11,7 +11,7 @@ def load_data_from_casa(path):
     return array
 
 
-def interpolation(x, y, num=256):
+def interpolate(x, y, num=256):
     f = interp1d(x, y, kind='linear')
     new_x = np.linspace(x[0], x[-1], num)
     new_y = f(new_x)
@@ -28,7 +28,7 @@ def view_point(x, y, point_x):
 def view_labeled_data(
         x, 
         y, 
-        masks, 
+        masks=(),
         params=({'color': 'b', 'alpha': 0.2}, {'color': 'r'})
 ):
 
@@ -38,27 +38,22 @@ def view_labeled_data(
     
     for mask, param in zip(masks, params):
         plt.fill_between(x, y, min_to_fill, where=mask > 0, **param)
+    # plt.axis('off')
     plt.show()
 
 
-def create_mask(x, y, from_x=0, to_x=0):
-    from_idx = (np.abs(x - from_x)).argmin()
-    to_idx = (np.abs(x - to_x)).argmin()
-
-    if from_idx > to_idx:
-        from_idx, to_idx = to_idx, from_idx
-    
-    zeros = np.zeros_like(y)
-    zeros[from_idx:to_idx + 1] = 1
+def create_mask(x, from_x, to_x):  
+    zeros = np.zeros_like(x)
+    zeros[(x > from_x) & (x < to_x)] = 1
     return zeros
 
-
+#TODO: complete
 def labeling(array):
 
     # file_name = path.split('/')[-1]
 
     # data_to_masking = pd.read_csv(path, sep=';').to_numpy()
-    x, y = interpolation(array[:, 2], array[:, 1])
+    x, y = interpolate(array[:, 2], array[:, 1])
 
     masks = [np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)]
 
@@ -108,11 +103,11 @@ def labeling(array):
 
 
 if __name__ == '__main__':
-    for i in range(1, 18):
-        path = f'data/data_to_train/{i}.csv'
-        array = np.loadtxt(path, delimiter=',')
-        x, y, mask_1, mask_2 = array[:, 0], array[:, 1], array[:, 2], array[:, 3]
-        view_labeled_data(
-            x, y, [mask_1, mask_2]
-        )
-
+    # for i in range(1, 18):
+    #     path = f'data/data_to_train/{i}.csv'
+    #     array = np.loadtxt(path, delimiter=',')
+    #     x, y, mask_1, mask_2 = array[:, 0], array[:, 1], array[:, 2], array[:, 3]
+    #     view_labeled_data(
+    #         x, y, [mask_1, mask_2]
+    #     )
+    print('ok')

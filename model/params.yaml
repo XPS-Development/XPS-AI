@@ -1,0 +1,71 @@
+synth_data:
+  seed: 42
+  labeling:
+    peak_area: 3
+    max_area: 3
+  peak_types:
+    large:
+      scale:
+        val: 6
+        var: 16 
+      const:
+        val: 0.9
+        var: 0.2
+      gl_const:
+        val: 0.6
+        var: 0.3
+      background_const:
+        val: 0
+        var: 0.003
+    medium:
+      scale:
+        val: 14
+        var: 12 
+      const:
+        val: 0.4
+        var: 0.3
+      gl_const:
+        val: 0.6
+        var: 0.3
+      background_const:
+        val: 0
+        var: 0.001
+    impurity:
+      scale:
+        val: 14
+        var: 12 
+      const:
+        val: 0.05
+        var: 0.2
+      gl_const:
+        val: 0.6
+        var: 0.3
+      background_const:
+        val: 0
+        var: 0
+    satellite:
+      scale:
+        val: 4
+        var: 4 
+      const:
+        val: 0.01
+        var: 0.03
+      gl_const:
+        val: 1
+        var: 0
+      background_const:
+        val: 0
+        var: 0
+  spectrum_params:
+    len: 256
+    noise:
+      val: 0.0009
+      size: 120
+      var: 100
+    shakeup: 0.00002
+    n_of_peaks:
+      large: 1-2
+      medium: 0-2
+      impurity: 0-2
+      satellite: 0-2
+  dataset_size: 10000
