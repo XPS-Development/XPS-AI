@@ -20,16 +20,18 @@ class XPSDataset(Dataset):
         array = self.data[index]
 
         x = array[:, 0]
-        x = torch.tensor(x ,dtype=torch.float32, device=self.device).view(1, -1)
-        x = (x - x.min()) / (x.max() - x.min())
+        x = torch.tensor(x, dtype=torch.float32, device=self.device)
 
-        peak_mask = array[:, 1]
+        x_log = array[:, 1]
+        x_log = torch.tensor(x_log, dtype=torch.float32, device=self.device)
+
+        peak_mask = array[:, 2]
         peak_mask = torch.tensor(peak_mask, dtype=torch.float32, device=self.device)
 
-        max_mask = array[:, 2]
+        max_mask = array[:, 3]
         max_mask = torch.tensor(max_mask, dtype=torch.float32, device=self.device)
         
-        return x, peak_mask, max_mask
+        return torch.stack((x, x_log), dim=0), peak_mask, max_mask
     
     def __len__(self):
         return len(self.data)        

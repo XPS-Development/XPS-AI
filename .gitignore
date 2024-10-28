@@ -1,11 +1,7 @@
+__pycache__
 /.vscode
-/WEIGHTS_OLD
-/__pycache__
 /other
-/train_log
-/model/train/data/_data_to_test
-/model/train/data/_data_to_train
-/model/train/data/experimental
+/model/train/trained_models/model.pth
+/model/train/data
 /model/train/train_log
-/draft.py
-/todo.md
+/draft.*

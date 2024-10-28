@@ -29,9 +29,8 @@ class XPSModel(nn.Module):
 
         self.starter = nn.Sequential(
             Block(2, 16),
-            Block(16, 20),
             nn.AvgPool1d(kernel_size=2),
-            Block(20, 24),
+            Block(16, 24),
             nn.AvgPool1d(kernel_size=2),
             Block(24, 28),
             nn.AvgPool1d(kernel_size=2),
@@ -40,29 +39,29 @@ class XPSModel(nn.Module):
 
         self.pass_down1 = nn.Sequential(
             nn.AvgPool1d(kernel_size=2),
-            Block(32, 48)
+            Block(32, 64)
         )
 
         self.pass_down2 = nn.Sequential(
             nn.AvgPool1d(kernel_size=2),
-            Block(48, 64)
+            Block(64, 96)
         )
 
         self.code = nn.Sequential(
             nn.AvgPool1d(kernel_size=2),
-            Block(64, 96),
+            Block(96, 128),
             nn.Upsample(scale_factor=2),
-            Block(96, 64)
+            Block(128, 96)
         )
 
         self.pass_up2 = nn.Sequential(
             nn.Upsample(scale_factor=2),
-            Block(128, 64)
+            Block(192, 64)
         )
 
         self.pass_up1 = nn.Sequential(
             nn.Upsample(scale_factor=2),
-            Block(112, 48)
+            Block(128, 48)
         )
 
         self.finisher = nn.Sequential(

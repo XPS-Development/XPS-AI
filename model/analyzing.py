@@ -112,7 +112,6 @@ class Spectrum():
     def add_masks(self, peak_mask, max_mask):
         self.peak = peak_mask
         self.max = max_mask
-        self._init_borders(peak_mask)
 
     def get_masks(self):
         return self.peak, self.max
@@ -128,8 +127,12 @@ class Analyzer():
         """Add predicted masks to spectra"""
         for s in spectra:
             x, y = s.get_data()
-            t_y = torch.tensor(y, dtype=torch.float32, device='cpu').view(1, 1, -1)
-            out = self.model(t_y)
+            t_y = torch.tensor(y, dtype=torch.float32, device='cpu')
+            t_y_log = torch.log(10*t_y + 1)
+            t_y_log = (t_y_log - t_y_log.min())/(t_y_log.max() - t_y_log.min())
+            t_inp = torch.stack((t_y, t_y_log), dim=0)
+            t_inp = t_inp.unsqueeze(0)
+            out = self.model(t_inp)
             peak = out[0].view(-1).detach().numpy()
             max = out[1].view(-1).detach().numpy()
             pred_peak_mask = (peak > self.pred_threshold)
@@ -144,8 +147,8 @@ class Analyzer():
 
     def _init_borders(self, peak_mask):
         peak_borders_idx = self._find_borders(peak_mask)
-        b = peak_borders_idx.tolist()
-        b.insert(0, 0)
+        b = [0]
+        b.extend(peak_borders_idx.tolist())
         b.append(255)
         self.region_borders = b
     
@@ -182,8 +185,8 @@ class Analyzer():
         x, y = spectrum.get_data()
         y_filtered = savgol_filter(y, 40, 3)
 
-        # if method == 'defaul_shirley':
-        #     return self._default_shirley(x, y, )
+        if method == 'defaul_shirley':
+            return self._default_shirley(x, y, )
     
     # def _init_params():
 
@@ -193,7 +196,7 @@ class Analyzer():
         """Fitting line shapes for the spectrum"""
 
         # find idxs of max regions in each peak region
-        max_borders = self.find_borders(max_mask) # idxs in max_mask
+        max_borders = self._find_borders(max_mask) # idxs in max_mask
         n_peaks = len(max_borders) // 2
         # find x-borders from max_mask
         max_borders = x[max_borders]
@@ -210,7 +213,7 @@ class Analyzer():
         res = differential_evolution(g, bounds, maxiter=2000)
 
         if not initial_params:
-            p0 = self._init_params()
+            p0 = res.x
 
         # create initial values for each gaussian
         popt, _ = curve_fit(peak_sum(n_peaks), x, y, p0)
@@ -221,7 +224,7 @@ class Analyzer():
         y_filtered = savgol_filter(y, 40, 3)
 
         peak_mask, max_mask = spectrum.get_masks()
-        peak_borders_idx = self.find_borders(peak_mask)
+        peak_borders_idx = self._find_borders(peak_mask)
         #TODO:
         b = peak_borders_idx.tolist()
         b.insert(0, 0)
@@ -245,7 +248,7 @@ class Analyzer():
             # curr_y_filtered = y_filtered[f:t]
             curr_max_mask = max_mask[f - 20:t + 20]
 
-            background = self.calc_background(curr_x, curr_y, i[n], i[n + 1])
+            background = self._default_shirley(curr_x, curr_y, i[n], i[n + 1])
 
             n_peaks, params = self.fit(curr_x, curr_y - background, curr_max_mask)
             spectrum.areas.append(Area(curr_x, background, n_peaks, params))
@@ -257,8 +260,9 @@ class Analyzer():
             for j in range(n_peaks):
                 s = trapz(pseudo_voigt(x, params[4*j], params[4*j+1], params[4*j+2], params[4*j+3]), x)
                 S.append(s)
-            print('Areas: ', S)
-            # print('delta E: ', abs(params[0] - params[4]))
+            # print('Areas: ', S)
+            # print(f'A ratio {S[0]/S[1]:.3f}', )
+            # print(f'delta E: {abs(params[0] - params[4]):.3f}', )
 
 
 if __name__ == '__main__':
