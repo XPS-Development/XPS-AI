@@ -1,7 +1,8 @@
 __pycache__
 /.vscode
 /other
-/model/train/trained_models/model.pth
+tests.py
+/model/trained_models
 /model/train/data
-/model/train/train_log
+/train_log
 /draft.*

@@ -12,9 +12,9 @@ from matplotlib import pyplot as plt
 import torch
 from torch.utils.data import DataLoader
 
-from model.model import XPSModel
+from model.models.model import XPSModel
 from model.train.dataset import XPSDataset
-from utils import view_labeled_data, interpolate
+from tools.utils import view_labeled_data, interpolate
 
 
 def gauss(x, loc, scale):
@@ -266,7 +266,7 @@ class Analyzer():
 
 
 if __name__ == '__main__':
-    from utils import load_data_from_casa
+    from tools.utils import load_data_from_casa
 
     array = pd.read_table('data/short_ag_cl_val/Cl2p_1.dat', sep='\s\s+', decimal=',', engine='python').iloc[:, :2].to_numpy()
 
