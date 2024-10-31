@@ -1,5 +1,6 @@
+seed: 42
+data_path: model/train/data/dataset
 synth_data:
-  seed: 42
   labeling:
     peak_area: 3
     max_area: 3
