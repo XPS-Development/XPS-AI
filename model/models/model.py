@@ -88,8 +88,5 @@ class XPSModel(nn.Module):
         x = self.pass_up1(x)
         x = torch.cat((x, starter), dim=1)
         x = self.finisher(x)
-        peak_mask = x[:, 0, :]
-        max_mask = x[:, 1, :]
-        peak_mask = self.sigmoid(peak_mask)
-        max_mask = self.sigmoid(max_mask)
-        return peak_mask, max_mask
+        x = self.sigmoid(x)
+        return x

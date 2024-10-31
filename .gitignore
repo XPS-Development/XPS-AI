@@ -4,5 +4,5 @@ __pycache__
 tests.py
 /model/trained_models
 /model/train/data
-/train_log
+/train_log*
 /draft.*
