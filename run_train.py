@@ -3,18 +3,21 @@ import random
 from pathlib import Path
 from time import time
 
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+from ruamel.yaml import YAML
+
 import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader, random_split
-import numpy as np
-from ruamel.yaml import YAML
 
-from tools.utils import save_train_log_png, view_labeled_data
+from tools import view_labeled_data
 from model.train.dataset import SynthGenerator, XPSDataset
 from model.train.metrics import IoU, Accuracy, Precision, Recall, DiceFocalLoss, IoULoss
 from model.models.model_deeper import XPSModel
 from model.train.trainer import Trainer
-from tools.analyzer import Analyzer, Spectrum
+from tools import Analyzer, Spectrum
 
 
 def load_params():
@@ -56,6 +59,20 @@ def test_model(test_dir, model, save_dir):
         a.predict(spectrum)
         x, y = spectrum.get_data()
         view_labeled_data(x, y, spectrum.get_masks(), save_path=save_path)
+
+def save_train_log_png(self, path: Path):
+    with open(path, 'r') as f:
+        log_data = pd.read_csv(f)
+    fig, axs = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+
+    metrics = log_data.columns.to_list()[3:]
+    log_data.plot(x='epoch', y=['train_loss', 'val_loss'], kind='line', ax=axs[0])
+    log_data.plot(x='epoch', y=metrics, kind='line', ax=axs[1])
+    for a in axs:
+        a.legend(loc='upper left', bbox_to_anchor=(1,1), frameon=False)
+
+    fig.tight_layout()
+    fig.savefig(path.with_suffix('.png'), dpi=300, bbox_inches='tight') 
 
 
 def main():
