@@ -122,7 +122,7 @@ def main():
     trainer.train(train_params['num_epochs'])
     # test_model(Path('other/test_data'), model, trainer.log_dir)
 
-    save_train_log_png(trainer.log)
+    # save_train_log_png(trainer.log)
 
 if __name__ == '__main__':
     main()
