@@ -5,7 +5,8 @@ from scipy.optimize import curve_fit, differential_evolution
 from scipy.signal import savgol_filter
 
 import torch
-from tools._utils import peak_sum
+
+from tools._tools import peak_sum
 
 
 class Analyzer():
@@ -25,7 +26,7 @@ class Analyzer():
 
     def batch_data(self, *spectra):
         """Convert multiple Spectrum objects into a batch of input tensors."""
-        tensors = tuple(self.prepare_input(s.norm_y) for s in spectra)
+        tensors = tuple(self.prepare_input(s.y_interpolated) for s in spectra)
         return torch.stack(tensors, dim=0)
 
     @torch.no_grad()
@@ -48,12 +49,7 @@ class Analyzer():
         idxs = np.argwhere(separators == True).reshape(-1)
         return idxs
 
-    def _init_borders(self, peak_mask):
-        peak_borders_idx = self._find_borders(peak_mask)
-        b = [0]
-        b.extend(peak_borders_idx.tolist())
-        b.append(255)
-        self.region_borders = b
+    # def non_max
 
     def static_shirley(self, x, y, i_1, i_2, iters=8):
         """Calculate iterative Shirley background."""
@@ -79,76 +75,112 @@ class Analyzer():
 
     #TODO: initial guess params, function to finding initial params
     #TODO: filter too small peaks
-    def fit(self, x, y, y_smooth, max_mask, initial_params=None, active_background_fitting=False):
-        """Fitting line shapes for the spectrum"""
+    def init_params(self, x, y, n_peaks, locations):
+        # lambda-function with L2 loss for differential_evolution alg
+        g = lambda p: np.sqrt(np.sum((y - peak_sum(n_peaks)(x, *p)) ** 2))
+        bounds = []
+        for i in range(n_peaks):
+            bounds.append((locations[2*i], locations[2*i + 1]))
+            bounds.append((0.2, 5))
+            bounds.append((0, 10))
+            bounds.append((0, 1))
+        res = differential_evolution(g, bounds, maxiter=1000)
 
-        # initial params for background
-        i_1 = y_smooth[0]
-        i_2 = y_smooth[-1]
+        a, b = bounds.shape
+        bounds = bounds.T.reshape(b, a)
+
+        return res.x, bounds
+
+    def fit(self, x, y, n_peaks, initial_params, bounds=None, active_background_fitting=False, initial_background=None):
+        """Fitting line shapes for the spectrum"""
 
         if active_background_fitting:
             pass
         else:
-            background = self.static_shirley(x, y, i_1, i_2)
+            background = initial_background
             y = y - background
-            # find idxs of max regions in each peak region
-            max_borders = self._find_borders(max_mask) # idxs in max_mask
-            n_peaks = len(max_borders) // 2
-            # find borders location
-            max_borders = x[max_borders]
 
-            if not initial_params:
-                # lambda-function with L2 loss for differential_evolution alg
-                g = lambda p: np.sqrt(np.sum((y - peak_sum(n_peaks)(x, *p)) ** 2))
-                bounds = []
-                for i in range(n_peaks):
-                    bounds.append((max_borders[2*i] - 0.1, max_borders[2*i + 1] + 0.1))
-                    bounds.append((0.2, 5))
-                    bounds.append((0, 10))
-                    bounds.append((0, 1))
-                res = differential_evolution(g, bounds, maxiter=1000)
-                initial_params = res.x
-
-            bounds = np.array(bounds)
-            a, b = bounds.shape
-            bounds = bounds.T.reshape(b, a)
             popt, _ = curve_fit(peak_sum(n_peaks), x, y, initial_params, bounds=bounds)
-            return popt, background
+            return popt
+    
+    def fit_by_mask(self, x, y, max_mask, active_background_fitting=False, initial_background=None):
+        # find idxs of max regions in each peak region
+        borders_idxs = self._find_borders(max_mask) # idxs in max_mask
+        n_peaks = len(borders_idxs) // 2
+        # find borders location
+        max_borders = x[borders_idxs]
+        for i in range(n_peaks):
+            max_borders[2*i] -= 0.05
+            max_borders[2*i + 1] += 0.05
+        init_params, bounds = self.init_params(x, y, n_peaks, max_borders)
+
+        params = self.fit(x, y, n_peaks, init_params, bounds, active_background_fitting, initial_background)
+        return params
+
+    def find_nearest_idxs(self, array_1, array_2, idxs):
+        vals = array_1[idxs]
+        new_idxs = []
+        for val in vals:
+            idx = (np.abs(array_2 - val)).argmin()
+            new_idxs.append(idx)
+        return new_idxs
+
+    #TODO: recalc to non interpolated spectrum
+    def parse_masks_to_regions(self, x, y, x_int, y_int, peak_mask, max_mask):
+        y_smooth = savgol_filter(y, 40, 2)
+
+        # find region borders in peak_mask
+        peak_borders = self._find_borders(peak_mask)
+        peak_borders_joint = [0]
+        for b in peak_borders:
+            if b - peak_borders_joint[-1] > 15:
+                peak_borders_joint.append(b)
+        
+        # find max borders in max_mask
+        max_borders = self._find_borders(max_mask) # idxs in max_mask
+
+        for i in range(len(peak_borders_joint) - 1):
+            f = peak_borders_joint[i]
+            t = peak_borders_joint[i + 1]
+
+            # check if region is empty then skip
+            if not np.any(max_mask[f:t]):
+                continue
+            
+            # recalculate masks borders to non interpolated data
+            f, t = self.find_nearest_idxs(x_int, x, (f, t))
+
+            n_peaks = len(borders_idxs) // 2
+            # find borders location
+            max_borders = x[borders_idxs]
+
+            reg_y = y[f:t]
+            reg_y_smooth = y_smooth[f:t]
+
+            borders_idxs = self._find_borders(max_mask) # idxs in max_mask
+
+            yield reg_x, reg_y, reg_max_mask, reg_y_smooth[0], reg_y_smooth[-1]
 
     #TODO: active shirley and static shirley
     #TODO: разбить функцию а то слишком большая
-    def process(self, spectrum, active_background_fitting=False):
+    def post_process(self, spectrum, active_background_fitting=False):
         # fit normalized spectrum
-        x, y = spectrum.norm_x, spectrum.norm_y
+        x, y = spectrum.x, spectrum.y_norm
+        x_int, y_int = spectrum.x_interpolated, spectrum.y_interpolated
         min_value, max_value = spectrum.norm_coefs
-        y_smooth = savgol_filter(y, 40, 3)
-        background = y_smooth.copy()
-        peak_mask, max_mask = spectrum.get_masks()
-        peak_borders_idx = self._find_borders(peak_mask)
 
-        # join nearest borders if distance < 12
-        borders_joint = [0]
-        for b in peak_borders_idx:
-            if b - borders_joint[-1] > 15:
-                borders_joint.append(b)
+        for reg_x, reg_y, reg_max_mask, i_1, i_2 in self.parse_masks_to_regions(
+            x, y, x_int, y_int, spectrum.peak_mask, spectrum.max_mask
+        ):
 
-        for i in range(len(borders_joint) - 1):
-            f = borders_joint[i]
-            t = borders_joint[i + 1]
+            reg_background = self.static_shirley(
+                x, y, i_1, i_2
+            )
 
-            reg_x = x[f:t]
-            reg_y = y[f:t]
-            reg_y_smooth = y_smooth[f:t]
-            reg_max_mask = max_mask[f:t]
-            
-            # check if region is empty then skip
-            if not np.any(reg_max_mask):
-                continue
-
-            params, reg_background = self.fit(
-                reg_x, reg_y, reg_y_smooth, reg_max_mask, 
-                initial_params=None,
-                active_background_fitting=active_background_fitting
+            params = self.fit_by_mask(
+                reg_x, reg_y, reg_max_mask, 
+                active_background_fitting=active_background_fitting,
+                initial_background=reg_background
             )
 
             for idx in range(len(params) // 4):
@@ -158,10 +190,14 @@ class Analyzer():
                     const=(max_value - min_value)*params[4 * idx + 2],
                     gl_ratio=params[4 * idx + 3]
                 )
-
-            background[f:t] = reg_background
+            #TODO: recalculate background to non interpolated spectrum
+            # t = (np.abs(x - reg_x[-1])).argmin()
+            f = interp1d(x, reg_background, kind='linear')
+            reg = spectrum.create_region(reg_x[0], reg_x[-1], i_1, i_2)
+            reg.background = reg_background
+            background[f:t] = (max_value - min_value) * reg_background + min_value
 
         # recalculate background
-        background = (max_value - min_value)* background + min_value
+        background = (max_value - min_value) * background + min_value
         f = interp1d(x, background, kind='linear')
         spectrum.background = f(spectrum.x)
