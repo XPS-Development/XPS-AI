@@ -1,5 +1,8 @@
 __pycache__
 /.vscode
+/.venv
+/build
+/dist
 /other
 tests.py
 /model/trained_models

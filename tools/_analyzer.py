@@ -1,14 +1,14 @@
 import numpy as np
 from numpy import trapz
 from scipy.optimize import curve_fit, differential_evolution
-from scipy.signal import savgol_filter
 
 import torch
 
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
-
+#TODO: проблемы с границами региона
+#TODO: пересчет фона ширли, указание новых параметров для региона
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
@@ -66,6 +66,32 @@ class Analyzer():
             shirley_to_i = lambda i: k * trapz(y_adj[:i+1], x[:i+1])
             background = np.array([shirley_to_i(i) for i in range(len(x))])
         return background
+
+    def calculate_background(self, x, y, background_type='shirley', **kwargs):
+        """Calculate background."""
+        if background_type == 'shirley':
+            return self.static_shirley(x, y, **kwargs)
+        else:
+            raise ValueError(f'Unknown background type: {background_type}')
+
+    def calculate_region_background(self, region, use_norm=False, **kwargs):
+        """Calculate background for a region."""
+        if use_norm:
+            x, y = region.x, region.y_norm
+            background_type = region.background_type
+            min_coef, max_coef = region.norm_coefs
+            i_1, i_2 = region.i_1, region.i_2
+            # normalize i_1 and i_2
+            i_1 = (i_1 - min_coef) / (max_coef - min_coef)
+            i_2 = (i_2 - min_coef) / (max_coef - min_coef)
+            background = self.calculate_background(x, y, background_type=background_type, i_1=i_1, i_2=i_2, **kwargs)
+            # denormalize background
+            region.background = background * (max_coef - min_coef) + min_coef
+        else:
+            x, y = region.x, region.y
+            background_type = region.background_type
+            i_1, i_2 = region.i_1, region.i_2
+            region.background = self.calculate_background(x, y, background_type=background_type, i_1=i_1, i_2=i_2, **kwargs)
     
     # def prepare_fit_function(self, n_peaks):
     def _diff_ev_fit(self, x, y, bounds, maxiter=200):
@@ -241,9 +267,7 @@ class Analyzer():
         val = array_1[idx]
         return (np.abs(array_2 - val)).argmin()
 
-    def parse_masks_to_regions(self, x, y, x_int, peak_mask, max_mask):
-        y_smooth = savgol_filter(y, 40, 2)
-        
+    def parse_masks_to_regions(self, x, y, x_int, y_smoothed, peak_mask, max_mask):
         # find region borders in peak_mask
         peak_borders = self._find_borders(peak_mask)
         # find maxima idxs in max_mask
@@ -271,10 +295,13 @@ class Analyzer():
             max_locations = x[local_max_idxs]
             reg_x = x[f:t]
             reg_y = y[f:t]
-            reg_y_smooth = y_smooth[f:t]
+            reg_y_smoothed = y_smoothed[f:t]
 
-            yield f, t, reg_x, reg_y, reg_y_smooth[0], reg_y_smooth[-1], max_locations
-
+            if local_max_idxs.size != 0:
+                yield f, t, reg_x, reg_y, reg_y_smoothed[0], reg_y_smoothed[-1], max_locations
+            else:
+                continue
+            
     def params_to_lines(self, params, norm_coefs=(0, 1)):
         lines = []
         min_value, max_value = norm_coefs
@@ -318,19 +345,18 @@ class Analyzer():
     def post_process(self, *spectra, active_background_fitting=False):
         for spectrum in spectra:
             # fit normalized spectrum
-            x, y, y_norm = spectrum.x, spectrum.y, spectrum.y_norm
-            x_int, y_int = spectrum.x_interpolated, spectrum.y_interpolated
+            x, y_norm = spectrum.x, spectrum.y_norm
+            x_int, y_smoothed = spectrum.x_interpolated, spectrum.y_norm_smoothed
             min_value, max_value = spectrum.norm_coefs
 
             for start_idx, end_idx, reg_x, reg_y, i_1, i_2, max_locs in self.parse_masks_to_regions(
-                x, y_norm, x_int, spectrum.peak, spectrum.max
+                x, y_norm, x_int, y_smoothed, spectrum.peak, spectrum.max
             ):  
                 # create region and add background
-                region = Region(reg_x.copy(), y[start_idx:end_idx].copy(), reg_y.copy(), start_idx, end_idx)
+                region = spectrum.create_region(start_idx, end_idx)
                 reg_background = self.static_shirley(
                     reg_x, reg_y, i_1, i_2
                 )
-                spectrum.add_region(region)
                 region.background = reg_background * (max_value - min_value) + min_value
 
                 # calculate initial params by max_locations from the mask
