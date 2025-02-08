@@ -5,9 +5,7 @@ from scipy import stats
 
 from tools import Line, Region, Spectrum
 
-
-def two_arrays_equal(a, b):
-    return np.all(a == b)
+from testing_tools import two_arrays_equal
 
 
 class TestLine(unittest.TestCase):

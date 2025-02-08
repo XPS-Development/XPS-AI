@@ -2,23 +2,13 @@ import unittest
 
 import numpy as np
 from scipy import stats
-import torch
 
-from model.models.model_deeper import XPSModel
-from tools import Analyzer, Spectrum
+from tools import Analyzer, Spectrum, Region
 
-
-MODEL = XPSModel()
-MODEL.load_state_dict(torch.load('model/trained_models/model.pt', map_location=torch.device('cpu'), weights_only=True))
-MODEL.eval()
+from testing_tools import two_arrays_almost_equal, two_arrays_equal, MODEL, SpectrumCase
 
 
-def two_arrays_equal(a, b):
-    return np.all(a == b)
-
-
-def two_arrays_almost_equal(a, b, tol=1e-5):
-    return np.all(np.abs(a - b) < tol)
+spec_generator = SpectrumCase()
 
 
 class TestAnalyzer(unittest.TestCase):    
@@ -43,8 +33,8 @@ class TestAnalyzer(unittest.TestCase):
     
     def test_predict(self):
         analyzer = Analyzer(MODEL)
-        x = np.linspace(-5, 5, 100)
-        y = stats.norm(loc=0, scale=1).pdf(x)
+
+        x, y, _ = spec_generator.load_one_peak()
         spectrum = Spectrum(x, y, name='test')
         
         analyzer.predict(spectrum)
@@ -91,42 +81,34 @@ class TestAnalyzer(unittest.TestCase):
         x = np.linspace(-10, 10, 100)
 
         # one peak
-        y = stats.norm(loc=0, scale=1).pdf(x)
+        x, y, true_params = spec_generator.load_one_norm_like_peak()
         locations = np.array([0])
         params, bounds = analyzer.init_params_by_locations(x, y, locations)
         self.assert_(
-            two_arrays_almost_equal(params, np.array([0, np.sqrt(2*np.log(2)), 1, 1])),
+            two_arrays_almost_equal(params, true_params),
             msg=f'params: {params}'
         )
 
         # two peaks
-        y = stats.norm(loc=-2, scale=1).pdf(x) + stats.norm(loc=3, scale=1).pdf(x)
-        locations = np.array([-2, 3])
+        x, y, true_params = spec_generator.load_two_norm_like_peaks()
+        locations = np.array([-2, 4])
         params, bounds = analyzer.init_params_by_locations(x, y, locations)
-        self.assert_(two_arrays_almost_equal(
-            params, np.array([-2, np.sqrt(2*np.log(2)), 1, 1, 3, np.sqrt(2*np.log(2)), 1, 1])),
-            msg=f'params: {params}'
+        self.assert_(
+            two_arrays_almost_equal(params, true_params),
+            msg=f'test: {params}, true: {true_params}'
         )
     
     def test_static_shirley(self):
         analyzer = Analyzer(MODEL)
 
         # one peak
-        x = np.linspace(-5, 5, 100)
-        y = stats.norm(loc=0, scale=1).pdf(x)
-        background = 0.1 * stats.norm(loc=0, scale=1).cdf(x)
-        y += background
+        x, y, background, true_params = spec_generator.load_one_peak_with_background()
         
         test_background = analyzer.static_shirley(x, y, y[0], y[-1])
         self.assert_(two_arrays_almost_equal(test_background, background, tol=0.1))
 
         # two peaks
-        x = np.linspace(-20, 20, 100)
-        p_1 = stats.norm(loc=-2, scale=1)
-        p_2 = stats.norm(loc=4, scale=2)
-        y = p_1.pdf(x) + 0.5 * p_2.pdf(x)
-        background = 0.05 * p_1.cdf(x) + 0.025 * p_2.cdf(x)
-        y += background
+        x, y, background, true_params = spec_generator.load_two_peaks_with_background()
         
         test_background = analyzer.static_shirley(x, y, y[0], y[-1])
         self.assert_(two_arrays_almost_equal(test_background, background, tol=0.1))
@@ -135,10 +117,7 @@ class TestAnalyzer(unittest.TestCase):
         analyzer = Analyzer(MODEL)
 
         # one peak
-        x = np.linspace(-5, 5, 100)
-        p_1 = stats.norm(loc=0, scale=1)
-        y = 10 * p_1.pdf(x) + 0.5 * p_1.cdf(x) + 1
-
+        x, y, background, true_params = spec_generator.load_one_peak_with_background()
         spectrum = Spectrum(x, y, name='test')
         spectrum.add_masks(
             np.pad(np.ones(154), (51, 51), 'constant'),
@@ -147,18 +126,51 @@ class TestAnalyzer(unittest.TestCase):
         analyzer.post_process(spectrum)
         
         line = spectrum.regions[0].lines[0]
-        true = np.array([0, np.sqrt(2*np.log(2)), 10, 1])
         test = np.array([line.loc, line.scale, line.const, line.gl_ratio])
-        self.assert_(two_arrays_almost_equal(test, true, tol=0.1), msg=f'test: {test}, true: {true}')
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.2), msg=f'test: {test}, true: {true_params}')
 
     def test_refit(self):
         analyzer = Analyzer(MODEL)
 
         # one peak
-        x = np.linspace(-5, 5, 100)
-        p_1 = stats.norm(loc=0.2, scale=1)
-        y = 10 * p_1.pdf(x)
+        x, y, true_params = spec_generator.load_one_peak()
 
-        true = np.array([0.2, np.sqrt(2*np.log(2)), 10, 1])
-        test = analyzer.refit(x, y, 1, [0, np.sqrt(2*np.log(2)), 10, 1], 0, 0.2)
-        self.assert_(two_arrays_almost_equal(test, true, tol=0.05), msg=f'test: {test}, true: {true}')
+        # test differential evolution
+        test = analyzer._refit(x, y, 1, [0, np.sqrt(2*np.log(2)), 10, 1], 0, 0.2)
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.05), msg=f'test: {test}, true: {true_params}')
+
+        # fix loc
+        initial = np.array([0.001, np.sqrt(2), 8, 0.8])
+        test = analyzer._refit(x, y, 1, initial, 0, 4, fixed_params=[0])
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.2), msg=f'test: {test}, true: {true_params}')
+
+        # test least squares
+        # fix loc and gl_ratio
+        initial = np.array([0.001, np.sqrt(2), 8, 1])
+        test = analyzer._refit(x, y, 1, initial, 0, 4, fixed_params=[0, 3], fit_alg='least squares')
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.2), msg=f'test: {test}, true: {true_params}')
+
+    def test_refit_region(self):
+        analyzer = Analyzer(MODEL)
+        # one peak
+        x, y, true_params = spec_generator.load_one_norm_like_peak()
+
+        # full refit
+        region = Region(x, y, y, 0, 1)
+        region.add_line(0, 1, 1, 1)
+        region.background = 0
+        region.norm_coefs = (0, 1)
+        analyzer.refit_region(region, use_norm_y=False, full_refit=True)
+        line = region.lines[0]
+        test = np.array([line.loc, line.scale, line.const, line.gl_ratio])
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.2), msg=f'test: {test}, true: {true_params}')
+
+        # partial refit
+        region = Region(x, y, y, 0, 1)
+        region.add_line(0, 1, 1, 1)
+        region.background = 0
+        region.norm_coefs = (0, 1)
+        analyzer.refit_region(region, use_norm_y=False, full_refit=False, tol=1, fixed_params=[0, 3])
+        line = region.lines[0]
+        test = np.array([line.loc, line.scale, line.const, line.gl_ratio])
+        self.assert_(two_arrays_almost_equal(test, true_params, tol=0.2), msg=f'test: {test}, true: {true_params}')

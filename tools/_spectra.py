@@ -24,25 +24,32 @@ class Line():
 
 
 class Region():
-    def __init__(self, x, y, norm_y, start_idx, end_idx):
+    def __init__(self, x, y, y_norm, start_idx, end_idx):
         if x[0] > x[-1]:
             x = x[::-1]
             y = y[::-1]
-            norm_y = norm_y[::-1]
+            y_norm = y_norm[::-1]
 
         self.start_idx = start_idx
         self.end_idx = end_idx
 
         self.x = x
         self.y = y
-        self.norm_y = norm_y
+        self.y_norm = y_norm
 
         self.background = None
         self.lines = []
 
+    def append(self, line):
+        self.lines.append(line)
+
     def add_line(self, loc, scale, const, gl_ratio, name=None):
         line = Line(loc, scale, const, gl_ratio, name=name)
-        self.lines.append(line)
+        self.append(line)
+    
+    def delete_line(self, idx=None):
+        if idx is not None:
+            self.lines.pop(idx)
     
     def draw_lines(self):
         lines = [self.x, self.background]
@@ -60,6 +67,9 @@ class Spectrum():
     """Initialize tool for saving spectrum info."""
     def __init__(self, energies, intensities, name=None):
         self.name = name
+        if energies[0] > energies[-1]:
+            energies = energies[::-1].copy()
+            intensities = intensities[::-1].copy()
         self.x = energies
         self.y = intensities
         self.regions = []
@@ -91,11 +101,12 @@ class Spectrum():
         return self.peak, self.max
 
     def add_region(self, region):
+        region.norm_coefs = self.norm_coefs
         self.regions.append(region)
     
     def create_region(self, start_idx, end_idx):
         region = Region(
-            self.x[start_idx:end_idx], self.y[start_idx:end_idx], self.y_norm[start_idx:end_idx], start_idx, end_idx
+            self.x[start_idx:end_idx].copy(), self.y[start_idx:end_idx].copy(), self.y_norm[start_idx:end_idx].copy(), start_idx, end_idx
         )
         self.add_region(region)
         return region
@@ -104,7 +115,15 @@ class Spectrum():
         lines = []
         for region in self.regions:
             lines.extend(region.draw_lines())
-        return self.x, self.y, lines
+        return self.x, self.y, *lines
+    
+    def charge_correction(self, delta=0):
+        self.x += delta
+        self.x_interpolated += delta
+        for region in self.regions:
+            region.x += delta
+            for line in region.lines:
+                line.loc += delta
     
     def __repr__(self):
         s = f'Spectrum(name={self.name})'

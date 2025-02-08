@@ -5,14 +5,13 @@ from scipy.signal import savgol_filter
 
 import torch
 
-from tools._spectra import Region
+from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
 
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
-        model.eval()
         self.model = model
 
     @torch.no_grad()
@@ -67,27 +66,74 @@ class Analyzer():
             shirley_to_i = lambda i: k * trapz(y_adj[:i+1], x[:i+1])
             background = np.array([shirley_to_i(i) for i in range(len(x))])
         return background
+    
+    # def prepare_fit_function(self, n_peaks):
+    def _diff_ev_fit(self, x, y, bounds, maxiter=200):
+        """
+        Use differential_evolution to fit peaks to data.
+
+        Parameters
+        ----------
+        x : numpy.array
+            Energy values.
+        y : numpy.array
+            Intensity values.
+        bounds : list of tuples
+            Bounds for parameters in the format [(min, max), ...].
+        maxiter : int, optional
+            Maximum number of iterations in the optimization algorithm. Default is 200.
+
+        Returns
+        -------
+        params : numpy.array
+            Best fit parameters.
+        """
+        # lambda-function with L2 loss for differential_evolution alg
+        f = lambda p: np.sum((y - peak_sum(len(bounds) // 4)(x, *p)) ** 2)
+        res = differential_evolution(f, bounds=bounds, maxiter=maxiter)
+        return res.x
 
     #TODO: filter too small peaks
     def init_params_by_locations(self, x, y, locations):
-        # lambda-function with L2 loss for differential_evolution alg
-        g = lambda p: np.sum((y - peak_sum(len(locations))(x, *p)) ** 2)
+        # use normilized data
+        """
+        Initialize parameters for fitting peaks by locations.
+
+        Parameters
+        ----------
+        x : numpy.array
+            Energy values.
+        y : numpy.array
+            Intensity values.
+        locations : list
+            List of locations for peaks.
+
+        Returns
+        -------
+        params : numpy.array
+            Initial parameters for fitting.
+        bounds : numpy.array
+            Bounds for parameters in the shape (2, 4*n).
+        """
         bounds = []
         for l in locations:
             bounds.append((l - 0.1, l + 0.1)) # loc
             bounds.append((0.1, 8)) # scale
             bounds.append((0, 5)) # const
             bounds.append((0, 1)) # gl_ratio
-        res = differential_evolution(g, bounds, maxiter=200)
-        bounds = np.array(bounds)
+
+        params = self._diff_ev_fit(x, y, bounds)
         
+        bounds = np.array(bounds)
         a, b = bounds.shape
         bounds = bounds.T.reshape(b, a)
 
-        return res.x, bounds
+        return params, bounds
 
-    def fit(self, x, y, n_peaks, initial_params, bounds=None, active_background_fitting=False, initial_background=None):
+    def fit(self, x, y, n_peaks, initial_params, bounds=None, active_background_fitting=False, initial_background=None, function=None):
         """Fitting line shapes for the spectrum"""
+        if function is None:
+            function = peak_sum(n_peaks)
 
         if active_background_fitting:
             pass
@@ -95,34 +141,99 @@ class Analyzer():
             background = initial_background
             y = y - background
 
-            popt, _ = curve_fit(peak_sum(n_peaks), x, y, initial_params, bounds=bounds)
+            popt, _ = curve_fit(function, x, y, initial_params, bounds=bounds)
             return popt
     
-    def refit(self, x, y, n_peaks, initial_params, background, tol=0.1):
+    def _construct_bounds(self, val, tol, max_bound=None, min_bound=None):
+        if min_bound is not None:
+            b_min = val - tol if val - tol > min_bound else min_bound
+        else:
+            b_min = val - tol
+        if max_bound is not None:
+            b_max = val + tol if val + tol < max_bound else max_bound
+        else:
+            b_max = val + tol
+        return (b_min, b_max)
+    
+    #TODO: refit fixed number of params
+    def _refit(
+            self,
+            x,
+            y,
+            n_peaks,
+            initial_params,
+            background,
+            tol=0.1,
+            fixed_params=[],
+            fit_alg='differential evolution'
+    ):
+
         bounds = []
-        for i in range(n_peaks):
-            l, s, c, gl = initial_params[4*i:4*(i+1)]
-            bounds.append((l - tol, l + tol)) # loc
+        for num, param in enumerate(initial_params):
+            if num in fixed_params:
+                bounds.append(
+                    self._construct_bounds(param, param / 1000)
+                )
+            elif num % 4 == 0: # num % 4 != 0 for loc
+                bounds.append(
+                    self._construct_bounds(param, tol)
+                )
+            elif num % 4 == 3: # num % 4 != 3 for gl_ratio
+                bounds.append(
+                    self._construct_bounds(param, tol, min_bound=0, max_bound=1)
+                )
+            else: # num % 4 == 1 or num % 4 == 2 for scale or const
+                bounds.append(
+                    self._construct_bounds(param, tol, min_bound=0)
+                )
 
-            if s - tol < 0: # scale
-                bounds.append((0, s + tol))
-            else:
-                bounds.append((s - tol, s + tol))
+        if fit_alg == 'differential evolution':
+            y = y - background
+            params = self._diff_ev_fit(x, y, bounds)
+        elif fit_alg == 'least squares':
+            bounds = np.array(bounds)
+            a, b = bounds.shape
+            bounds = bounds.T.reshape(b, a)
+            params = self.fit(x, y, n_peaks, initial_params, bounds=bounds, initial_background=background)
+        else:
+            raise ValueError(f'Unknown fit_alg: {fit_alg}')
 
-            if c - tol < 0: # const
-                bounds.append((0, c + tol))
-            else:
-                bounds.append((c - tol, c + tol))
+        return params
 
-            if gl - tol < 0: # gl_ratio
-                bounds.append((0, gl + tol))
-            else:
-                bounds.append((gl - tol, gl + tol))
+    def refit_region(
+        self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution'
+    ):
+        x = region.x
+        n_peaks = len(region.lines)
 
-        bounds = np.array(bounds)
-        a, b = bounds.shape
-        bounds = bounds.T.reshape(b, a)
-        return self.fit(x, y, n_peaks, initial_params, bounds=bounds, initial_background=background)
+        if full_refit:
+            y = region.y_norm
+            norm_coefs = region.norm_coefs
+            background = (region.background  - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])
+
+            initial_params, bounds = self.init_params_by_locations(x, y, [l.loc for l in region.lines])
+            params = self.fit(x, y, n_peaks, initial_params, bounds=bounds, initial_background=background)
+            lines = self.params_to_lines(params, norm_coefs)
+            region.lines = lines
+            return
+
+        if use_norm_y:
+            y = region.y_norm
+            norm_coefs = region.norm_coefs
+            background = (region.background  - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])
+            initial_params = self.lines_to_params(region.lines, norm_coefs)
+        else:
+            y = region.y
+            norm_coefs = (0, 1)
+            background = region.background
+            initial_params = self.lines_to_params(region.lines, norm_coefs)
+
+        params = self._refit(
+            x, y, n_peaks, initial_params, background, tol, fixed_params, fit_alg
+        )
+
+        lines = self.params_to_lines(params, norm_coefs)
+        region.lines = lines
     
     def recalculate_idx(self, idx, array_1, array_2):
         if idx >= len(array_1):
@@ -132,7 +243,7 @@ class Analyzer():
 
     def parse_masks_to_regions(self, x, y, x_int, peak_mask, max_mask):
         y_smooth = savgol_filter(y, 40, 2)
-
+        
         # find region borders in peak_mask
         peak_borders = self._find_borders(peak_mask)
         # find maxima idxs in max_mask
@@ -156,7 +267,7 @@ class Analyzer():
         for f, t in zip(peak_borders[0::2], peak_borders[1::2]):
             # choose max_idxs in region
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
-            
+
             max_locations = x[local_max_idxs]
             reg_x = x[f:t]
             reg_y = y[f:t]
@@ -164,36 +275,71 @@ class Analyzer():
 
             yield f, t, reg_x, reg_y, reg_y_smooth[0], reg_y_smooth[-1], max_locations
 
+    def params_to_lines(self, params, norm_coefs=(0, 1)):
+        lines = []
+        min_value, max_value = norm_coefs
+        for idx in range(len(params) // 4):
+            l = Line(
+                loc=params[4 * idx],
+                scale=params[4 * idx + 1],
+                const=(max_value - min_value)*params[4 * idx + 2],
+                gl_ratio=params[4 * idx + 3]
+            )
+            lines.append(l)
+        return lines
+
+    def lines_to_params(self, lines, norm_coefs=(0, 1)):
+        params = []
+        min_value, max_value = norm_coefs
+        for line in lines:
+            params.extend([line.loc, line.scale, line.const / (max_value - min_value), line.gl_ratio])
+        return np.array(params)
+    
+    def aggregate_params(self, param, lines):
+        match param:
+            case 'loc':
+                return [l.loc for l in lines]
+            case 'scale':
+                return [l.scale for l in lines]
+            case 'const':
+                return [l.const for l in lines]
+            case 'gl_ratio':
+                return [l.gl_ratio for l in lines]
+            case 'fwhm':
+                return [l.fwhm for l in lines]
+            case 'area':
+                return [l.area for l in lines]
+            case 'height':
+                return [l.height for l in lines]
+            case _:
+                raise ValueError(f'Unknown param: {param}')
+
     #TODO: active shirley and static shirley
-    def post_process(self, spectrum, active_background_fitting=False):
-        # fit normalized spectrum
-        x, y, y_norm = spectrum.x, spectrum.y, spectrum.y_norm
-        x_int, y_int = spectrum.x_interpolated, spectrum.y_interpolated
-        min_value, max_value = spectrum.norm_coefs
+    def post_process(self, *spectra, active_background_fitting=False):
+        for spectrum in spectra:
+            # fit normalized spectrum
+            x, y, y_norm = spectrum.x, spectrum.y, spectrum.y_norm
+            x_int, y_int = spectrum.x_interpolated, spectrum.y_interpolated
+            min_value, max_value = spectrum.norm_coefs
 
-        for start_idx, end_idx, reg_x, reg_y, i_1, i_2, max_locs in self.parse_masks_to_regions(
-            x, y_norm, x_int, spectrum.peak, spectrum.max
-        ):  
-            # create region and add background
-            region = Region(reg_x, y[start_idx:end_idx], reg_y, start_idx, end_idx)
-            reg_background = self.static_shirley(
-                reg_x, reg_y, i_1, i_2
-            )
-            spectrum.add_region(region)
-            region.background = reg_background * (max_value - min_value) + min_value
-
-            # calculate initial params by max_locations from the mask
-            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs)
-            # accurate fitting
-            params = self.fit(
-                reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background
-            )
-
-            # add lines to region
-            for idx in range(len(params) // 4):
-                region.add_line(
-                    loc=params[4 * idx],
-                    scale=params[4 * idx + 1],
-                    const=(max_value - min_value)*params[4 * idx + 2],
-                    gl_ratio=params[4 * idx + 3]
+            for start_idx, end_idx, reg_x, reg_y, i_1, i_2, max_locs in self.parse_masks_to_regions(
+                x, y_norm, x_int, spectrum.peak, spectrum.max
+            ):  
+                # create region and add background
+                region = Region(reg_x.copy(), y[start_idx:end_idx].copy(), reg_y.copy(), start_idx, end_idx)
+                reg_background = self.static_shirley(
+                    reg_x, reg_y, i_1, i_2
                 )
+                spectrum.add_region(region)
+                region.background = reg_background * (max_value - min_value) + min_value
+
+                # calculate initial params by max_locations from the mask
+                init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs)
+                # accurate fitting
+                params = self.fit(
+                    reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background
+                )
+
+                # convert params to lines
+                lines = self.params_to_lines(params, norm_coefs=spectrum.norm_coefs)
+                region.lines = lines
