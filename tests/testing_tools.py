@@ -6,7 +6,7 @@ from tools import Spectrum, Region, Line, Analyzer
 from model.models.model_deeper import XPSModel
 
 MODEL = XPSModel()
-MODEL.load_state_dict(torch.load('model/trained_models/model.pt', map_location=torch.device('cpu'), weights_only=True))
+MODEL.load_state_dict(torch.load('model.pt', map_location=torch.device('cpu'), weights_only=True))
 MODEL.eval()
 
 ANALYZER = Analyzer(MODEL)
@@ -57,6 +57,8 @@ class SpectrumCase:
         params = np.array([0, np.sqrt(2*np.log(2)), 10, 1])
         params.tolist()
         return x, y, background, params
+    
+    # def load_ne
 
     def load_two_peaks(self):
         x = np.linspace(-20, 20, 100)
