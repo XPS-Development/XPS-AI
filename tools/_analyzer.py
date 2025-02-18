@@ -65,7 +65,7 @@ class Analyzer():
             k = (i_2 - i_1) / trapz(y_adj, x)
             shirley_to_i = lambda i: k * trapz(y_adj[:i+1], x[:i+1])
             background = np.array([shirley_to_i(i) for i in range(len(x))])
-        return background
+        return background + i_1
 
     def calculate_background(self, x, y, background_type='shirley', **kwargs):
         """Calculate background."""
