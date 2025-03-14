@@ -7,7 +7,6 @@ import torch
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
-#TODO: проблемы с границами региона
 #TODO: пересчет фона ширли, указание новых параметров для региона
 class Analyzer():
     """Tool for spectra analyzing."""
@@ -29,18 +28,28 @@ class Analyzer():
         return torch.stack(tensors, dim=0)
 
     @torch.no_grad()
-    def predict(self, *spectra, pred_threshold=0.5):
+    def _predict(self, *spectra):
         """Add predicted masks to spectra."""
         inp = self.batch_data(*spectra)
         out = self.model(inp)
 
         peak = out[:, 0, :].detach().numpy()
         max = out[:, 1, :].detach().numpy()
-        pred_peak_mask = (peak > pred_threshold)
-        pred_max_mask = (max > pred_threshold)
 
         for i, s in enumerate(spectra):
-            s.add_masks(pred_peak_mask[i], pred_max_mask[i])
+            s.add_masks(peak[i], max[i], init_mask=True)
+    
+    def restrict_mask(self, *spectra, threshold=0.5):
+        """Restrict masks to the peaks with the highest probability."""
+        for s in spectra:
+            peak = (s.init_peak > threshold)
+            max = (s.init_max > threshold)
+            s.add_masks(peak, max)
+
+    def predict(self, *spectra, pred_threshold=0.5):
+        """Add predicted masks to spectra."""
+        self._predict(*spectra)
+        self.restrict_mask(*spectra, threshold=pred_threshold)
 
     def _find_borders(self, mask):
         """Return idxs of borders in mask"""
@@ -237,7 +246,7 @@ class Analyzer():
             norm_coefs = region.norm_coefs
             background = (region.background  - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])
 
-            initial_params, bounds = self.init_params_by_locations(x, y, [l.loc for l in region.lines])
+            initial_params, bounds = self.init_params_by_locations(x, y-background, [l.loc for l in region.lines])
             params = self.fit(x, y, n_peaks, initial_params, bounds=bounds, initial_background=background)
             lines = self.params_to_lines(params, norm_coefs)
             region.lines = lines
@@ -292,12 +301,11 @@ class Analyzer():
             # choose max_idxs in region
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
 
-            max_locations = x[local_max_idxs]
-            reg_x = x[f:t]
-            reg_y = y[f:t]
-            reg_y_smoothed = y_smoothed[f:t]
-
-            if local_max_idxs.size != 0:
+            if local_max_idxs.size != 0:    
+                max_locations = x[local_max_idxs]
+                reg_x = x[f:t]
+                reg_y = y[f:t]
+                reg_y_smoothed = y_smoothed[f:t]
                 yield f, t, reg_x, reg_y, reg_y_smoothed[0], reg_y_smoothed[-1], max_locations
             else:
                 continue
@@ -323,23 +331,16 @@ class Analyzer():
         return np.array(params)
     
     def aggregate_params(self, param, lines):
-        match param:
-            case 'loc':
-                return [l.loc for l in lines]
-            case 'scale':
-                return [l.scale for l in lines]
-            case 'const':
-                return [l.const for l in lines]
-            case 'gl_ratio':
-                return [l.gl_ratio for l in lines]
-            case 'fwhm':
-                return [l.fwhm for l in lines]
-            case 'area':
-                return [l.area for l in lines]
-            case 'height':
-                return [l.height for l in lines]
-            case _:
-                raise ValueError(f'Unknown param: {param}')
+        params = {
+            'loc': [l.loc for l in lines],
+            'scale': [l.scale for l in lines],
+            'const': [l.const for l in lines],
+            'gl_ratio': [l.gl_ratio for l in lines],
+            'fwhm': [l.fwhm for l in lines],
+            'area': [l.area for l in lines],
+            'height': [l.height for l in lines]
+        }
+        return params[param]
 
     #TODO: active shirley and static shirley
     def post_process(self, *spectra, active_background_fitting=False):

@@ -13,9 +13,16 @@ class Line():
         self.const = const
         self.gl_ratio = gl_ratio
 
-        self.fwhm = 2 * scale
         self.area = const * (1 + gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.height = self.f(loc)
+    
+    @property
+    def fwhm(self):
+        return 2 * self.scale
+    
+    @fwhm.setter
+    def fwhm(self, fwhm):
+        self.scale = fwhm / 2
 
     def f(self, x):
         return pseudo_voight(x, self.loc, self.scale, self.const, self.gl_ratio)
@@ -25,7 +32,7 @@ class Line():
 
 
 class Region():
-    def __init__(self, x, y, y_norm, i_1=None, i_2=None, background_type='shirley'):
+    def __init__(self, x, y, y_norm, i_1=None, i_2=None, start_idx=None, end_idx=None, background_type='shirley'):
         if x[0] > x[-1]:
             x = x[::-1]
             y = y[::-1]
@@ -35,16 +42,36 @@ class Region():
         self.y = y
         self.y_norm = y_norm
 
+        self.start_idx = start_idx
+        self.end_idx = end_idx
+
         if i_1 is None and i_2 is None:
             self.i_1 = y[0]
             self.i_2 = y[-1]
         else:
             self.i_1 = i_1
             self.i_2 = i_2
-        
+
+        self.start_point = x[0]
+        self.end_point = x[-1]
+
         self.background_type = background_type
         self.background = None
         self.lines = []
+    
+    @property
+    def x(self):
+        return self._x
+    
+    @x.setter
+    def x(self, x):
+        self._x = x
+        self.start_point = x[0]
+        self.end_point = x[-1]
+    
+    @x.getter
+    def x(self):
+        return self._x
 
     def append(self, line):
         self.lines.append(line)
@@ -78,6 +105,8 @@ class Spectrum():
             intensities = intensities[::-1].copy()
         self.x = energies
         self.y = intensities
+        self.is_predicted = False
+        self.set_charge_correction = 0
         self.regions = []
         self.preproc()
         self.add_smoothing(window_length=window_length, poly_order=poly_order)
@@ -104,7 +133,11 @@ class Spectrum():
         self.x_interpolated = x_interpolated
         self.y_interpolated = y_interpolated
 
-    def add_masks(self, peak_mask, max_mask):
+    def add_masks(self, peak_mask, max_mask, init_mask=False):
+        self.is_predicted = True
+        if init_mask:
+            self.init_peak = peak_mask
+            self.init_max = max_mask
         self.peak = peak_mask
         self.max = max_mask
 
@@ -118,23 +151,34 @@ class Spectrum():
     def create_region(self, start_idx, end_idx, background_type='shirley'):
         region = Region(
             self.x[start_idx:end_idx], self.y[start_idx:end_idx], self.y_norm[start_idx:end_idx], \
-            self.y_smoothed[start_idx], self.y_smoothed[end_idx-1], background_type
+            self.y_smoothed[start_idx], self.y_smoothed[end_idx-1], start_idx, end_idx, background_type
         )
         self.add_region(region)
         return region
 
-    def draw_spectrum(self):
-        lines = []
-        for region in self.regions:
-            lines.extend(region.draw_lines())
-        return self.x, self.y, *lines
+    def delete_region(self, region):
+        self.regions.remove(region)
     
-    def charge_correction(self, delta=0):
+    def change_region_range(self, region, start_idx, end_idx):
+        region.start_idx = start_idx
+        region.end_idx = end_idx
+        region.x = self.x[start_idx:end_idx]
+        region.y = self.y[start_idx:end_idx]
+        region.y_norm = self.y_norm[start_idx:end_idx]
+        region.i_1 = self.y_smoothed[start_idx]
+        region.i_2 = self.y_smoothed[end_idx-1]
+    
+    def set_charge_correction(self, delta):
+        self.charge_correction = delta
         self.x += delta
         self.x_interpolated += delta
         for region in self.regions:
             for line in region.lines:
                 line.loc += delta
+    
+    def remove_charge_correction(self):
+        self.set_charge_correction(-self.charge_correction)
+        self.charge_correction = 0
     
     def view_data(self, ax=None, show=False, norm=False, smoothed=False):
         if ax is None:
@@ -167,12 +211,16 @@ class Spectrum():
             plt.show()
         return ax
     
-    def view_lines(self, ax=None, show=False):
+    def view_lines(self, ax=None, show=False, smoothed=False):
         x, y = self.x, self.y
         if ax is None:
             fig, ax = plt.subplots()
 
-        ax.plot(x, y, 'k')
+        if smoothed:
+            ax.plot(self.x, self.y_smoothed, 'k')
+            ax.plot(x, y, 'k', alpha=0.3)
+        else:
+            ax.plot(x, y, 'k')
         for region in self.regions:
             reg_x, back, *lines = region.draw_lines()
             ax.plot(reg_x, back, 'k--')
