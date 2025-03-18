@@ -114,7 +114,10 @@ class Workspace():
         self.analyzer.predict(*spectra, pred_threshold=self.pred_threshold)
     
     def post_process(self, spectra):
-        self.analyzer.post_process(*spectra)
+        for s in spectra:
+            self.analyzer.post_process(s)
+            s.is_analyzed = True
+            yield
 
     def set_charge_correction(self, spectra, current_line_energy=0, desired_line_energy=0):
         delta = desired_line_energy - current_line_energy

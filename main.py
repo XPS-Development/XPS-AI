@@ -9,7 +9,7 @@ import torch
 
 from PySide6.QtWidgets import *
 from PySide6.QtGui import QAction, QPalette, QColor, QActionGroup
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -436,8 +436,12 @@ class Sidebars():
             spectrum = spectrum_item.data(0, Qt.UserRole)
             if spectrum not in spectra_list:
                 spectra_list.append(spectrum)
+        
+        spectra_list = [s for s in spectra_list if not s.is_analyzed]
 
-        self.workspace.post_process(spectra=spectra_list)
+        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
+        progress_window.exec()
+
         self.parent.toolbar.toggle_lines_action.setChecked(True)
         self.parent.update_viewer()
         self.update_region_list()
@@ -717,6 +721,69 @@ class Sidebars():
 
     def parse_fixed_params(self):
         return [i for i, box in enumerate(chain(*self.fixed_params_cb)) if box.isChecked()]
+
+class WorkerThread(QThread):
+    progress_signal = Signal(int)  # Signal to update progress bar
+    finished_signal = Signal()  # Signal to close progress window
+
+    def __init__(self, generator_func, *args, **kwargs):
+        super().__init__()
+        self.generator_func = generator_func
+        self.running = True  # Control flag for stopping
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        """Run the generator function and emit progress updates"""
+        for i, output in enumerate(self.generator_func(*self.args, **self.kwargs)):
+            if not self.running:  # Stop if interrupted
+                break
+            self.progress_signal.emit(i)  # Send progress to UI
+        
+        self.finished_signal.emit()  # Notify that process is done
+
+    def stop(self):
+        """Stop the thread gracefully"""
+        self.running = False  # Set flag to stop loop
+
+class ProgressBarWindow(QDialog):
+    """Popup window that displays progress bar based on a generator"""
+    def __init__(self, generator_func, iterations, *func_args):
+        super().__init__()
+
+        self.setWindowTitle("Processing...")
+        self.setFixedSize(300, 150)
+
+        # Layout
+        self.layout = QVBoxLayout(self)
+
+        # Progress Bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, iterations)
+        self.progress_bar.setValue(0)
+        self.layout.addWidget(self.progress_bar)
+
+        # Stop Button
+        self.stop_button = QPushButton("Stop")
+        self.stop_button.clicked.connect(self.stop_processing)
+        self.layout.addWidget(self.stop_button)
+
+        # Worker Thread
+        self.worker_thread = WorkerThread(generator_func, *func_args)
+        self.worker_thread.progress_signal.connect(self.update_progress)  # Connect progress update
+        self.worker_thread.finished_signal.connect(self.close)  # Close when finished
+        self.worker_thread.start()  # Start processing
+
+    def update_progress(self, value):
+        """Update progress bar when receiving a new value from generator"""
+        self.progress_bar.setValue(value)
+
+    def stop_processing(self):
+        """Stop the generator function"""
+        self.worker_thread.stop()  # Stop thread
+        self.worker_thread.quit()  # Ensure it exits
+        self.worker_thread.wait()  # Wait for cleanup
+        self.close()  # Close the progress window
 
 class SpectraTreeWidget(QTreeWidget):
     """Custom QTreeWidget to restrict drag-and-drop behavior."""

@@ -358,30 +358,30 @@ class Analyzer():
         return params[param]
 
     #TODO: active shirley and static shirley
-    def post_process(self, *spectra, active_background_fitting=False):
-        for spectrum in spectra:
-            # fit normalized spectrum
-            x, y_norm = spectrum.x, spectrum.y_norm
-            x_int, y_smoothed = spectrum.x_interpolated, spectrum.y_norm_smoothed
-            min_value, max_value = spectrum.norm_coefs
+    def post_process(self, spectrum, active_background_fitting=False, ):
+        # fit normalized spectrum
+        x, y_norm = spectrum.x, spectrum.y_norm
+        x_int, y_smoothed = spectrum.x_interpolated, spectrum.y_norm_smoothed
+        min_value, max_value = spectrum.norm_coefs
 
-            for start_idx, end_idx, reg_x, reg_y, i_1, i_2, max_locs in self.parse_masks_to_regions(
-                x, y_norm, x_int, y_smoothed, spectrum.peak, spectrum.max
-            ):  
-                # create region and add background
-                region = spectrum.create_region(start_idx, end_idx)
-                reg_background = self.static_shirley(
-                    reg_x, reg_y, i_1, i_2
-                )
-                region.background = reg_background * (max_value - min_value) + min_value
+        for start_idx, end_idx, reg_x, reg_y, i_1, i_2, max_locs in self.parse_masks_to_regions(
+            x, y_norm, x_int, y_smoothed, spectrum.peak, spectrum.max
+        ):  
+            # create region and add background
+            region = spectrum.create_region(start_idx, end_idx)
+            reg_background = self.static_shirley(
+                reg_x, reg_y, i_1, i_2
+            )
+            region.background = reg_background * (max_value - min_value) + min_value
 
-                # calculate initial params by max_locations from the mask
-                init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs)
-                # accurate fitting
-                params = self.fit(
-                    reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background
-                )
+            # calculate initial params by max_locations from the mask
+            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs)
+            # accurate fitting
+            params = self.fit(
+                reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background
+            )
 
-                # convert params to lines
-                lines = self.params_to_lines(params, norm_coefs=spectrum.norm_coefs)
-                region.lines = lines
+            # convert params to lines
+            lines = self.params_to_lines(params, norm_coefs=spectrum.norm_coefs)
+            region.lines = lines
+

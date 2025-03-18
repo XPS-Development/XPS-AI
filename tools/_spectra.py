@@ -132,6 +132,7 @@ class Spectrum():
         self.x = energies
         self.y = intensities
         self.is_predicted = False
+        self.is_analyzed = False
         self.set_charge_correction = 0
         self.regions = []
         self.preproc()
