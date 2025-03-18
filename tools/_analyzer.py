@@ -179,7 +179,9 @@ class Analyzer():
             popt, _ = curve_fit(function, x, y, initial_params, bounds=bounds)
             return popt
     
-    def _construct_bounds(self, val, tol, max_bound=None, min_bound=None):
+    def _construct_bounds(self, val, tol, max_bound=None, min_bound=None, abs_tol=False):
+        if not abs_tol:
+            tol = val * tol
         if min_bound is not None:
             b_min = val - tol if val - tol > min_bound else min_bound
         else:
@@ -200,26 +202,33 @@ class Analyzer():
             background,
             tol=0.1,
             fixed_params=[],
-            fit_alg='differential evolution'
+            fit_alg='differential evolution',
+            abs_tol=False,
+            loc_tol=1
     ):
 
         bounds = []
         for num, param in enumerate(initial_params):
             if num in fixed_params:
                 bounds.append(
-                    self._construct_bounds(param, param / 1000)
+                    self._construct_bounds(param, 1e-6)
                 )
-            elif num % 4 == 0: # num % 4 != 0 for loc
+            elif num % 4 == 0: # loc
+                if loc_tol is not None:
+                    bounds.append(
+                        self._construct_bounds(param, loc_tol, abs_tol=True)
+                    )
+                else:
+                    bounds.append(
+                        self._construct_bounds(param, tol, abs_tol=True)
+                    )
+            elif num % 4 == 3: # gl_ratio
                 bounds.append(
-                    self._construct_bounds(param, tol)
-                )
-            elif num % 4 == 3: # num % 4 != 3 for gl_ratio
-                bounds.append(
-                    self._construct_bounds(param, tol, min_bound=0, max_bound=1)
+                    self._construct_bounds(param, tol, min_bound=0, max_bound=1, abs_tol=abs_tol)
                 )
             else: # num % 4 == 1 or num % 4 == 2 for scale or const
                 bounds.append(
-                    self._construct_bounds(param, tol, min_bound=0)
+                    self._construct_bounds(param, tol, min_bound=0, abs_tol=abs_tol)
                 )
 
         if fit_alg == 'differential evolution':
@@ -236,7 +245,8 @@ class Analyzer():
         return params
 
     def refit_region(
-        self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution'
+        self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution',
+        loc_tol=None
     ):
         x = region.x
         n_peaks = len(region.lines)
@@ -248,8 +258,7 @@ class Analyzer():
 
             initial_params, bounds = self.init_params_by_locations(x, y-background, [l.loc for l in region.lines])
             params = self.fit(x, y, n_peaks, initial_params, bounds=bounds, initial_background=background)
-            lines = self.params_to_lines(params, norm_coefs)
-            region.lines = lines
+            self.update_lines(params, region.lines, norm_coefs)
             return
 
         if use_norm_y:
@@ -264,11 +273,9 @@ class Analyzer():
             initial_params = self.lines_to_params(region.lines, norm_coefs)
 
         params = self._refit(
-            x, y, n_peaks, initial_params, background, tol, fixed_params, fit_alg
+            x, y, n_peaks, initial_params, background, tol, fixed_params, fit_alg, loc_tol=loc_tol
         )
-
-        lines = self.params_to_lines(params, norm_coefs)
-        region.lines = lines
+        self.update_lines(params, region.lines, norm_coefs)
     
     def recalculate_idx(self, idx, array_1, array_2):
         if idx >= len(array_1):
@@ -322,6 +329,14 @@ class Analyzer():
             )
             lines.append(l)
         return lines
+
+    def update_lines(self, params, lines, norm_coefs=(0, 1)):
+        min_value, max_value = norm_coefs
+        for idx in range(len(params) // 4):
+            lines[idx].loc = params[4 * idx]
+            lines[idx].scale = params[4 * idx + 1]
+            lines[idx].const = (max_value - min_value)*params[4 * idx + 2]
+            lines[idx].gl_ratio = params[4 * idx + 3]
 
     def lines_to_params(self, lines, norm_coefs=(0, 1)):
         params = []

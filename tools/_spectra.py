@@ -10,8 +10,8 @@ class Line():
         self.name = name
         self.loc = loc
         self.scale = scale
-        self.const = const
-        self.gl_ratio = gl_ratio
+        self._c = const
+        self._gl = gl_ratio
 
         self.area = const * (1 + gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.height = self.f(loc)
@@ -23,6 +23,32 @@ class Line():
     @fwhm.setter
     def fwhm(self, fwhm):
         self.scale = fwhm / 2
+    
+    @property
+    def gl_ratio(self):
+        return self._gl
+    
+    @gl_ratio.setter
+    def gl_ratio(self, gl_ratio):
+        self._gl = gl_ratio
+        self.area = self.const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
+    
+    @gl_ratio.getter
+    def gl_ratio(self):
+        return self._gl
+    
+    @property
+    def const(self):
+        return self._c
+    
+    @const.setter
+    def const(self, const):
+        self._c = const
+        self.area = const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
+    
+    @const.getter
+    def const(self):
+        return self._c
 
     def f(self, x):
         return pseudo_voight(x, self.loc, self.scale, self.const, self.gl_ratio)

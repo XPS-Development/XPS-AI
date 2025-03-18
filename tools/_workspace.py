@@ -122,7 +122,7 @@ class Workspace():
             s.remove_charge_correction()
             s.set_charge_correction(delta)
 
-    def add_line(self, region, loc=0, scale=0, const=0, gl_ratio=0, name=None, line=None):
+    def add_line(self, region, loc=0, scale=1, const=1, gl_ratio=1, name=None, line=None):
         if line is not None:
             region.append(line)
         else:
@@ -169,9 +169,10 @@ class Workspace():
         self.analyzer.calculate_region_background(region)
 
     def refit(
-            self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution'
+            self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution',
+            loc_tol=None
     ):
-        self.analyzer.refit_region(region, use_norm_y, fixed_params, full_refit, tol, fit_alg)
+        self.analyzer.refit_region(region, use_norm_y, fixed_params, full_refit, tol, fit_alg, loc_tol=loc_tol)
 
     #TODO: build trend
     def build_trend(self, param, lines, x):

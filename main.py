@@ -2,6 +2,7 @@ import sys
 import io
 import logging
 import traceback
+from itertools import chain
 
 import numpy as np
 import torch
@@ -108,7 +109,6 @@ class MainWindow(QMainWindow):
         return main_content_widget
     
     def update_viewer(self):
-        self.logger.info("Updating viewer")
         spectrum = self.sidebars.current_spectrum
         region = self.sidebars.current_region
         if spectrum is not None:
@@ -123,7 +123,6 @@ class MainWindow(QMainWindow):
             self.set_cursors(region, spectrum)
     
     def set_cursors(self, region, spectrum):
-        self.logger.info("Setting cursors")
         self.canvas.load_cursors(region, spectrum)
     
     def update_sidebars(self):
@@ -449,21 +448,22 @@ class Sidebars():
         right_panel_layout = QVBoxLayout()
 
         # Region parameters
-        region_label = QLabel("Fitting")
+        region_label = QLabel("Optimization tools")
         right_panel_layout.addWidget(region_label)
 
         # Region list
         self.region_list = QListWidget()
         self.region_list.setFixedHeight(100)
         self.region_list.currentItemChanged.connect(self.set_current_region)
-        self.region_list.currentItemChanged.connect(self.update_region_tab)
+        self.region_list.currentItemChanged.connect(self.load_region_tab)
         self.region_list.currentItemChanged.connect(self.set_cursors)
         right_panel_layout.addWidget(self.region_list)
 
         refit_layout = QHBoxLayout()
-        self.refit_region_button = QPushButton("Fit")
+        self.refit_region_button = QPushButton("Optimize")
         self.refit_region_button.clicked.connect(self.refit_region)
-        self.refit_region_button.clicked.connect(self.update_region_tab)
+        #TODO: update only line tab
+        self.refit_region_button.clicked.connect(self.update_lines_settings_tab)
         self.refit_region_button.clicked.connect(self.parent.update_viewer)
         refit_layout.addWidget(self.refit_region_button)
 
@@ -484,7 +484,6 @@ class Sidebars():
 
         delete_button = QPushButton("Delete Region")
         delete_button.clicked.connect(self.delete_region)
-        delete_button.clicked.connect(self.update_region_list)
         delete_button.clicked.connect(self.parent.update_viewer)
         create_delete_layout.addWidget(delete_button)
 
@@ -492,16 +491,18 @@ class Sidebars():
 
         self.region_tabs = QTabWidget()
         right_panel_layout.addWidget(self.region_tabs)
+        self.create_region_tabs()
 
         right_panel.setLayout(right_panel_layout)
-    
+
     def set_cursors(self):
         if self.current_region is not None:
             self.parent.set_cursors(
                     self.current_region, self.current_spectrum
                 )
 
-    def update_region_list(self):
+    def update_region_list(self, set_current=True):
+        self.logger.info("Updating region list")
         spectrum = self.current_spectrum
         self.region_list.clear()
         if spectrum is not None and len(spectrum.regions) != 0:
@@ -509,56 +510,79 @@ class Sidebars():
                 item = QListWidgetItem(f"Region {spectrum.regions.index(region)}")
                 item.setData(Qt.UserRole, region)
                 self.region_list.addItem(item)
+            if set_current:
+                self.region_list.setCurrentRow(0)
+            else:
+                self.load_region_tab()
 
-            self.update_region_tab()
+    def create_region_tabs(self):
+        """
+        Creates the tabs for the right panel of the window.
+        The tabs are Region settings and Line settings.
+        """
+        region_info_tab = QWidget()
+        tab_layout = QFormLayout()
+        region_info_tab.setLayout(tab_layout)
+        self.region_tabs.addTab(region_info_tab, "Region settings")
+
+        lines_info_tab = ScrollableWidget()
+        add_line_button = QPushButton("Add line")
+        add_line_button.clicked.connect(self.add_line)
+        lines_info_tab.layout().addWidget(add_line_button)
+        self.region_tabs.addTab(lines_info_tab, "Line settings")
+
+    def load_region_tab(self):
+        self.clear_tabs()
+        if self.current_region is not None:
+            self.load_region_settings_tab()
+            self.fixed_params_cb = []
+            self.load_lines_settings_tab()
     
-    def create_region_param_input(self, region, param, param_label,):
-        layout = QHBoxLayout()
-        label = QLabel(param_label)
+    def clear_tabs(self):
+        self.clear_layout(self.region_tabs.widget(0).layout())
+        self.clear_layout(self.region_tabs.widget(1).content_layout)
+
+    def clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)  # Remove item
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()  # Delete the widget properly
+
+    def load_region_settings_tab(self):
+        self.logger.info("Loading region settings tab")
+        region = self.current_region
+        tab_layout = self.region_tabs.widget(0).layout()
+
+        start_param = self.create_region_param_input(region, 'start_point') 
+        tab_layout.addRow('From (eV):', start_param)
+
+        end_param = self.create_region_param_input(region, 'end_point')
+        tab_layout.addRow('To (eV):', end_param)
+    
+    def update_region_settings_tab(self):
+        tab_widget = self.region_tabs.widget(0)
+        region = self.current_region
+        for param, param_input in zip(('start_point', 'end_point'), tab_widget.findChildren(QLineEdit)):
+            param_input.setText(f"{getattr(region, param):.2f}")
+
+    def create_region_param_input(self, region, param):
         current_value = getattr(region, param)
         if not isinstance(current_value, str):
             current_value = f"{current_value:.2f}"
         input_edit = QLineEdit(current_value)
         input_edit.returnPressed.connect(lambda: self.update_region_param(region, param, input_edit.text().strip(), input_edit))
         input_edit.returnPressed.connect(self.parent.update_viewer)
-        layout.addWidget(label)
-        layout.addWidget(input_edit)
-        return layout
+        return input_edit
 
     def update_region_param(self, region, param, value, edit):
         edit.setText(value)
         self.workspace.change_region_parameter(region, self.current_spectrum, param, value)
-
-    def update_region_tab(self):
-        selected_item = self.region_list.currentItem()
-        if selected_item is None:
-            return
-        if self.current_spectrum:
-            current_index = self.region_tabs.currentIndex()
-            self.region_tabs.clear()
-            region = selected_item.data(Qt.UserRole)
-            self.create_region_settings_tab(region)
-            self.create_lines_settings_tab(region)
-            if current_index != -1:
-                self.region_tabs.setCurrentIndex(current_index)
     
-    def create_region_settings_tab(self, region):
-        region_info_tab = QWidget()
-        tab_layout = QVBoxLayout()
-        region_info_tab.setLayout(tab_layout)
-
-        start_param = self.create_region_param_input(region, 'start_point', 'From (eV):') 
-        tab_layout.addLayout(start_param)
-
-        end_param = self.create_region_param_input(region, 'end_point', 'To (eV):')
-        tab_layout.addLayout(end_param)
-
-        self.region_tabs.addTab(region_info_tab, "Region settings")
-    
-    def create_lines_settings_tab(self, region):
-        lines_info_tab = QWidget()
-        tab_layout = QVBoxLayout()
-        lines_info_tab.setLayout(tab_layout)
+    #TODO: нумерация линий и апдейт параметров без удаления вкладки после фитинга
+    def add_line_to_tab(self, line):
+        region = self.current_region
+        tab_layout = self.region_tabs.widget(1).content_layout
         # ((parameter1_label, obj parametr), ...)
         editable_params = (
             ('BE', 'loc'),
@@ -570,59 +594,87 @@ class Sidebars():
             ('Area', 'area'),
             ('Height', 'height')
         )
-
-        for line in region.lines:
-            line_layout = QVBoxLayout()
-            name_label = QLabel(f"Line {region.lines.index(line)}")
-            line_layout.addWidget(name_label)
-            for (param_label, param) in editable_params:
-                line_layout.addLayout(self.create_line_param_input(param_label, param, line))
-            for (param_label, param) in noneditable_params:
-                line_layout.addLayout(self.create_line_param_input(param_label, param, line, read_only=True))
-            tab_layout.addLayout(line_layout)
-        self.region_tabs.addTab(lines_info_tab, "Line settings")
+        line_group = QGroupBox(f"Line {region.lines.index(line)}")
+        line_layout = QFormLayout()
+        line_group.setLayout(line_layout)
+        cb_layout = QHBoxLayout()
     
-    def create_line_param_input(self, param_label, param, line, read_only=False):
-        layout = QHBoxLayout()
-        label = QLabel(param_label)
+        cb_label = QLabel("Fix parameters")
+        # cb_group = CheckboxGroup(len(editable_params))
+
+        # self.fixed_params_cb.append(cb_group.checkboxes)
+        cb_layout.addWidget(cb_label)
+        # cb_layout.addWidget(cb_group.main_checkbox)
+        cb_layout.setAlignment(Qt.AlignRight)
+        line_layout.addRow(cb_layout)
+        cb_list = []
+        for (param_label, param) in editable_params:
+            layout = QHBoxLayout()
+            cb = QCheckBox()
+            param_input = self.create_line_param_input(line, param)
+            cb_list.append(cb)
+            layout.addWidget(param_input)
+            layout.addWidget(cb)
+            line_layout.addRow(param_label, layout)
+        for (param_label, param) in noneditable_params:
+            line_layout.addRow(param_label, self.create_line_param_input(line, param, read_only=True))
+
+        delete_button = QPushButton("Delete")
+        delete_button.clicked.connect(lambda: self.delete_line(region.lines.index(line)))
+        self.fixed_params_cb.append(cb_list)
+        line_layout.addRow(delete_button)
+        tab_layout.addWidget(line_group)
+    
+    def load_lines_settings_tab(self):
+        region = self.current_region
+        for line in region.lines:
+            self.add_line_to_tab(line)
+
+    def update_lines_settings_tab(self, save_state=True):
+        self.logger.info("Updating lines settings tab")
+        tab = self.region_tabs.widget(1)
+        region = self.current_region
+        for line, line_setting in zip(region.lines, tab.findChildren(QGroupBox)):
+            line_setting.setTitle(f"Line {region.lines.index(line)}")
+            for param, param_input in zip(('loc', 'fwhm', 'gl_ratio', 'const', 'area', 'height'), line_setting.findChildren(QLineEdit)):
+                param_input.setText(f"{getattr(line, param):.2f}")
+    
+    def remove_line_settings(self, line_idx):
+        tab_layout = self.region_tabs.widget(1).content_layout
+        widget = tab_layout.itemAt(line_idx).widget()
+        tab_layout.removeWidget(widget)
+        widget.deleteLater()
+        self.fixed_params_cb.pop(line_idx)
+
+    def delete_line(self, line_idx):
+        self.workspace.delete_line(self.current_region, line_idx)
+        self.remove_line_settings(line_idx)
+        self.parent.update_viewer()
+
+    def create_line_param_input(self, line, param, read_only=False):
         current_value = getattr(line, param)
         if not isinstance(current_value, str):
             current_value = f"{current_value:.3f}"
         input_edit = QLineEdit(current_value)
-        layout.addWidget(label)
-        layout.addWidget(input_edit)
         if read_only:
             input_edit.setReadOnly(True)
         else:
             input_edit.returnPressed.connect(lambda: self.update_line_param(line, param, input_edit.text().strip(), input_edit))
             input_edit.returnPressed.connect(self.parent.update_viewer)
-        return layout
+        return input_edit
 
     def update_line_param(self, line, param, value, edit):
         edit.setText(value)
         value = float(value)
         self.workspace.change_line_parameter(line, param, value)
-    
+
     def delete_region(self):
         selected_item = self.region_list.currentItem()
         if selected_item is not None:
             region = selected_item.data(Qt.UserRole)
             self.workspace.delete_region(region, self.current_spectrum)
             self.region_list.takeItem(self.region_list.row(selected_item))
-            self.update_region_list()
             self.region_list.setCurrentRow(self.region_list.count() - 1)
-    
-    # def update_lines_tab(self):
-    #     self.line_list.clear()
-    #     selected_item = self.region_list.currentItem()
-    #     if selected_item is None:
-    #         return
-    #     region = selected_item.data(Qt.UserRole)
-    #     for line in region.lines:
-    #         item = QListWidgetItem(f"Line {region.lines.index(line)}")
-    #         item.setData(Qt.UserRole, line)
-    #         self.line_list.addItem(item)
-    #     self.update_line_list()
 
     def create_new_region(self):
         spectrum = self.current_spectrum
@@ -634,7 +686,20 @@ class Sidebars():
             item.setData(Qt.UserRole, region)
             self.region_list.addItem(item)
             self.region_list.setCurrentRow(self.region_list.count() - 1)
-    
+
+    #TODO: умное добавление линий
+    def add_line(self):
+        region = self.current_region
+        if region is not None:
+            if len(region.lines) != 0:
+                self.workspace.add_line(
+                    region, self.current_region.lines[-1].loc + 1, self.current_region.lines[-1].scale, self.current_region.lines[-1].const, self.current_region.lines[-1].gl_ratio
+                )
+            else:
+                self.workspace.add_line(region)
+            self.add_line_to_tab(self.current_region.lines[-1])
+            self.parent.update_viewer()
+
     def refit_region(self):
         selected_item = self.region_list.currentItem()
         if selected_item is None:
@@ -644,7 +709,14 @@ class Sidebars():
         else:
             fit_alg = 'differential evolution'
         region = selected_item.data(Qt.UserRole)
-        self.workspace.refit(region, tol=0.3, full_refit=self.reoptimize_all_box.isChecked(), fit_alg=fit_alg)
+        if self.reoptimize_all_box.isChecked():
+            self.workspace.refit(region, tol=0.15, full_refit=True, fit_alg=fit_alg)
+        else:
+            fixed_params = self.parse_fixed_params()
+            self.workspace.refit(region, fixed_params=fixed_params, tol=0.2, fit_alg=fit_alg, loc_tol=1)
+
+    def parse_fixed_params(self):
+        return [i for i, box in enumerate(chain(*self.fixed_params_cb)) if box.isChecked()]
 
 class SpectraTreeWidget(QTreeWidget):
     """Custom QTreeWidget to restrict drag-and-drop behavior."""
@@ -680,6 +752,30 @@ class SpectraTreeWidget(QTreeWidget):
                 self.wokspace.move_spectrum(idx, old_parent.text(0), target_item.text(0))
 
         event.accept()
+
+class ScrollableWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        # Create main layout
+        layout = QVBoxLayout(self)
+
+        # Create a Scroll Area
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)  # Allows resizing of the contained widget
+
+        # Create a container widget for the scroll area
+        content_widget = QWidget()
+        self.content_layout = QVBoxLayout(content_widget)
+
+        # Set the container widget as the scroll area's widget
+        self.scroll_area.setWidget(content_widget)
+
+        # Add the scroll area to the main layout
+        layout.addWidget(self.scroll_area)
+
+        self.setLayout(layout)
+        # self.resize(300, 400)  # Set window size
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, workspace, parent):
@@ -735,7 +831,7 @@ class PlotCanvas(FigureCanvas):
                     self.workspace.change_region_parameter(self.region, self.spectrum, param, x_new)
 
             self._parent.update_viewer()
-            self._parent.sidebars.update_region_tab() #TODO: replace this
+            self._parent.sidebars.update_region_settings_tab() #TODO: replace this
 
     def set_cursors(self, pos1, pos2):
         """Function to set cursors when list item is clicked"""
@@ -771,40 +867,6 @@ class PlotCanvas(FigureCanvas):
         self.region = region
         self.spectrum = spectrum
         self.set_cursors(region.start_point, region.end_point)
-
-class ScrollableTab(QWidget):
-    """A custom widget with a scrollable layout for tab content."""
-    def __init__(self):
-        super().__init__()
-        
-        # Scroll Area
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)  
-
-        # Container Widget
-        self.container = QWidget()
-        self.layout = QVBoxLayout(self.container)
-
-        # Add container to scroll area
-        self.scroll_area.setWidget(self.container)
-
-        # Main layout
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(self.scroll_area)
-
-        # Store references to added widgets
-        self.labels = []
-
-    def update_content_wrapper(self, update_fn):
-        """Update the content dynamically while preserving scroll position."""
-
-        def new_update_fn(*args, **kwargs):
-            scrollbar = self.scroll_area.verticalScrollBar()
-            scroll_pos = scrollbar.value() 
-            update_fn(*args, **kwargs)
-            scrollbar.setValue(scroll_pos)
-
-        return new_update_fn
 
 
 def main():
