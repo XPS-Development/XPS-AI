@@ -1,3 +1,4 @@
+import pickle as pkl
 from pathlib import Path
 
 import numpy as np
@@ -72,14 +73,43 @@ class Workspace():
             elif f.suffix == '.xml':
                 self.load_specs2(f, group_name=group_name)
 
+    def save_workspace(self, file: str):
+        file = Path(file).with_suffix('.pkl')
+        with file.open('wb') as f:
+            pkl.dump(self.groups, f)
+    
+    def load_workspace(self, file: str):
+        with open(file, 'rb') as f:
+            self.groups.update(pkl.load(f))
+    
+    def save_spectra(self, save_dir: str, spectra):
+        save_dir_path = Path(save_dir)
+        for s in spectra:
+            n = 0
+            file_name = save_dir_path / f'{s.name}.dat'
+            while file_name.exists():
+                file_name = save_dir_path / f'{s.name}_{n}.dat'
+                n += 1
+            s.save_spectrum(file_name)
+    
+    def export_params(self, save_dir: str, spectra, xps_peak_like=True):
+        save_dir_path = Path(save_dir)
+        for s in spectra:
+            n = 0
+            file_name = save_dir_path / f'{s.name}.csv'
+            while file_name.exists():
+                file_name = save_dir_path / f'{s.name}_{n}.csv'
+                n += 1
+            s.export_params(file_name, xps_peak_like=xps_peak_like)
+
     def rename_group(self, group_name, new_group_name):
         self.groups[new_group_name] = self.groups.pop(group_name)
     
     def move_spectrum(self, spectrum_idx, group_name, new_group_name):
-        print(f'Moving spectrum {spectrum_idx} from {group_name} to {new_group_name}')
         self.groups[new_group_name].append(self.groups[group_name].pop(spectrum_idx))
 
     def merge_groups(self, new_group_name, other_groups):
+        
         self.create_group(new_group_name)
         for group in other_groups:
             self.groups[new_group_name] += self.groups[group]

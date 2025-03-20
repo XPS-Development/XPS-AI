@@ -131,10 +131,39 @@ class MainWindow(QMainWindow):
     
     def load_spectra(self):
         self.logger.info("Loading spectra")
-        files, _ = QFileDialog.getOpenFileNames(self, "Load Spectra", "", "All Files (*);;Vamas Files (*.vms);;Text Files (*.txt);;SPECS Files (*.xml)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Load Spectra", ".", "All Files (*);;Vamas Files (*.vms);;Text Files (*.txt);;SPECS Files (*.xml)")
         if files:
             self.workspace.load_files(*files)
             self.update_sidebars()
+    
+    def save_workspace(self):
+        self.logger.info("Saving workspace")
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Workspace", ".", "Workspace files (*.pkl)")
+        if file_path:
+            self.workspace.save_workspace(file_path)
+    
+    def load_workspace(self):
+        self.logger.info("Loading workspace")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Load Workspace", ".", "Workspace files (*.pkl)")
+        if file_path:
+            self.workspace.load_workspace(file_path)
+            self.update_sidebars()
+
+    def save_spectra(self):
+        folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
+        spectra = self.sidebars.get_selected_spectra()
+        if len(spectra) == 0:
+            spectra = [self.sidebars.current_spectrum]
+        if folder_rpath:
+            self.workspace.save_spectra(folder_rpath, spectra)
+    
+    def export_parameters(self):
+        folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
+        spectra = self.sidebars.get_selected_spectra()
+        if len(spectra) == 0:
+            spectra = [self.sidebars.current_spectrum]
+        if folder_rpath:
+            self.workspace.export_params(folder_rpath, spectra)
 
     def change_prediction_threshold(self):
         self.logger.info("Changing prediction threshold")
@@ -161,10 +190,31 @@ class Toolbar(QToolBar):
     def __init__(self, parent):
         super().__init__("Main Toolbar", parent)
 
-        # Load Spectra Action
-        load_action = QAction("Load Spectra", parent)
-        load_action.triggered.connect(parent.load_spectra)
-        self.addAction(load_action)
+        # Files Menu
+        files_menu = QMenu("Files...", parent)
+        files_menu_action = self.addAction("Files...")
+        files_menu_action.setMenu(files_menu)
+        files_menu_action.triggered.connect(lambda: files_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
+        
+        save_workspace_action = QAction("Save Workspace", parent)
+        save_workspace_action.triggered.connect(parent.save_workspace)
+        files_menu.addAction(save_workspace_action)
+
+        load_workspace_action = QAction("Load Workspace", parent)
+        load_workspace_action.triggered.connect(parent.load_workspace)
+        files_menu.addAction(load_workspace_action)
+
+        load_spectra_action = QAction("Load Spectra", parent)
+        load_spectra_action.triggered.connect(parent.load_spectra)
+        files_menu.addAction(load_spectra_action)
+
+        save_spectra_action = QAction('Export Spectra', parent)
+        save_spectra_action.triggered.connect(parent.save_spectra)
+        files_menu.addAction(save_spectra_action)
+
+        export_parameters_action = QAction('Export Parameters', parent)
+        export_parameters_action.triggered.connect(parent.export_parameters)
+        files_menu.addAction(export_parameters_action)
 
         # Options Menu
         options_menu = QMenu("Options...", parent)
@@ -249,8 +299,9 @@ class Sidebars():
         left_panel.setLayout(left_panel_layout)
     
     def set_currents_spectrum(self, item, column):
-        self.current_spectrum = item.data(0, Qt.UserRole)
-        self.current_region = None
+        if item is not None:
+            self.current_spectrum = item.data(0, Qt.UserRole)
+            self.current_region = None
     
     def set_current_region(self, item):
         if item is not None:
@@ -405,7 +456,7 @@ class Sidebars():
                 group_item.addChild(spectrum_item)
             self.spectra_tree.addTopLevelItem(group_item)
     
-    def predict(self):
+    def get_selected_spectra(self):
         selected_items = self.aggregate_left_panel_items()
         if not selected_items:
             return
@@ -418,26 +469,17 @@ class Sidebars():
             spectrum = spectrum_item.data(0, Qt.UserRole)
             if spectrum not in spectra_list:
                 spectra_list.append(spectrum)
+        return spectra_list
+    
+    def predict(self):
+        spectra_list = self.get_selected_spectra()
 
         self.workspace.predict(spectra=spectra_list)
         self.parent.toolbar.toggle_labeled_data_action.setChecked(True)
         self.parent.update_viewer()
 
-    def post_process(self):        
-        selected_items = self.aggregate_left_panel_items()
-        if not selected_items:
-            return
-
-        groups, spectra = selected_items
-        spectra_list = []
-        for group in groups:
-            spectra_list.extend(self.workspace.groups[group.text(0)])
-        for spectrum_item in spectra:
-            spectrum = spectrum_item.data(0, Qt.UserRole)
-            if spectrum not in spectra_list:
-                spectra_list.append(spectrum)
-        
-        spectra_list = [s for s in spectra_list if not s.is_analyzed]
+    def post_process(self):
+        spectra_list = [s for s in self.get_selected_spectra() if not s.is_analyzed]
 
         progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
         progress_window.exec()
@@ -466,7 +508,6 @@ class Sidebars():
         refit_layout = QHBoxLayout()
         self.refit_region_button = QPushButton("Optimize")
         self.refit_region_button.clicked.connect(self.refit_region)
-        #TODO: update only line tab
         self.refit_region_button.clicked.connect(self.update_lines_settings_tab)
         self.refit_region_button.clicked.connect(self.parent.update_viewer)
         refit_layout.addWidget(self.refit_region_button)
@@ -582,17 +623,16 @@ class Sidebars():
     def update_region_param(self, region, param, value, edit):
         edit.setText(value)
         self.workspace.change_region_parameter(region, self.current_spectrum, param, value)
-    
-    #TODO: нумерация линий и апдейт параметров без удаления вкладки после фитинга
+
     def add_line_to_tab(self, line):
         region = self.current_region
         tab_layout = self.region_tabs.widget(1).content_layout
-        # ((parameter1_label, obj parametr), ...)
+        # ((parameter1_label, obj parameter), ...)
         editable_params = (
-            ('BE', 'loc'),
+            ('Position', 'loc'),
             ('FWHM', 'fwhm'),
+            ('Amplitude', 'const'),
             ('GL ratio', 'gl_ratio'),
-            ('Amplitude', 'const')
         )
         noneditable_params = (
             ('Area', 'area'),
@@ -640,7 +680,7 @@ class Sidebars():
         region = self.current_region
         for line, line_setting in zip(region.lines, tab.findChildren(QGroupBox)):
             line_setting.setTitle(f"Line {region.lines.index(line)}")
-            for param, param_input in zip(('loc', 'fwhm', 'gl_ratio', 'const', 'area', 'height'), line_setting.findChildren(QLineEdit)):
+            for param, param_input in zip(('loc', 'fwhm', 'const', 'gl_ratio', 'area', 'height'), line_setting.findChildren(QLineEdit)):
                 param_input.setText(f"{getattr(line, param):.2f}")
     
     def remove_line_settings(self, line_idx):
@@ -691,7 +731,7 @@ class Sidebars():
             self.region_list.addItem(item)
             self.region_list.setCurrentRow(self.region_list.count() - 1)
 
-    #TODO: умное добавление линий
+    #TODO: adding lines to maxima fitting errors
     def add_line(self):
         region = self.current_region
         if region is not None:
@@ -792,7 +832,7 @@ class SpectraTreeWidget(QTreeWidget):
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.setDragDropMode(QTreeWidget.InternalMove)
         self.viewport().installEventFilter(self)  # Allow drag filtering
-        self.wokspace = workspace
+        self.workspace = workspace
 
     def dropEvent(self, event):
         """Control where items can be dropped."""
@@ -815,8 +855,8 @@ class SpectraTreeWidget(QTreeWidget):
                 old_parent.removeChild(item)  # Remove from old group
                 target_item.addChild(item)  # Move to new group
                 spectrum = item.data(0, Qt.UserRole)
-                idx = self.wokspace.groups[old_parent.text(0)].index(spectrum)
-                self.wokspace.move_spectrum(idx, old_parent.text(0), target_item.text(0))
+                idx = self.workspace.groups[old_parent.text(0)].index(spectrum)
+                self.workspace.move_spectrum(idx, old_parent.text(0), target_item.text(0))
 
         event.accept()
 

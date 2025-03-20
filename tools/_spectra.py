@@ -1,5 +1,6 @@
 #TODO: docs
 import numpy as np
+from copy import deepcopy
 from matplotlib import pyplot as plt
 from scipy.signal import savgol_filter
 from tools._tools import interpolate, pseudo_voight
@@ -52,6 +53,15 @@ class Line():
 
     def f(self, x):
         return pseudo_voight(x, self.loc, self.scale, self.const, self.gl_ratio)
+
+    def get_params(self, xps_peak_like=True):
+        if xps_peak_like:
+            # params = 
+            params = list(map(lambda x: f'{x:.3f}', [self.loc, self.area, self.fwhm]))
+            params.append(f'{round(self.gl_ratio * 100)}')
+            return params
+        else:
+            return list(map(lambda x: f'{x:.3f}', [self.loc, self.scale, self.const, self.gl_ratio, self.area, self.height]))
 
     def __repr__(self):
         return f'Line(name={self.name}, loc={self.loc}, scale={self.scale}, const={self.const}, gl_ratio={self.gl_ratio})'
@@ -111,9 +121,21 @@ class Region():
             self.lines.pop(idx)
     
     def draw_lines(self):
-        lines = [self.x, self.background]
+        lines = [self.x, self.background, self.peak_sum()]
         lines.extend([line.f(self.x) + self.background for line in self.lines])
         return lines
+
+    def peak_sum(self):
+        s = deepcopy(self.background)
+        for l in self.lines:
+            s += l.f(self.x)
+        return s
+    
+    def export_params(self, xps_peak_like=True):
+        params = []
+        for line in self.lines:
+            params.append(line.get_params(xps_peak_like=xps_peak_like))
+        return params
 
     def __repr__(self):
         s = f'Region(start={self.x[0]}, end={self.x[-1]}, i_1={self.i_1}, i_2={self.i_2}, background_type={self.background_type})'
@@ -176,6 +198,7 @@ class Spectrum():
         self.regions.append(region)
 
     def create_region(self, start_idx, end_idx, background_type='shirley'):
+        self.is_analyzed = True # prevent post processing for manually analyzed spectra
         region = Region(
             self.x[start_idx:end_idx], self.y[start_idx:end_idx], self.y_norm[start_idx:end_idx], \
             self.y_smoothed[start_idx], self.y_smoothed[end_idx-1], start_idx, end_idx, background_type
@@ -206,6 +229,57 @@ class Spectrum():
     def remove_charge_correction(self):
         self.set_charge_correction(-self.charge_correction)
         self.charge_correction = 0
+
+    def save_spectrum(self, file_name, drop_empty=True):
+        back_to_save = np.zeros_like(self.x)
+        peak_sum_to_save = np.zeros_like(self.x)
+        new_lines = []
+
+        for region in self.regions:
+            start_idx = region.start_idx
+            end_idx = region.end_idx
+            reg_x, back, s, *lines = region.draw_lines()
+            back_to_save[start_idx:end_idx] = back
+            peak_sum_to_save[start_idx:end_idx] = s
+
+            for line in lines:
+                new_line = np.zeros_like(self.x)
+                new_line[start_idx:end_idx] = line
+                new_lines.append(new_line)
+
+        peak_names = [f'Peak {n}' for n in range(1, len(new_lines) + 1)]
+        column_names = ['B.E.(eV)', 'Raw Intensity', 'Peak Sum', 'Background']
+        column_names.extend(peak_names)
+        header = '{:<20}' * (len(column_names) - 1) + '{}'
+        header = header.format(*column_names) 
+        array_to_save = np.vstack((self.x, self.y, peak_sum_to_save, back_to_save, *new_lines)).T
+
+        if drop_empty:
+            array_to_save = array_to_save.round(3)
+            array_to_save = array_to_save.astype(str)
+            array_to_save[array_to_save == '0.0'] = ' '
+            np.savetxt(file_name, array_to_save, header=header, fmt='%-19s', comments='')
+        else:
+            np.savetxt(file_name, array_to_save, header=header, fmt='%-19.3f', comments='')
+
+    def export_params(self, file_name: str, xps_peak_like=True):        
+        params = []
+        for region in self.regions:
+            params.extend(region.export_params(xps_peak_like=xps_peak_like))
+        for n, line_param in enumerate(params):
+            line_param.insert(0, str(n))
+
+        if xps_peak_like:
+            pattern = '{:<14}{:<14}{:<14}{:<14}{}'
+            header = pattern.format('Peak', 'Position (eV)', 'Area', 'FWHM (eV)', '%GL (%)')
+            with open(file_name, 'w') as f:
+                f.write(header + '\n')
+                for line in params:
+                    line = pattern.format(*line)
+                    f.write(line + '\n')
+        else:
+            header = ['Peak', 'Position (eV)', 'Scale', 'Amplitude', '%GL (%)', 'Area', 'Height']
+            np.savetxt(file_name, params, delimiter=',', header=header, fmt='%s')
     
     def view_data(self, ax=None, show=False, norm=False, smoothed=False):
         if ax is None:
@@ -238,7 +312,7 @@ class Spectrum():
             plt.show()
         return ax
     
-    def view_lines(self, ax=None, show=False, smoothed=False):
+    def view_lines(self, ax=None, show=False, smoothed=False, peak_sum=True):
         x, y = self.x, self.y
         if ax is None:
             fig, ax = plt.subplots()
@@ -249,8 +323,10 @@ class Spectrum():
         else:
             ax.plot(x, y, 'k')
         for region in self.regions:
-            reg_x, back, *lines = region.draw_lines()
+            reg_x, back, s, *lines = region.draw_lines()
             ax.plot(reg_x, back, 'k--')
+            if peak_sum:
+                ax.plot(reg_x, s, 'k', alpha=0.7)
             for line in lines:
                 ax.plot(reg_x, line)
 
