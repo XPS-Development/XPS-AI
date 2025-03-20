@@ -7,7 +7,7 @@ import torch
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
-#TODO: пересчет фона ширли, указание новых параметров для региона
+
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
@@ -191,8 +191,7 @@ class Analyzer():
         else:
             b_max = val + tol
         return (b_min, b_max)
-    
-    #TODO: refit fixed number of params
+
     def _refit(
             self,
             x,
@@ -206,7 +205,6 @@ class Analyzer():
             abs_tol=False,
             loc_tol=1
     ):
-
         bounds = []
         for num, param in enumerate(initial_params):
             if num in fixed_params:
@@ -304,7 +302,7 @@ class Analyzer():
         connected_peak_borders = np.array(connected_peak_borders)
 
         # split borders to regions
-        for f, t in zip(peak_borders[0::2], peak_borders[1::2]):
+        for f, t in zip(connected_peak_borders[0::2], connected_peak_borders[1::2]):
             # choose max_idxs in region
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
 
@@ -346,16 +344,7 @@ class Analyzer():
         return np.array(params)
     
     def aggregate_params(self, param, lines):
-        params = {
-            'loc': [l.loc for l in lines],
-            'scale': [l.scale for l in lines],
-            'const': [l.const for l in lines],
-            'gl_ratio': [l.gl_ratio for l in lines],
-            'fwhm': [l.fwhm for l in lines],
-            'area': [l.area for l in lines],
-            'height': [l.height for l in lines]
-        }
-        return params[param]
+        return [getattr(l, param) for l in lines]
 
     #TODO: active shirley and static shirley
     def post_process(self, spectrum, active_background_fitting=False, ):
