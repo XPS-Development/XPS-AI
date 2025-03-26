@@ -29,13 +29,19 @@ class Workspace():
             self.create_group(group_name)
         self.groups[group_name].append(spectrum)
 
-    def load_txt(self, file: Path, group_name=None, type='casa'):
+    def load_txt(self, file: Path, group_name=None):
         if group_name is None:
-            group_name = f.name
+            group_name = file.parent.name
         with open(file, 'r') as f:
-            name = f.readline().strip()
-            data = np.loadtxt(f, delimiter='\t', skiprows=3, usecols=(1, 3))
-        self.add_spectrum(data[:, 1], data[:, 0], group_name=group_name, name=name)
+            s = f.readline().split()
+            if len(s) == 1: # casa format
+                name = s[0]
+                data = np.loadtxt(f, delimiter='\t', skiprows=3, usecols=(1, 3))
+                self.add_spectrum(data[:, 1], data[:, 0], group_name=group_name, name=name)
+            elif len(s) == 2: # numpy format
+                name = file.stem
+                data = np.loadtxt(f)
+                self.add_spectrum(data[:, 0], data[:, 1], group_name=group_name, name=name)
 
     def load_vamas(self, file: Path, group_name=None):
         obj = VAMAS(file)
@@ -85,7 +91,7 @@ class Workspace():
     def save_spectra(self, save_dir: str, spectra):
         save_dir_path = Path(save_dir)
         for s in spectra:
-            n = 0
+            n = 1
             file_name = save_dir_path / f'{s.name}.dat'
             while file_name.exists():
                 file_name = save_dir_path / f'{s.name}_{n}.dat'
@@ -95,7 +101,7 @@ class Workspace():
     def export_params(self, save_dir: str, spectra, xps_peak_like=True):
         save_dir_path = Path(save_dir)
         for s in spectra:
-            n = 0
+            n = 1
             file_name = save_dir_path / f'{s.name}.csv'
             while file_name.exists():
                 file_name = save_dir_path / f'{s.name}_{n}.csv'
