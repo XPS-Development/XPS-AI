@@ -7,7 +7,7 @@ import torch
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
-
+#TODO: move to onnx runtime
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
@@ -129,7 +129,7 @@ class Analyzer():
         return res.x
 
     #TODO: filter too small peaks
-    def init_params_by_locations(self, x, y, locations):
+    def init_params_by_locations(self, x, y, locations, maxiter=200):
         # use normilized data
         """
         Initialize parameters for fitting peaks by locations.
@@ -157,7 +157,7 @@ class Analyzer():
             bounds.append((0, 5)) # const
             bounds.append((0, 1)) # gl_ratio
 
-        params = self._diff_ev_fit(x, y, bounds)
+        params = self._diff_ev_fit(x, y, bounds, maxiter=maxiter)
         
         bounds = np.array(bounds)
         a, b = bounds.shape
@@ -364,7 +364,7 @@ class Analyzer():
             region.background = reg_background * (max_value - min_value) + min_value
 
             # calculate initial params by max_locations from the mask
-            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs)
+            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs, maxiter=50)
             # accurate fitting
             params = self.fit(
                 reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background

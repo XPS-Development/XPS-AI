@@ -155,11 +155,11 @@ class Workspace():
             s.remove_charge_correction()
             s.set_charge_correction(delta)
 
-    def add_line(self, region, loc=0, scale=1, const=1, gl_ratio=1, name=None, line=None):
+    def add_line(self, region, loc=0, scale=1, const=1, gl_ratio=1, color=None, line=None):
         if line is not None:
             region.append(line)
         else:
-            region.add_line(loc, scale, const, gl_ratio, name=name)
+            region.add_line(loc, scale, const, gl_ratio, color=color)
 
     def delete_line(self, region, line_idx):
         region.delete_line(line_idx)

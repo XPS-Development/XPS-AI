@@ -1,21 +1,18 @@
-import sys
 import io
+import sys
 import logging
 import traceback
-from itertools import chain
+from itertools import chain, cycle
 
 import numpy as np
 import torch
 
+import pyqtgraph as pg
+
+from PySide6 import QtGui
 from PySide6.QtWidgets import *
 from PySide6.QtGui import QAction, QPalette, QColor, QActionGroup
 from PySide6.QtCore import Qt, QThread, Signal
-
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.backend_bases import MouseEvent
-from matplotlib.figure import Figure
 
 from model.models.model_deeper import XPSModel
 from tools import Workspace
@@ -34,7 +31,7 @@ class MainWindow(QMainWindow):
 
         self.initUI()
     
-    def setup_logging(self, log_level=logging.INFO):
+    def setup_logging(self, log_level=logging.DEBUG):
         # Set up logging
         self.logger = logging.getLogger(__name__)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -50,7 +47,7 @@ class MainWindow(QMainWindow):
         self.logger.addHandler(memory_handler)
 
         self.logger.setLevel(log_level)
-        self.logger.info("Logging initialized.")
+        self.logger.debug("Logging initialized.")
 
         sys.excepthook = self.handle_unhandled_exception
 
@@ -60,7 +57,7 @@ class MainWindow(QMainWindow):
         self.logger.critical(f"Unhandled Exception:\n{error_message}")
 
     def load_model(self):
-        self.logger.info("Loading model")
+        self.logger.debug("Loading model")
         m = XPSModel()
         m.load_state_dict(
             torch.load('model.pt', map_location=torch.device('cpu'), weights_only=True)
@@ -69,7 +66,7 @@ class MainWindow(QMainWindow):
         return m
 
     def initUI(self):
-        self.logger.info("Initializing UI")
+        self.logger.debug("Initializing UI")
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -80,11 +77,14 @@ class MainWindow(QMainWindow):
         # Splitter for sidebar, main content, and right panel
         splitter = QSplitter()
 
-        self.main_content = self.main_content_widget()
+        self.canvas = PlotCanvas(self, self.workspace)
+        self.canvas.resize(800, 600) 
+        color = self.palette().color(QtGui.QPalette.Base)
+        self.canvas.setBackground(color)
         self.sidebars = Sidebars(self, self.workspace, self.logger)
 
         splitter.addWidget(self.sidebars.left_panel)
-        splitter.addWidget(self.main_content)
+        splitter.addWidget(self.canvas)
         splitter.addWidget(self.sidebars.right_panel)
 
         # Set the splitter to the central widget
@@ -92,64 +92,57 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(splitter)
         central_widget.setLayout(central_layout)
     
-    def main_content_widget(self):
-        self.logger.info("Initializing main content widget")
-        main_content_widget = QWidget()
-        # Main content layout
-        main_content_layout = QVBoxLayout()
-
-        # Figure for plotting spectra
-        self.canvas = PlotCanvas(self.workspace, self)
-        self.navigation_toolbar = NavigationToolbar(self.canvas, self)
-        main_content_layout.addWidget(self.navigation_toolbar)
-        main_content_layout.addWidget(self.canvas)
-
-        main_content_widget.setLayout(main_content_layout)
-
-        return main_content_widget
-    
     def update_viewer(self):
+        self.logger.debug("Updating viewer")
         spectrum = self.sidebars.current_spectrum
         region = self.sidebars.current_region
+        self.logger.debug(f"Spectrum: {spectrum}, Region: {region}")
         if spectrum is not None:
+            self.canvas.reload_spectrum(spectrum)
+
             add_smoothing = self.toolbar.toggle_smoothed_data_action.isChecked()
-            if spectrum.is_predicted and self.toolbar.toggle_labeled_data_action.isChecked():
-                self.canvas.plot(spectrum, type='labeled')
-            elif self.toolbar.toggle_raw_data_action.isChecked():
-                self.canvas.plot(spectrum, type='raw', add_smoothing=add_smoothing)
-            else:
-                self.canvas.plot(spectrum, add_smoothing=add_smoothing)
-        if region is not None:
-            self.set_cursors(region, spectrum)
-    
-    def set_cursors(self, region, spectrum):
-        self.canvas.load_cursors(region, spectrum)
+
+            if spectrum is not None:
+                if spectrum.is_predicted and self.toolbar.toggle_labeled_data_action.isChecked():
+                    self.canvas.update_plot(disp_type='labeled')
+                elif self.toolbar.toggle_raw_data_action.isChecked():
+                    self.canvas.update_plot(disp_type='raw', smoothed=add_smoothing)
+                else:
+                    self.canvas.update_plot(disp_type='lines', smoothed=add_smoothing)
+
+            if region is not None and region in spectrum.regions:
+                self.set_cursors(region)
+
+    def set_cursors(self, region):
+        self.logger.debug("Setting cursors")
+        self.canvas.load_cursors(region)
     
     def update_sidebars(self):
-        self.logger.info("Updating sidebars")
+        self.logger.debug("Updating sidebars")
         self.sidebars.update_spectra_tree()
     
     def load_spectra(self):
-        self.logger.info("Loading spectra")
+        self.logger.debug("Loading spectra")
         files, _ = QFileDialog.getOpenFileNames(self, "Load Spectra", ".", "All Files (*);;Vamas Files (*.vms);;Text Files (*.txt);;SPECS Files (*.xml)")
         if files:
             self.workspace.load_files(*files)
             self.update_sidebars()
     
     def save_workspace(self):
-        self.logger.info("Saving workspace")
+        self.logger.debug("Saving workspace")
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Workspace", ".", "Workspace files (*.pkl)")
         if file_path:
             self.workspace.save_workspace(file_path)
     
     def load_workspace(self):
-        self.logger.info("Loading workspace")
+        self.logger.debug("Loading workspace")
         file_path, _ = QFileDialog.getOpenFileName(self, "Load Workspace", ".", "Workspace files (*.pkl)")
         if file_path:
             self.workspace.load_workspace(file_path)
             self.update_sidebars()
 
     def save_spectra(self):
+        self.logger.debug("Saving spectra")
         folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
         spectra = self.sidebars.get_selected_spectra()
         if len(spectra) == 0:
@@ -158,6 +151,7 @@ class MainWindow(QMainWindow):
             self.workspace.save_spectra(folder_rpath, spectra)
     
     def export_parameters(self):
+        self.logger.debug("Exporting parameters")
         folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
         spectra = self.sidebars.get_selected_spectra()
         if len(spectra) == 0:
@@ -166,15 +160,17 @@ class MainWindow(QMainWindow):
             self.workspace.export_params(folder_rpath, spectra)
 
     def change_prediction_threshold(self):
-        self.logger.info("Changing prediction threshold")
+        self.logger.debug("Changing prediction threshold")
         value = self.workspace.pred_threshold
         new_threshold, ok = QInputDialog.getDouble(self, "Change Prediction Threshold", "Enter new prediction threshold:", value, 0, 1, 2)
         if ok:
             self.workspace.set_prediction_threshold(new_threshold)
+
+        self.logger.debug("Updating viewer from change_prediction_threshold")
         self.update_viewer()
     
     def save_logs(self):
-        self.logger.info("Saving logs")
+        self.logger.debug("Saving logs")
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Log File", "", "Text Files (*.txt);;All Files (*)")
 
         if file_path:  # If user selects a file
@@ -184,7 +180,7 @@ class MainWindow(QMainWindow):
             with open(file_path, "w") as f:
                 f.write(log_contents)
 
-            self.logger.info(f"All logs have been saved to {file_path}")
+            self.logger.debug(f"All logs have been saved to {file_path}")
 
 class Toolbar(QToolBar):
     def __init__(self, parent):
@@ -271,15 +267,18 @@ class Sidebars():
         self.init_left_panel()
 
     def init_left_panel(self):
-        self.logger.info("Initializing left panel")
+        self.logger.debug("Initializing left panel")
         left_panel = QWidget()
         self.left_panel = left_panel
         left_panel_layout = QVBoxLayout()
 
         self.spectra_tree = SpectraTreeWidget(workspace=self.workspace)
-        self.spectra_tree.currentItemChanged.connect(self.set_currents_spectrum)
-        self.spectra_tree.currentItemChanged.connect(self.parent.update_viewer)
-        self.spectra_tree.currentItemChanged.connect(self.update_region_list)
+        self.spectra_tree.itemClicked.connect(self.set_currents_spectrum)
+        self.spectra_tree.itemClicked.connect(self.update_region_list)
+        self.spectra_tree.itemClicked.connect(self.parent.update_viewer)
+        # self.spectra_tree.currentItemChanged.connect(self.set_currents_spectrum)
+        # self.spectra_tree.currentItemChanged.connect(self.update_region_list)
+        # self.spectra_tree.currentItemChanged.connect(self.parent.update_viewer)
         self.spectra_tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.spectra_tree.setHeaderHidden(True)
         self.spectra_tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -299,15 +298,22 @@ class Sidebars():
         left_panel.setLayout(left_panel_layout)
     
     def set_currents_spectrum(self, item, column):
+        self.logger.debug(f"Setting current spectrum")
         if item is not None:
             self.current_spectrum = item.data(0, Qt.UserRole)
+            self.logger.debug(f"Current spectrum set to {self.current_spectrum}")
             self.current_region = None
+
     
     def set_current_region(self, item):
+        self.logger.debug(f"Setting current region")
         if item is not None:
             self.current_region = item.data(Qt.UserRole)
-    
+            self.logger.debug(f"Current region set to {self.current_region}")
+            self.set_cursors()
+
     def aggregate_left_panel_items(self):
+        self.logger.debug("Aggregating left panel items")
         selected_items = self.spectra_tree.selectedItems()  # Get all selected items
 
         if not selected_items:
@@ -320,6 +326,7 @@ class Sidebars():
     
     def show_context_menu(self, position):
         """Shows a right-click menu with rename & delete options for multiple items."""
+        self.logger.debug("Showing context menu")
         selected_items = self.aggregate_left_panel_items()
 
         if not selected_items:
@@ -362,6 +369,7 @@ class Sidebars():
 
     def merge_selected_groups(self, items):
         """Merges multiple selected groups into one."""
+        self.logger.debug("Merging selected groups")
         # Get names of selected groups
         group_names = [item.text(0) for item in items]
         # Ask user for the new group name
@@ -386,6 +394,7 @@ class Sidebars():
             new_group_item.addChild(spectrum_item)
 
     def delete_selected_items(self, items):
+        self.logger.debug("Deleting selected items")
         confirm = QMessageBox.question(
             self.left_panel, "Delete Selected Items",
             f"Are you sure you want to delete {len(items)} selected items?",
@@ -404,12 +413,14 @@ class Sidebars():
                 self.delete_group(group_item, with_dialog=False)
 
     def rename_group(self, item):
+        self.logger.debug("Renaming group")
         new_name, ok = QInputDialog.getText(self.left_panel, "Rename Group", "Enter new group name:")
         if ok and new_name:
             self.workspace.rename_group(item.text(0), new_name)
             item.setText(0, new_name)
 
     def delete_group(self, item, with_dialog=True):
+        self.logger.debug("Deleting group")
         group_name = item.text(0)
         if with_dialog:
             confirm = QMessageBox.question(
@@ -421,6 +432,7 @@ class Sidebars():
             self.spectra_tree.takeTopLevelItem(index)  # Remove from UI
 
     def rename_spectra(self, item):
+        self.logger.debug("Renaming spectrum")
         spectrum = item.data(0, Qt.UserRole)  # Retrieve an object
         if not spectrum:
             return
@@ -430,6 +442,7 @@ class Sidebars():
             item.setText(0, new_name)  # Update UI
 
     def delete_spectrum(self, item, with_dialog=True):
+        self.logger.debug("Deleting spectrum")
         parent_item = item.parent()
         if not parent_item:
             return
@@ -445,6 +458,7 @@ class Sidebars():
             parent_item.removeChild(item)  # Remove from UI
 
     def update_spectra_tree(self):
+        self.logger.debug("Updating spectra tree")
         self.spectra_tree.clear()
         for group, spectra in self.workspace.groups.items():
             group_item = QTreeWidgetItem([group])
@@ -457,6 +471,7 @@ class Sidebars():
             self.spectra_tree.addTopLevelItem(group_item)
     
     def get_selected_spectra(self):
+        self.logger.debug("Getting selected spectra")
         selected_items = self.aggregate_left_panel_items()
         if not selected_items:
             return
@@ -472,13 +487,16 @@ class Sidebars():
         return spectra_list
     
     def predict(self):
+        self.logger.debug("Predicting")
         spectra_list = self.get_selected_spectra()
 
         self.workspace.predict(spectra=spectra_list)
         self.parent.toolbar.toggle_labeled_data_action.setChecked(True)
+        self.logger.debug("Updating viewer from predict")
         self.parent.update_viewer()
 
     def post_process(self):
+        self.logger.debug("Post processing")
         spectra_list = [s for s in self.get_selected_spectra() if not s.is_analyzed]
 
         progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
@@ -489,6 +507,7 @@ class Sidebars():
         self.update_region_list()
 
     def init_right_panel(self):
+        self.logger.debug("Initializing right panel")
         right_panel = QWidget()
         self.right_panel = right_panel
         right_panel_layout = QVBoxLayout()
@@ -500,9 +519,10 @@ class Sidebars():
         # Region list
         self.region_list = QListWidget()
         self.region_list.setFixedHeight(100)
-        self.region_list.currentItemChanged.connect(self.set_current_region)
-        self.region_list.currentItemChanged.connect(self.load_region_tab)
-        self.region_list.currentItemChanged.connect(self.set_cursors)
+        self.region_list.itemClicked.connect(self.set_current_region)
+        self.region_list.itemClicked.connect(self.load_region_tab)
+        # self.region_list.currentItemChanged.connect(self.set_current_region)
+        # self.region_list.currentItemChanged.connect(self.load_region_tab)
         right_panel_layout.addWidget(self.region_list)
 
         refit_layout = QHBoxLayout()
@@ -516,9 +536,9 @@ class Sidebars():
         self.reoptimize_all_box.setChecked(False)
         refit_layout.addWidget(self.reoptimize_all_box)
 
-        self.fine_fit = QCheckBox("Fine fit")
-        self.fine_fit.setChecked(False)
-        refit_layout.addWidget(self.fine_fit)
+        self.fast_fit = QCheckBox("Fast fit")
+        self.fast_fit.setChecked(True)
+        refit_layout.addWidget(self.fast_fit)
 
         right_panel_layout.addLayout(refit_layout)
 
@@ -541,13 +561,12 @@ class Sidebars():
         right_panel.setLayout(right_panel_layout)
 
     def set_cursors(self):
+        self.logger.debug("Setting cursors in right panel")
         if self.current_region is not None:
-            self.parent.set_cursors(
-                    self.current_region, self.current_spectrum
-                )
+            self.parent.set_cursors(self.current_region)
 
-    def update_region_list(self, set_current=True):
-        self.logger.info("Updating region list")
+    def update_region_list(self):
+        self.logger.debug("Updating region list")
         spectrum = self.current_spectrum
         self.region_list.clear()
         if spectrum is not None and len(spectrum.regions) != 0:
@@ -555,28 +574,27 @@ class Sidebars():
                 item = QListWidgetItem(f"Region {spectrum.regions.index(region)}")
                 item.setData(Qt.UserRole, region)
                 self.region_list.addItem(item)
-            if set_current:
-                self.region_list.setCurrentRow(0)
-            else:
-                self.load_region_tab()
+            self.load_region_tab()
 
     def create_region_tabs(self):
         """
         Creates the tabs for the right panel of the window.
         The tabs are Region settings and Line settings.
         """
-        region_info_tab = QWidget()
+        self.logger.debug("Creating region tabs")
+        region_debug_tab = QWidget()
         tab_layout = QFormLayout()
-        region_info_tab.setLayout(tab_layout)
-        self.region_tabs.addTab(region_info_tab, "Region settings")
+        region_debug_tab.setLayout(tab_layout)
+        self.region_tabs.addTab(region_debug_tab, "Region settings")
 
-        lines_info_tab = ScrollableWidget()
+        lines_debug_tab = ScrollableWidget()
         add_line_button = QPushButton("Add line")
         add_line_button.clicked.connect(self.add_line)
-        lines_info_tab.layout().addWidget(add_line_button)
-        self.region_tabs.addTab(lines_info_tab, "Line settings")
+        lines_debug_tab.layout().addWidget(add_line_button)
+        self.region_tabs.addTab(lines_debug_tab, "Line settings")
 
     def load_region_tab(self):
+        self.logger.debug("Loading region tab")
         self.clear_tabs()
         if self.current_region is not None:
             self.load_region_settings_tab()
@@ -584,6 +602,7 @@ class Sidebars():
             self.load_lines_settings_tab()
     
     def clear_tabs(self):
+        self.logger.debug("Clearing tabs")
         self.clear_layout(self.region_tabs.widget(0).layout())
         self.clear_layout(self.region_tabs.widget(1).content_layout)
 
@@ -595,7 +614,7 @@ class Sidebars():
                 widget.deleteLater()  # Delete the widget properly
 
     def load_region_settings_tab(self):
-        self.logger.info("Loading region settings tab")
+        self.logger.debug("Loading region settings tab")
         region = self.current_region
         tab_layout = self.region_tabs.widget(0).layout()
 
@@ -606,25 +625,30 @@ class Sidebars():
         tab_layout.addRow('To (eV):', end_param)
     
     def update_region_settings_tab(self):
+        self.logger.debug("Updating region settings tab")
         tab_widget = self.region_tabs.widget(0)
         region = self.current_region
         for param, param_input in zip(('start_point', 'end_point'), tab_widget.findChildren(QLineEdit)):
             param_input.setText(f"{getattr(region, param):.2f}")
 
     def create_region_param_input(self, region, param):
+        self.logger.debug("Creating region parameter input")
         current_value = getattr(region, param)
         if not isinstance(current_value, str):
             current_value = f"{current_value:.2f}"
         input_edit = QLineEdit(current_value)
-        input_edit.returnPressed.connect(lambda: self.update_region_param(region, param, input_edit.text().strip(), input_edit))
-        input_edit.returnPressed.connect(self.parent.update_viewer)
+        input_edit.editingFinished.connect(lambda: self.update_region_param(region, param, input_edit.text().strip(), input_edit))
+        input_edit.editingFinished.connect(self.parent.update_viewer)
         return input_edit
 
     def update_region_param(self, region, param, value, edit):
+        self.logger.debug(f"Updating region parameter {param} to {value}")
         edit.setText(value)
         self.workspace.change_region_parameter(region, self.current_spectrum, param, value)
 
     def add_line_to_tab(self, line):
+        self.logger.debug("Adding line to tab")
+
         region = self.current_region
         tab_layout = self.region_tabs.widget(1).content_layout
         # ((parameter1_label, obj parameter), ...)
@@ -670,12 +694,13 @@ class Sidebars():
         tab_layout.addWidget(line_group)
     
     def load_lines_settings_tab(self):
+        self.logger.debug("Loading lines settings tab")
         region = self.current_region
         for line in region.lines:
             self.add_line_to_tab(line)
 
-    def update_lines_settings_tab(self, save_state=True):
-        self.logger.info("Updating lines settings tab")
+    def update_lines_settings_tab(self):
+        self.logger.debug("Updating lines settings tab")
         tab = self.region_tabs.widget(1)
         region = self.current_region
         for line, line_setting in zip(region.lines, tab.findChildren(QGroupBox)):
@@ -684,6 +709,7 @@ class Sidebars():
                 param_input.setText(f"{getattr(line, param):.2f}")
     
     def remove_line_settings(self, line_idx):
+        self.logger.debug("Removing line settings")
         tab_layout = self.region_tabs.widget(1).content_layout
         widget = tab_layout.itemAt(line_idx).widget()
         tab_layout.removeWidget(widget)
@@ -691,10 +717,12 @@ class Sidebars():
         self.fixed_params_cb.pop(line_idx)
 
     def delete_line(self, line_idx):
+        self.logger.debug("Deleting line")
         self.workspace.delete_line(self.current_region, line_idx)
         self.remove_line_settings(line_idx)
         self.parent.update_viewer()
 
+    #TODO: add constraints
     def create_line_param_input(self, line, param, read_only=False):
         current_value = getattr(line, param)
         if not isinstance(current_value, str):
@@ -703,16 +731,18 @@ class Sidebars():
         if read_only:
             input_edit.setReadOnly(True)
         else:
-            input_edit.returnPressed.connect(lambda: self.update_line_param(line, param, input_edit.text().strip(), input_edit))
-            input_edit.returnPressed.connect(self.parent.update_viewer)
+            input_edit.editingFinished.connect(lambda: self.update_line_param(line, param, input_edit.text().strip(), input_edit))
+            input_edit.editingFinished.connect(self.parent.update_viewer)
         return input_edit
 
     def update_line_param(self, line, param, value, edit):
+        self.logger.debug(f"Updating line parameter {param} to {value}")
         edit.setText(value)
         value = float(value)
         self.workspace.change_line_parameter(line, param, value)
 
     def delete_region(self):
+        self.logger.debug("Deleting region")
         selected_item = self.region_list.currentItem()
         if selected_item is not None:
             region = selected_item.data(Qt.UserRole)
@@ -721,6 +751,7 @@ class Sidebars():
             self.region_list.setCurrentRow(self.region_list.count() - 1)
 
     def create_new_region(self):
+        self.logger.debug("Creating new region")
         spectrum = self.current_spectrum
         if spectrum is not None:
             x1 = spectrum.x[0]
@@ -733,6 +764,7 @@ class Sidebars():
 
     #TODO: adding lines to maxima fitting errors
     def add_line(self):
+        self.logger.debug("Adding line button clicked")
         region = self.current_region
         if region is not None:
             if len(region.lines) != 0:
@@ -745,10 +777,11 @@ class Sidebars():
             self.parent.update_viewer()
 
     def refit_region(self):
+        self.logger.debug("Refitting region")
         selected_item = self.region_list.currentItem()
         if selected_item is None:
             return
-        if self.fine_fit.isChecked():
+        if self.fast_fit.isChecked():
             fit_alg = 'least squares'
         else:
             fit_alg = 'differential evolution'
@@ -884,96 +917,176 @@ class ScrollableWidget(QWidget):
         self.setLayout(layout)
         # self.resize(300, 400)  # Set window size
 
-class PlotCanvas(FigureCanvas):
-    def __init__(self, workspace, parent):
-        self.fig = Figure(figsize=(5, 4))
-        self.fig.tight_layout()
-        self.ax = self.fig.subplots()
-        super().__init__(self.fig)
+class PlotCanvas(pg.PlotWidget):
+    colors = [
+        'darkblue',
+        'crimson',
+        'khaki',
+        'orange',
+        'lightgreen',
+        'magenta',
+        'lightpink',
+        'deepskyblue'
+    ]
+
+    def __init__(self, parent, workspace):        
+        super().__init__(parent)
+
+        self.parent = parent
         self.workspace = workspace
-        self._parent = parent
 
-        # No cursors initially
-        self.line1 = None
-        self.line2 = None
-        self.dragging_line = None
+        self.showGrid(x=True, y=True)
+        self.setMouseEnabled(x=True, y=True)
+        self.setLabel("bottom", "Binding Energy (eV)")
+        self.getViewBox().setMouseMode(pg.ViewBox.RectMode)
 
-        # Connect mouse events
-        self.mpl_connect("button_press_event", self.on_click)
-        self.mpl_connect("motion_notify_event", self.on_motion)
-        self.mpl_connect("button_release_event", self.on_release)
+        self.c1 = self.create_cursor('start_point')
+        self.c2 = self.create_cursor('end_point')
+        self.cursor_pen = {'color': 'r', 'width': 2, 'style': Qt.DashLine}
 
-    def on_click(self, event):
-        if event.inaxes != self.ax or not self.line1 or not self.line2:
+        self.mask_parameters = ((0, 0, 255, 100), {255, 0, 0, 255})
+
+    def reload_spectrum(self, spectrum):
+        self.spectrum = spectrum
+        self.setTitle(spectrum.name)
+
+        x, y = spectrum.x, spectrum.y
+        y_smooth = spectrum.y_smoothed
+        regions = spectrum.regions
+
+        self.main_curves = []
+        self.regions_lines = []
+
+        self.main_curves.extend([
+            pg.PlotDataItem(x, y, pen={'color': 'k', 'width': 2}),
+            pg.PlotDataItem(x, y_smooth, pen={'color': 'k', 'width': 2})
+        ])
+
+        self.create_masks()
+
+        for region in regions:
+            self.add_region(region)
+    
+    def create_masks(self):
+        peak_mask, max_mask = self.spectrum.get_masks()
+        if peak_mask is None or max_mask is None:
             return
-        # Detect if click is near one of the lines
-        for line in [self.line1, self.line2]:
-            if abs(line.get_xdata()[0] - event.xdata) < 0.5:
-                self.dragging_line = line
-                break
+        x = self.spectrum.x_interpolated
+        y = self.spectrum.y_interpolated
+        
+        curve = pg.PlotDataItem(x, y, pen={'color': 'k', 'width': 2})
+        min_to_fill = np.zeros_like(x)
 
-    def on_motion(self, event):
-        if self.dragging_line and event.inaxes == self.ax:
-            self.dragging_line.set_xdata((event.xdata, ))
-            self.draw_idle()  # Refresh plot
+        c1 = np.where(peak_mask, y, np.nan)
+        c2 = np.where(peak_mask, min_to_fill, np.nan)
+        curve_peak_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[0])
+        curve_peak_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[0])
+        fill_peak = pg.FillBetweenItem(curve_peak_1, curve_peak_2, brush=self.mask_parameters[0])
 
-    def on_release(self, event):
-        if self.dragging_line:
-            x1 = self.line1.get_xdata()[0]
-            x2 = self.line2.get_xdata()[0]
-            x_new = self.dragging_line.get_xdata()[0]
+        c1 = np.where(max_mask, y, np.nan)
+        c2 = np.where(max_mask, min_to_fill, np.nan)
+        curve_max_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[1])
+        curve_max_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[1])
+        fill_max = pg.FillBetweenItem(curve_max_1, curve_max_2, brush=self.mask_parameters[1])
 
-            if x1 == x_new:
-                param = 'start_point'
-            else:
-                param = 'end_point'
+        self.main_curves.extend([curve, fill_peak, fill_max])
+    
+    def delete_region(self, region_idx):
+        region = self.regions_lines.pop(region_idx)
+        for line in region:
+            self.removeItem(line)
+    
+    def add_region(self, region):
+        region_curves = []
 
-            self.dragging_line = None
-            if self.spectrum is not None:
-                if x1 > x2:
-                    x1, x2 = x2, x1
-                    self.workspace.change_region_parameter(self.region, self.spectrum, 'start_point', x1)
-                    self.workspace.change_region_parameter(self.region, self.spectrum, 'end_point', x2)
-                else:
-                    self.workspace.change_region_parameter(self.region, self.spectrum, param, x_new)
+        reg_x, back, s, *reg_lines = region.draw_lines()
+        region_curves.extend([
+            pg.PlotDataItem(reg_x, back, pen={'color': 'k', 'width': 2, 'style': Qt.DashLine}),
+            pg.PlotDataItem(reg_x, s, pen={'color': 'k', 'width': 2, 'style': Qt.DotLine})
+        ])
 
-            self._parent.update_viewer()
-            self._parent.sidebars.update_region_settings_tab() #TODO: replace this
+        for line, color in zip(reg_lines, cycle(self.colors)):
+            region_curves.append(
+                pg.PlotDataItem(reg_x, line, pen=color)
+            )
+        self.regions_lines.append(region_curves)
+    
+    def delete_line(self, region_idx, line_idx):
+        line = self.regions_lines[region_idx].pop(2 + line_idx)
+        self.removeItem(line)
+    
+    def add_line(self, region_idx):
+        self.regions_lines[region_idx].append(pg.PlotDataItem(0, 0, pen=next(self.colors)))
+    
+    def update_data(self):
+        for region_curves, region in zip(self.regions_lines, self.spectrum.regions):
+            reg_x, back, s, *reg_lines = region.draw_lines()
+            for line_curve, data in zip(region_curves, (back, s, *reg_lines)):
+                line_curve.setData(reg_x, data)
+    
+    def change_smoothing_plotting(self, smoothed=False):
+        vis = {'color': 'k', 'width': 2, 'alpha': 1}
+        transp = {'color': 'k', 'width': 1, 'alpha': 0.2}
+
+        if smoothed:
+            self.main_curves[0].setPen(transp)
+            self.main_curves[1].setPen(vis)
+        else:
+            self.main_curves[0].setPen(vis)
+            self.main_curves[1].setPen(transp)
+
+    def update_plot(self, disp_type='lines', smoothed=False):
+        self.clear()
+        if disp_type == 'lines':
+            self.addItem(self.main_curves[0])
+            self.change_smoothing_plotting(smoothed)
+            if smoothed:
+                self.addItem(self.main_curves[1])
+            for region_curves in self.regions_lines:
+                for curve in region_curves:
+                    self.addItem(curve)
+
+        elif disp_type == 'labeled':
+            self.addItem(self.main_curves[2])
+            self.addItem(self.main_curves[3])
+            self.addItem(self.main_curves[4])
+
+        elif disp_type == 'raw':
+            self.addItem(self.main_curves[0])
+            self.change_smoothing_plotting(smoothed)
+            if smoothed:
+                self.addItem(self.main_curves[1])
+
+    def load_cursors(self, region):
+        self.region = region
+        self.set_cursors(region.start_point, region.end_point)
+
+    def create_cursor(self, param):
+        c = pg.InfiniteLine(angle=90, movable=True, pen=None)
+        c.sigPositionChangeFinished.connect(lambda cursor: self.update_position(cursor.value(), param))
+        return c
 
     def set_cursors(self, pos1, pos2):
-        """Function to set cursors when list item is clicked"""
-        # Remove existing lines
-        if self.line1:
-            self.line1.remove()
-        if self.line2:
-            self.line2.remove()
-        # Create new lines at specified positions
-        self.line1 = self.ax.axvline(pos1, color='r', linestyle='--', picker=True)
-        self.line2 = self.ax.axvline(pos2, color='r', linestyle='--', picker=True)
-
-        self.draw_idle()  # Update the plot
+        self.c1.setPos(pos1)
+        self.c2.setPos(pos2)
+        self.c1.setPen(self.cursor_pen)
+        self.c2.setPen(self.cursor_pen)
+        self.addItem(self.c1)
+        self.addItem(self.c2)
     
-    def get_cursors(self):
-        return self.line1.get_xdata()[0], self.line2.get_xdata()[0]
-
-    def plot(self, spectrum, type='lines', add_smoothing=False):
-        self.fig.clear()
-        self.ax = self.fig.subplots()
-        if type == 'lines':
-            spectrum.view_lines(self.ax, smoothed=add_smoothing)
-            self.ax.set_title(spectrum.name)
-        elif type == 'labeled':
-            spectrum.view_labeled_data(self.ax)
-            self.ax.set_title(f"Labeled Data for {spectrum.name}")
-        elif type == 'raw':
-            spectrum.view_data(self.ax, smoothed=add_smoothing)
-            self.ax.set_title(spectrum.name)
-        self.draw()
-    
-    def load_cursors(self, region, spectrum):
-        self.region = region
-        self.spectrum = spectrum
-        self.set_cursors(region.start_point, region.end_point)
+    def update_position(self, val, param):
+        if self.spectrum is not None:
+            x1 = self.c1.value()
+            x2 = self.c2.value()
+            if x1 > x2:
+                x1, x2 = x2, x1
+                self.workspace.change_region_parameter(self.region, self.spectrum, 'start_point', x1)
+                self.workspace.change_region_parameter(self.region, self.spectrum, 'end_point', x2)
+            else:
+                self.workspace.change_region_parameter(self.region, self.spectrum, param, val)
+        
+        self.update_data()
+        self.parent.sidebars.update_region_settings_tab()
 
 
 def main():

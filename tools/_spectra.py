@@ -1,14 +1,16 @@
 #TODO: docs
+import os
+
 import numpy as np
 from copy import deepcopy
-from matplotlib import pyplot as plt
+
 from scipy.signal import savgol_filter
 from tools._tools import interpolate, pseudo_voight
 
 
 class Line():
-    def __init__(self, loc, scale, const, gl_ratio, name=None):
-        self.name = name
+    #TODO: проверить площадь
+    def __init__(self, loc, scale, const, gl_ratio, color=None):
         self.loc = loc
         self.scale = scale
         self._c = const
@@ -16,6 +18,8 @@ class Line():
 
         self.area = const * (1 + gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.height = self.f(loc)
+
+        self.color = color
     
     @property
     def fwhm(self):
@@ -64,7 +68,7 @@ class Line():
             return list(map(lambda x: f'{x:.3f}', [self.loc, self.scale, self.const, self.gl_ratio, self.area, self.height]))
 
     def __repr__(self):
-        return f'Line(name={self.name}, loc={self.loc}, scale={self.scale}, const={self.const}, gl_ratio={self.gl_ratio})'
+        return f'Line(name={self.color}, loc={self.loc}, scale={self.scale}, const={self.const}, gl_ratio={self.gl_ratio})'
 
 
 class Region():
@@ -112,8 +116,8 @@ class Region():
     def append(self, line):
         self.lines.append(line)
 
-    def add_line(self, loc, scale, const, gl_ratio, name=None):
-        line = Line(loc, scale, const, gl_ratio, name=name)
+    def add_line(self, loc, scale, const, gl_ratio, color=None):
+        line = Line(loc, scale, const, gl_ratio, color=color)
         self.append(line)
     
     def delete_line(self, idx=None):
@@ -138,11 +142,8 @@ class Region():
         return params
 
     def __repr__(self):
-        s = f'Region(start={self.x[0]}, end={self.x[-1]}, i_1={self.i_1}, i_2={self.i_2}, background_type={self.background_type})'
-        for line in self.lines:
-            s += f'\n\t{line}'
+        s = f'Region(start={self.x[0]}, end={self.x[-1]})'
         return s
-
 
 class Spectrum():
     """Initialize tool for saving spectrum info."""
@@ -151,11 +152,16 @@ class Spectrum():
         if energies[0] > energies[-1]:
             energies = energies[::-1].copy()
             intensities = intensities[::-1].copy()
+
         self.x = energies
         self.y = intensities
         self.is_predicted = False
         self.is_analyzed = False
-        self.set_charge_correction = 0
+
+        self.peak = None
+        self.max = None
+
+        self.charge_correction = 0
         self.regions = []
         self.preproc()
         self.add_smoothing(window_length=window_length, poly_order=poly_order)
@@ -280,55 +286,40 @@ class Spectrum():
         else:
             header = ['Peak', 'Position (eV)', 'Scale', 'Amplitude', '%GL (%)', 'Area', 'Height']
             np.savetxt(file_name, params, delimiter=',', header=header, fmt='%s')
-    
-    def view_data(self, ax=None, show=False, norm=False, smoothed=False):
-        if ax is None:
-            fig, ax = plt.subplots()
-        if norm:
-            ax.plot(self.x_interpolated, self.y_interpolated, 'k')
-        elif smoothed:
-            ax.plot(self.x, self.y, 'k')
-            ax.plot(self.x, self.y_smoothed, 'k', alpha=0.5)
-        else:
-            ax.plot(self.x, self.y, 'k')
-        if show:
-            plt.show()
-        return ax
-    
-    def view_labeled_data(self, ax=None, show=False):
-        mask_params = ({'color': 'b', 'alpha': 0.2}, {'color': 'r'})
-        x = self.x_interpolated
-        y = self.y_interpolated
 
+    #TODO: migrate to pyqtgraph
+    def view_data(self, *args, **kwargs):
+        self._matplotlib_view(*args, **kwargs)
+
+    def _matplotlib_view(self, ax=None, disp_type='lines', show=False, norm=False, smoothed=False):
+        from matplotlib import pyplot as plt
         if ax is None:
             fig, ax = plt.subplots()
 
-        ax.plot(self.x_interpolated, self.y_interpolated, 'k')
-        # draw masks
-        min_to_fill = self.y_interpolated.min()
-        for mask, mask_param in zip(self.get_masks(), mask_params):
-            ax.fill_between(x, y, min_to_fill, where=mask > 0, **mask_param)
-        if show:
-            plt.show()
-        return ax
-    
-    def view_lines(self, ax=None, show=False, smoothed=False, peak_sum=True):
-        x, y = self.x, self.y
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if smoothed:
-            ax.plot(self.x, self.y_smoothed, 'k')
-            ax.plot(x, y, 'k', alpha=0.3)
-        else:
+        if norm or disp_type == 'labels':
+            mask_params = ({'color': 'b', 'alpha': 0.2}, {'color': 'r'})
+            x = self.x_interpolated
+            y = self.y_interpolated
             ax.plot(x, y, 'k')
-        for region in self.regions:
-            reg_x, back, s, *lines = region.draw_lines()
-            ax.plot(reg_x, back, 'k--')
-            if peak_sum:
-                ax.plot(reg_x, s, 'k', alpha=0.7)
-            for line in lines:
-                ax.plot(reg_x, line)
+            if disp_type == 'labels':
+                min_to_fill = self.y_interpolated.min()
+                for mask, mask_param in zip(self.get_masks(), mask_params):
+                    ax.fill_between(x, y, min_to_fill, where=mask > 0, **mask_param) # masks
+
+        else:
+            if smoothed:
+                ax.plot(self.x, self.y_smoothed, 'k')
+                ax.plot(self.x, self.y, 'k', alpha=0.3)
+            else:
+                ax.plot(self.x, self.y, 'k')
+
+            if disp_type == 'lines':
+                for region in self.regions:
+                    reg_x, back, s, *lines = region.draw_lines()
+                    ax.plot(reg_x, back, 'k--') # background
+                    ax.plot(reg_x, s, 'k', alpha=0.7) # peak sum
+                    for line in lines:
+                        ax.plot(reg_x, line) # lines
 
         if show:
             plt.show()
@@ -336,6 +327,4 @@ class Spectrum():
     
     def __repr__(self):
         s = f'Spectrum(name={self.name})'
-        for region in self.regions:
-            s += f'\n\t{region}'
         return s
