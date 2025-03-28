@@ -1,8 +1,8 @@
 __pycache__
 /.vscode
 /.venv
-/build
-/dist
+/*build*
+/*dist*
 /other
 tests.py
 /model/train/data

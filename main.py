@@ -56,8 +56,11 @@ class MainWindow(QMainWindow):
 
     def load_model(self):
         self.logger.debug("Loading model")
-        m = 'model.onnx'
-        return m
+        try:
+            path = f'{sys._MEIPASS}/model.onnx'
+        except Exception:
+            path = 'model.pt'
+        return path
 
     def initUI(self):
         self.logger.debug("Initializing UI")
