@@ -2,54 +2,49 @@ import numpy as np
 from numpy import trapz
 from scipy.optimize import curve_fit, differential_evolution
 
-import torch
+import onnxruntime as ort
 
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
-#TODO: move to onnx runtime
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
-        self.model = model
+        self.ort_session = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
 
-    @torch.no_grad()
     def prepare_input(self, y):
         """Prepare input tensor for the model by normalizing and stacking the input data."""
-        t_y = torch.tensor(y, dtype=torch.float32, device='cpu')
-        t_y_log = torch.log(10*t_y + 1)
-        t_y_log = (t_y_log - t_y_log.min())/(t_y_log.max() - t_y_log.min())
-        t_inp = torch.stack((t_y, t_y_log), dim=0)
-        return t_inp
+        y_log = np.log(10*y + 1)
+        y_log = (y_log - y_log.min())/(y_log.max() - y_log.min())
+        y_inp = np.stack((y, y_log), axis=0, dtype=np.float32)
+        return y_inp[np.newaxis, :, :]
 
-    def batch_data(self, *spectra):
-        """Convert multiple Spectrum objects into a batch of input tensors."""
-        tensors = tuple(self.prepare_input(s.y_interpolated) for s in spectra)
-        return torch.stack(tensors, dim=0)
-
-    @torch.no_grad()
-    def _predict(self, *spectra):
+    def _predict(self, spectrum):
         """Add predicted masks to spectra."""
-        inp = self.batch_data(*spectra)
-        out = self.model(inp)
+        inp = {'l_x_': self.prepare_input(spectrum.y_interpolated)}
+        out = self.ort_session.run(None, inp)[0]
 
-        peak = out[:, 0, :].detach().numpy()
-        max = out[:, 1, :].detach().numpy()
+        peak = out[0, 0, :]
+        max = out[0, 1, :]
 
-        for i, s in enumerate(spectra):
-            s.add_masks(peak[i], max[i], init_mask=True)
+        spectrum.add_masks(peak, max, init_mask=True)
     
-    def restrict_mask(self, *spectra, threshold=0.5):
+    def smooth_mask(self, mask, window_length=10):
+        """Smooth mask using moving average."""
+        return np.convolve(mask, np.ones(window_length)/window_length, mode='same')
+    
+    def restrict_mask(self, spectrum, threshold=0.5):
         """Restrict masks to the peaks with the highest probability."""
-        for s in spectra:
-            peak = (s.init_peak > threshold)
-            max = (s.init_max > threshold)
-            s.add_masks(peak, max)
+
+        peak = (self.smooth_mask(spectrum.init_peak) > threshold)
+        max = (spectrum.init_max > threshold)
+        spectrum.add_masks(peak, max)
 
     def predict(self, *spectra, pred_threshold=0.5):
         """Add predicted masks to spectra."""
-        self._predict(*spectra)
-        self.restrict_mask(*spectra, threshold=pred_threshold)
+        for s in spectra:
+            self._predict(s)
+            self.restrict_mask(s, threshold=pred_threshold)
 
     def _find_borders(self, mask):
         """Return idxs of borders in mask"""

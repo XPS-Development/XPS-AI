@@ -5,7 +5,6 @@ import traceback
 from itertools import chain, cycle
 
 import numpy as np
-import torch
 
 import pyqtgraph as pg
 
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import *
 from PySide6.QtGui import QAction, QPalette, QColor, QActionGroup
 from PySide6.QtCore import Qt, QThread, Signal
 
-from model.models.model_deeper import XPSModel
 from tools import Workspace
 
 
@@ -58,11 +56,7 @@ class MainWindow(QMainWindow):
 
     def load_model(self):
         self.logger.debug("Loading model")
-        m = XPSModel()
-        m.load_state_dict(
-            torch.load('model.pt', map_location=torch.device('cpu'), weights_only=True)
-        )
-        m.eval()
+        m = 'model.onnx'
         return m
 
     def initUI(self):
@@ -162,11 +156,10 @@ class MainWindow(QMainWindow):
     def change_prediction_threshold(self):
         self.logger.debug("Changing prediction threshold")
         value = self.workspace.pred_threshold
-        new_threshold, ok = QInputDialog.getDouble(self, "Change Prediction Threshold", "Enter new prediction threshold:", value, 0, 1, 2)
+        new_threshold, ok = QInputDialog.getDouble(self, "Change Prediction Threshold", "Enter new prediction threshold:", value, 0, 1, 2, step=0.01)
         if ok:
             self.workspace.set_prediction_threshold(new_threshold)
 
-        self.logger.debug("Updating viewer from change_prediction_threshold")
         self.update_viewer()
     
     def save_logs(self):
@@ -489,16 +482,18 @@ class Sidebars():
     def predict(self):
         self.logger.debug("Predicting")
         spectra_list = self.get_selected_spectra()
-
+        if spectra_list is None or len(spectra_list) == 0:
+            spectra_list = self.workspace.aggregate_spectra()
         self.workspace.predict(spectra=spectra_list)
         self.parent.toolbar.toggle_labeled_data_action.setChecked(True)
-        self.logger.debug("Updating viewer from predict")
         self.parent.update_viewer()
 
     def post_process(self):
         self.logger.debug("Post processing")
-        spectra_list = [s for s in self.get_selected_spectra() if not s.is_analyzed]
-
+        spectra_list = self.get_selected_spectra()
+        if spectra_list is None or len(spectra_list) == 0:
+            spectra_list = self.workspace.aggregate_spectra()
+        spectra_list = [s for s in spectra_list if not s.is_analyzed and s.is_predicted]
         progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
         progress_window.exec()
 
@@ -519,10 +514,10 @@ class Sidebars():
         # Region list
         self.region_list = QListWidget()
         self.region_list.setFixedHeight(100)
-        self.region_list.itemClicked.connect(self.set_current_region)
-        self.region_list.itemClicked.connect(self.load_region_tab)
-        # self.region_list.currentItemChanged.connect(self.set_current_region)
-        # self.region_list.currentItemChanged.connect(self.load_region_tab)
+        # self.region_list.itemClicked.connect(self.set_current_region)
+        # self.region_list.itemClicked.connect(self.load_region_tab)
+        self.region_list.currentItemChanged.connect(self.set_current_region)
+        self.region_list.currentItemChanged.connect(self.load_region_tab)
         right_panel_layout.addWidget(self.region_list)
 
         refit_layout = QHBoxLayout()
@@ -574,6 +569,8 @@ class Sidebars():
                 item = QListWidgetItem(f"Region {spectrum.regions.index(region)}")
                 item.setData(Qt.UserRole, region)
                 self.region_list.addItem(item)
+            if len(spectrum.regions) > 0:
+                self.region_list.setCurrentRow(0)
             self.load_region_tab()
 
     def create_region_tabs(self):
@@ -692,7 +689,7 @@ class Sidebars():
         self.fixed_params_cb.append(cb_list)
         line_layout.addRow(delete_button)
         tab_layout.addWidget(line_group)
-    
+
     def load_lines_settings_tab(self):
         self.logger.debug("Loading lines settings tab")
         region = self.current_region

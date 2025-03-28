@@ -17,8 +17,9 @@ class Workspace():
 
     def set_prediction_threshold(self, threshold):
         self.pred_threshold = threshold
-        spectra = [s for s in self.aggregate_spectra() if s.is_predicted]
-        self.analyzer.restrict_mask(*spectra, threshold=threshold)
+        for s in self.aggregate_spectra():
+            if s.is_predicted:
+                self.analyzer.restrict_mask(s, threshold=threshold)
 
     def create_group(self, group_name):
         self.groups[group_name] = []
@@ -126,8 +127,6 @@ class Workspace():
 
     def delete_spectrum(self, group_name, idx):
         self.groups[group_name].pop(idx)
-    
-    # def find_
     
     def aggregate_spectra(self, groups=None, idxs=None):
         spectra = []
