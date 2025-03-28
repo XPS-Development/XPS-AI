@@ -139,19 +139,25 @@ class MainWindow(QMainWindow):
         self.logger.debug("Saving spectra")
         folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
         spectra = self.sidebars.get_selected_spectra()
-        if len(spectra) == 0:
+        if spectra is None or len(spectra) == 0:
             spectra = [self.sidebars.current_spectrum]
-        if folder_rpath:
+        if folder_rpath and spectra is not None:
             self.workspace.save_spectra(folder_rpath, spectra)
     
     def export_parameters(self):
         self.logger.debug("Exporting parameters")
-        folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
         spectra = self.sidebars.get_selected_spectra()
-        if len(spectra) == 0:
+        if spectra is None or len(spectra) == 0:
             spectra = [self.sidebars.current_spectrum]
-        if folder_rpath:
-            self.workspace.export_params(folder_rpath, spectra)
+    
+        if self.toolbar.toggle_aggregate_before_export.isChecked():
+            file_path, _ = QFileDialog.getSaveFileName(self, "Save ", ".", "CSV Files (*.csv)")
+            if file_path and spectra is not None:
+                self.workspace.aggregate_and_export(file_path, spectra)
+        else:
+            folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
+            if folder_rpath and spectra is not None:
+                self.workspace.export_params(folder_rpath, spectra)
 
     def change_prediction_threshold(self):
         self.logger.debug("Changing prediction threshold")
@@ -242,6 +248,10 @@ class Toolbar(QToolBar):
         self.toggle_smoothed_data_action = QAction("Show Smoothed Data", parent, checkable=True)
         self.toggle_smoothed_data_action.triggered.connect(parent.update_viewer)
         options_menu.addAction(self.toggle_smoothed_data_action)
+
+        self.toggle_aggregate_before_export = QAction("Aggregate before export", parent, checkable=True)
+        self.toggle_aggregate_before_export.setChecked(True)
+        options_menu.addAction(self.toggle_aggregate_before_export)
 
         save_logs_action = QAction("Print logs", parent)
         save_logs_action.triggered.connect(parent.save_logs)
@@ -665,17 +675,15 @@ class Sidebars():
         cb_layout = QHBoxLayout()
     
         cb_label = QLabel("Fix parameters")
-        # cb_group = CheckboxGroup(len(editable_params))
-
-        # self.fixed_params_cb.append(cb_group.checkboxes)
         cb_layout.addWidget(cb_label)
-        # cb_layout.addWidget(cb_group.main_checkbox)
         cb_layout.setAlignment(Qt.AlignRight)
         line_layout.addRow(cb_layout)
         cb_list = []
         for (param_label, param) in editable_params:
             layout = QHBoxLayout()
             cb = QCheckBox()
+            #TODO: set constraints button
+            # cb.stateChanged.connect()
             param_input = self.create_line_param_input(line, param)
             cb_list.append(cb)
             layout.addWidget(param_input)
@@ -689,6 +697,10 @@ class Sidebars():
         self.fixed_params_cb.append(cb_list)
         line_layout.addRow(delete_button)
         tab_layout.addWidget(line_group)
+
+    #TODO: set constraints button
+    # def fix_unfix_line_parameter(self, line, parameter):
+    #     pass
 
     def load_lines_settings_tab(self):
         self.logger.debug("Loading lines settings tab")
@@ -719,7 +731,6 @@ class Sidebars():
         self.remove_line_settings(line_idx)
         self.parent.update_viewer()
 
-    #TODO: add constraints
     def create_line_param_input(self, line, param, read_only=False):
         current_value = getattr(line, param)
         if not isinstance(current_value, str):

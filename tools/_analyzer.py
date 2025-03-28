@@ -359,7 +359,7 @@ class Analyzer():
             region.background = reg_background * (max_value - min_value) + min_value
 
             # calculate initial params by max_locations from the mask
-            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs, maxiter=50)
+            init_params, bounds = self.init_params_by_locations(reg_x, reg_y - reg_background, max_locs, maxiter=200)
             # accurate fitting
             params = self.fit(
                 reg_x, reg_y, len(max_locs), init_params, bounds, active_background_fitting, reg_background

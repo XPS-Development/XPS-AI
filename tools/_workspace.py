@@ -109,6 +109,29 @@ class Workspace():
                 n += 1
             s.export_params(file_name, xps_peak_like=xps_peak_like)
 
+    def aggregate_and_export(self, file: str, spectra, xps_peak_like=True):
+        params = []
+        for s in spectra:
+            params.extend(s.get_params(xps_peak_like=False))
+        peak_nums = list(range(len(params)))
+        params = np.array(params)
+        params = np.insert(params, 0, peak_nums, axis=1)
+        params[:, 0] += 1
+
+        if xps_peak_like:
+            header = ['Peak', 'Position (eV)', 'Area', 'FWHM (eV)', '%GL (%)']
+            pattern = '{:<14}' * (len(header) - 1) + '{}'
+            header = pattern.format(*header)
+            params = params[:, [0, 1, 5, 2, 4]]
+            fmt = ('%-13d', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f')
+        else:
+            header = ['Peak', 'Position (eV)', 'Scale', 'Amplitude', '%GL (%)', 'Area', 'Height']
+            pattern = '{:<14}' * (len(header) - 1) + '{}'
+            header = pattern.format(*header)
+            fmt = ('%-13d', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f')
+
+        np.savetxt(file, params, delimiter=' ', header=header, fmt=fmt, comments='')
+
     def rename_group(self, group_name, new_group_name):
         self.groups[new_group_name] = self.groups.pop(group_name)
     

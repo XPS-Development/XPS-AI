@@ -65,10 +65,10 @@ class Line():
             params.append(f'{round(self.gl_ratio * 100)}')
             return params
         else:
-            return list(map(lambda x: f'{x:.3f}', [self.loc, self.scale, self.const, self.gl_ratio, self.area, self.height]))
+            return [self.loc, self.fwhm, self.const, self.gl_ratio, self.area, self.height]
 
     def __repr__(self):
-        return f'Line(name={self.color}, loc={self.loc}, scale={self.scale}, const={self.const}, gl_ratio={self.gl_ratio})'
+        return f'Line(Position={self.loc}, Scale={self.scale}, Amplitude={self.const}, GL%={self.gl_ratio})'
 
 
 class Region():
@@ -285,7 +285,13 @@ class Spectrum():
                     f.write(line + '\n')
         else:
             header = ['Peak', 'Position (eV)', 'Scale', 'Amplitude', '%GL (%)', 'Area', 'Height']
-            np.savetxt(file_name, params, delimiter=',', header=header, fmt='%s')
+            np.savetxt(file_name, params, delimiter=' ', header=header, fmt='%<14.3f')
+    
+    def get_params(self, xps_peak_like=True):
+        params = []
+        for region in self.regions:
+            params.extend(region.export_params(xps_peak_like=xps_peak_like))
+        return params
 
     def view_data(self, *args, **kwargs):
         self._matplotlib_view(*args, **kwargs)
