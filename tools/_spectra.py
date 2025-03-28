@@ -287,7 +287,6 @@ class Spectrum():
             header = ['Peak', 'Position (eV)', 'Scale', 'Amplitude', '%GL (%)', 'Area', 'Height']
             np.savetxt(file_name, params, delimiter=',', header=header, fmt='%s')
 
-    #TODO: migrate to pyqtgraph
     def view_data(self, *args, **kwargs):
         self._matplotlib_view(*args, **kwargs)
 

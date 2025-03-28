@@ -967,29 +967,47 @@ class PlotCanvas(pg.PlotWidget):
         for region in regions:
             self.add_region(region)
     
+    def _prepare_mask(self, mask):
+        mask = mask.copy()
+        v = np.lib.stride_tricks.sliding_window_view(mask, 3, writeable=True)
+        f = np.array([0, 1, 0])
+        v[(v == f).all(axis=1)] = np.array([[1, 1, 1]])
+        return mask
+    
     def create_masks(self):
         peak_mask, max_mask = self.spectrum.get_masks()
         if peak_mask is None or max_mask is None:
             return
+        
+        peak_mask = self._prepare_mask(peak_mask)
+        max_mask = self._prepare_mask(max_mask)
+
         x = self.spectrum.x_interpolated
         y = self.spectrum.y_interpolated
         
         curve = pg.PlotDataItem(x, y, pen={'color': 'k', 'width': 2})
         min_to_fill = np.zeros_like(x)
 
-        c1 = np.where(peak_mask, y, np.nan)
-        c2 = np.where(peak_mask, min_to_fill, np.nan)
-        curve_peak_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[0])
-        curve_peak_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[0])
-        fill_peak = pg.FillBetweenItem(curve_peak_1, curve_peak_2, brush=self.mask_parameters[0])
+        self.main_curves.append(curve)
 
-        c1 = np.where(max_mask, y, np.nan)
-        c2 = np.where(max_mask, min_to_fill, np.nan)
-        curve_max_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[1])
-        curve_max_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[1])
-        fill_max = pg.FillBetweenItem(curve_max_1, curve_max_2, brush=self.mask_parameters[1])
+        if peak_mask.any():
+            c1 = np.where(peak_mask, y, np.nan)
+            c2 = np.where(peak_mask, min_to_fill, np.nan)
 
-        self.main_curves.extend([curve, fill_peak, fill_max])
+            np.savetxt('mask.txt', np.column_stack((x, y, c1, c2, peak_mask)))
+
+            curve_peak_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[0])
+            curve_peak_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[0])
+            fill_peak = pg.FillBetweenItem(curve_peak_1, curve_peak_2, brush=self.mask_parameters[0])
+            self.main_curves.append(fill_peak)
+
+        if max_mask.any():
+            c1 = np.where(max_mask, y, np.nan)
+            c2 = np.where(max_mask, min_to_fill, np.nan)
+            curve_max_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[1])
+            curve_max_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[1])
+            fill_max = pg.FillBetweenItem(curve_max_1, curve_max_2, brush=self.mask_parameters[1])
+            self.main_curves.append(fill_max)
     
     def delete_region(self, region_idx):
         region = self.regions_lines.pop(region_idx)
@@ -1007,7 +1025,7 @@ class PlotCanvas(pg.PlotWidget):
 
         for line, color in zip(reg_lines, cycle(self.colors)):
             region_curves.append(
-                pg.PlotDataItem(reg_x, line, pen=color)
+                pg.PlotDataItem(reg_x, line, pen={'color': color, 'width': 2})
             )
         self.regions_lines.append(region_curves)
     
@@ -1047,9 +1065,8 @@ class PlotCanvas(pg.PlotWidget):
                     self.addItem(curve)
 
         elif disp_type == 'labeled':
-            self.addItem(self.main_curves[2])
-            self.addItem(self.main_curves[3])
-            self.addItem(self.main_curves[4])
+            for curve in self.main_curves[2:]:
+                self.addItem(curve)
 
         elif disp_type == 'raw':
             self.addItem(self.main_curves[0])
