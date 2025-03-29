@@ -2,6 +2,7 @@ import io
 import sys
 import logging
 import traceback
+from datetime import datetime
 from itertools import chain, cycle
 
 import numpy as np
@@ -54,12 +55,19 @@ class MainWindow(QMainWindow):
         error_message = "".join(traceback.format_exception(exctype, value, tb))
         self.logger.critical(f"Unhandled Exception:\n{error_message}")
 
+        now = datetime.now()
+        file_path = f'error_log_{now.strftime("%Y%m%d_%H%M%S")}.txt'
+        self.log_buffer.seek(0)  # Move to the start of the buffer
+        log_contents = self.log_buffer.read()
+        with open(file_path, "w") as f:
+            f.write(log_contents)
+
     def load_model(self):
         self.logger.debug("Loading model")
         try:
             path = f'{sys._MEIPASS}/model.onnx'
         except Exception:
-            path = 'model.pt'
+            path = 'model.onnx'
         return path
 
     def initUI(self):
