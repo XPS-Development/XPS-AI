@@ -114,13 +114,13 @@ class MainWindow(QMainWindow):
                     self.canvas.update_plot(disp_type='raw', smoothed=add_smoothing)
                 else:
                     self.canvas.update_plot(disp_type='lines', smoothed=add_smoothing)
+                
+                if region is not None:
+                    self.logger.debug("Setting cursors")
+                    self.canvas.load_cursors(region)
 
-            if region is not None and region in spectrum.regions:
-                self.set_cursors(region)
-
-    def set_cursors(self, region):
-        self.logger.debug("Setting cursors")
-        self.canvas.load_cursors(region)
+    def update_cursors(self, region):
+        self.canvas.update_cursors(region.start_point, region.end_point)
     
     def update_sidebars(self):
         self.logger.debug("Updating sidebars")
@@ -229,7 +229,7 @@ class Toolbar(QToolBar):
         options_action.triggered.connect(lambda: options_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
 
         # Change Prediction Threshold Action
-        change_threshold_action = QAction("Change Prediction Threshold", parent)
+        change_threshold_action = QAction("Change prediction threshold", parent)
         change_threshold_action.triggered.connect(parent.change_prediction_threshold)
         options_menu.addAction(change_threshold_action)
 
@@ -238,31 +238,35 @@ class Toolbar(QToolBar):
         self.data_togglers_group.setExclusive(True)
 
         # Toggle Labeled Data Action
-        self.toggle_labeled_data_action = QAction("Show Labeled Data", parent, checkable=True)
+        self.toggle_labeled_data_action = QAction("Show labeled data", parent, checkable=True)
         self.toggle_labeled_data_action.triggered.connect(parent.update_viewer)
         options_menu.addAction(self.toggle_labeled_data_action)
         self.data_togglers_group.addAction(self.toggle_labeled_data_action)
 
         # Toggle Raw Action
-        self.toggle_raw_data_action = QAction("Show Raw Data", parent, checkable=True)
+        self.toggle_raw_data_action = QAction("Show raw data", parent, checkable=True)
         self.toggle_raw_data_action.triggered.connect(parent.update_viewer)
         options_menu.addAction(self.toggle_raw_data_action)
         self.data_togglers_group.addAction(self.toggle_raw_data_action)
 
         # Toggle Line Data Action
-        self.toggle_lines_action = QAction("Show Lines", parent, checkable=True)
+        self.toggle_lines_action = QAction("Show lines", parent, checkable=True)
         self.toggle_lines_action.triggered.connect(parent.update_viewer)
         options_menu.addAction(self.toggle_lines_action)
         self.data_togglers_group.addAction(self.toggle_lines_action)
         self.toggle_lines_action.setChecked(True)
 
-        self.toggle_smoothed_data_action = QAction("Show Smoothed Data", parent, checkable=True)
+        self.toggle_smoothed_data_action = QAction("Show smoothed data", parent, checkable=True)
         self.toggle_smoothed_data_action.triggered.connect(parent.update_viewer)
         options_menu.addAction(self.toggle_smoothed_data_action)
 
         self.toggle_aggregate_before_export = QAction("Aggregate before export", parent, checkable=True)
         self.toggle_aggregate_before_export.setChecked(True)
         options_menu.addAction(self.toggle_aggregate_before_export)
+
+        self.toggle_skip_survey = QAction("Skip survey spectra", parent, checkable=True)
+        self.toggle_skip_survey.setChecked(True)
+        options_menu.addAction(self.toggle_skip_survey)
 
         save_logs_action = QAction("Print logs", parent)
         save_logs_action.triggered.connect(parent.save_logs)
@@ -271,11 +275,13 @@ class Toolbar(QToolBar):
 class Sidebars():
     def __init__(self, parent, workspace, logger):
         self.logger = logger
+
+        self.parent = parent
+        self.workspace = workspace
         
         self.current_spectrum = None
         self.current_region = None
-        self.parent = parent
-        self.workspace = workspace
+        self.analysis_window = None
 
         self.init_right_panel()
         self.init_left_panel()
@@ -301,13 +307,17 @@ class Sidebars():
         self.update_spectra_tree()
 
         # Buttons for prediction and postprocessing
-        self.predict_button = QPushButton("Predict")
-        self.predict_button.clicked.connect(self.predict)
-        left_panel_layout.addWidget(self.predict_button)
+        predict_button = QPushButton("Predict")
+        predict_button.clicked.connect(self.predict)
+        left_panel_layout.addWidget(predict_button)
 
-        self.post_process_button = QPushButton("Post process")
-        self.post_process_button.clicked.connect(self.post_process)
-        left_panel_layout.addWidget(self.post_process_button)
+        post_process_button = QPushButton("Post process")
+        post_process_button.clicked.connect(self.post_process)
+        left_panel_layout.addWidget(post_process_button)
+
+        analysis_button = QPushButton("Analysis")
+        analysis_button.clicked.connect(self.open_analysis_window)
+        left_panel_layout.addWidget(analysis_button)
 
         left_panel.setLayout(left_panel_layout)
     
@@ -317,7 +327,6 @@ class Sidebars():
             self.current_spectrum = item.data(0, Qt.UserRole)
             self.logger.debug(f"Current spectrum set to {self.current_spectrum}")
             self.current_region = None
-
     
     def set_current_region(self, item):
         self.logger.debug(f"Setting current region")
@@ -483,8 +492,8 @@ class Sidebars():
                 spectrum_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
                 group_item.addChild(spectrum_item)
             self.spectra_tree.addTopLevelItem(group_item)
-    
-    def get_selected_spectra(self):
+
+    def get_selected_spectra(self, skip_survey=True):
         self.logger.debug("Getting selected spectra")
         selected_items = self.aggregate_left_panel_items()
         if not selected_items:
@@ -498,11 +507,16 @@ class Sidebars():
             spectrum = spectrum_item.data(0, Qt.UserRole)
             if spectrum not in spectra_list:
                 spectra_list.append(spectrum)
+
+        if skip_survey:
+            spectra_list = [s for s in spectra_list if not s.is_survey]
+
         return spectra_list
     
     def predict(self):
         self.logger.debug("Predicting")
-        spectra_list = self.get_selected_spectra()
+        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
+        spectra_list = self.get_selected_spectra(skip_survey)
         if spectra_list is None or len(spectra_list) == 0:
             spectra_list = self.workspace.aggregate_spectra()
         self.workspace.predict(spectra=spectra_list)
@@ -511,7 +525,8 @@ class Sidebars():
 
     def post_process(self):
         self.logger.debug("Post processing")
-        spectra_list = self.get_selected_spectra()
+        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
+        spectra_list = self.get_selected_spectra(skip_survey)
         if spectra_list is None or len(spectra_list) == 0:
             spectra_list = self.workspace.aggregate_spectra()
         spectra_list = [s for s in spectra_list if not s.is_analyzed and s.is_predicted]
@@ -521,6 +536,19 @@ class Sidebars():
         self.parent.toolbar.toggle_lines_action.setChecked(True)
         self.parent.update_viewer()
         self.update_region_list()
+        self.update_analysis_window()
+    
+    def open_analysis_window(self):
+        self.logger.debug("Opening analysis window")
+        self.analysis_window = AnalysisWindow(self.workspace)
+        self.analysis_window.setAttribute(Qt.WA_DeleteOnClose)  # Auto-delete on close
+        self.analysis_window.show()
+
+    #TODO: updating window on change
+    def update_analysis_window(self):
+        self.logger.debug("Updating analysis window")
+        if self.analysis_window is not None and self.analysis_window.isVisible():
+            self.analysis_window.update_lists_layout()
 
     def init_right_panel(self):
         self.logger.debug("Initializing right panel")
@@ -545,6 +573,7 @@ class Sidebars():
         self.refit_region_button = QPushButton("Optimize")
         self.refit_region_button.clicked.connect(self.refit_region)
         self.refit_region_button.clicked.connect(self.update_lines_settings_tab)
+        # self.refit_region_button.clicked.connect(self.update_analysis_window)
         self.refit_region_button.clicked.connect(self.parent.update_viewer)
         refit_layout.addWidget(self.refit_region_button)
 
@@ -579,7 +608,7 @@ class Sidebars():
     def set_cursors(self):
         self.logger.debug("Setting cursors in right panel")
         if self.current_region is not None:
-            self.parent.set_cursors(self.current_region)
+            self.parent.update_cursors(self.current_region)
 
     def update_region_list(self):
         self.logger.debug("Updating region list")
@@ -727,7 +756,7 @@ class Sidebars():
             line_setting.setTitle(f"Line {region.lines.index(line)}")
             for param, param_input in zip(('loc', 'fwhm', 'const', 'gl_ratio', 'area', 'height'), line_setting.findChildren(QLineEdit)):
                 param_input.setText(f"{getattr(line, param):.2f}")
-    
+
     def remove_line_settings(self, line_idx):
         self.logger.debug("Removing line settings")
         tab_layout = self.region_tabs.widget(1).content_layout
@@ -813,6 +842,182 @@ class Sidebars():
 
     def parse_fixed_params(self):
         return [i for i, box in enumerate(chain(*self.fixed_params_cb)) if box.isChecked()]
+
+class AnalysisWindow(QDialog):
+    def __init__(self, workspace):
+        super().__init__()
+        self.setWindowTitle("Analysis Window")
+        self.setGeometry(100, 100, 700, 400)
+        self.workspace = workspace
+
+        self.attrs = ('loc', 'area', 'fwhm', 'gl_ratio')
+        self.header = ('Position', 'Area', 'FWHM', 'GL')
+        self.fmt = ('{:.1f}', '{:.1f}', '{:.1f}', '{:.2f}')
+
+        layout = QVBoxLayout()
+
+        # Initial tree widget list
+        self.tree_widget = QTreeWidget()
+        self.tree_widget.setSelectionMode(QTreeWidget.ExtendedSelection)
+        self.tree_widget.setHeaderHidden(True)
+        self.populate_tree()
+        tree_layout = QVBoxLayout()
+        tree_layout.addWidget(QLabel("Available Objects:"))
+        tree_layout.addWidget(self.tree_widget)
+
+        # Second list widget
+        self.table_widget = QTableWidget()
+        self.selected_objects = []
+        self.selected_objects_attrs = []
+        self.table_widget.setColumnCount(len(self.header))
+        self.table_widget.setHorizontalHeaderLabels(self.header)
+        self.table_widget.setSelectionBehavior(QTableWidget.SelectRows)  # Select full rows
+        self.table_widget.setSelectionMode(QTableWidget.ExtendedSelection)
+        total_width = sum(self.table_widget.columnWidth(i) for i in range(self.table_widget.columnCount())) + 2
+        self.table_widget.setMinimumSize(total_width, 300)
+        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        list_layout = QVBoxLayout()
+        list_layout.addWidget(QLabel("Selected Objects:"))
+        list_layout.addWidget(self.table_widget)
+
+        # Buttons to move items
+        btn_layout = QVBoxLayout()
+
+        btn_add = QPushButton("→")
+        btn_add.clicked.connect(self.add_items)
+        btn_add.setFixedSize(30, 20)
+
+        btn_update = QPushButton("↻")
+        btn_update.setFixedSize(30, 20)
+        btn_update.clicked.connect(self.update_lists_layout)
+
+        btn_remove = QPushButton("←")
+        btn_remove.clicked.connect(self.remove_items)
+        btn_remove.setFixedSize(30, 20)
+
+        btn_layout.addWidget(btn_add)
+        btn_layout.addWidget(btn_update)
+        btn_layout.addWidget(btn_remove)
+
+        # Dropdown for analysis options
+        self.parameter_option = QComboBox()
+        self.options = ['Position', 'Area', 'FWHM', 'GL', 'Relative area']
+        self.parameter_option.addItems(self.options)
+        tree_layout.addWidget(QLabel("Select parameter to view:"))
+        tree_layout.addWidget(self.parameter_option)
+
+        # Layout for lists and buttons
+        lists_layout = QHBoxLayout()
+        lists_layout.addLayout(tree_layout)
+        lists_layout.addLayout(btn_layout)
+        lists_layout.addLayout(list_layout)
+
+        # Buttons for actions
+        btn_layout_bottom = QHBoxLayout()
+
+        btn_proceed = QPushButton("Visualize")
+        btn_proceed.clicked.connect(self.view)
+        btn_layout_bottom.addWidget(btn_proceed)
+
+        btn_close = QPushButton("Close")
+        btn_close.clicked.connect(self.close)
+        btn_layout_bottom.addWidget(btn_close)
+
+        # Add widgets to layout
+        layout.addLayout(lists_layout)
+        layout.addLayout(btn_layout_bottom)
+
+        self.setLayout(layout)
+
+    def populate_tree(self):
+        self.tree_widget.clear()
+        for group, spectra in self.workspace.groups.items():
+            group_item = QTreeWidgetItem([group])
+            group_item.setFlags(group_item.flags() | Qt.ItemIsDropEnabled)
+            for spectrum in spectra:
+                if not spectrum.is_analyzed:
+                    continue
+                spectrum_item = QTreeWidgetItem([spectrum.name])
+                for reg_n, region in enumerate(spectrum.regions):
+                    region_item = QTreeWidgetItem([f"Region {reg_n}"])
+                    for num, line in enumerate(region.lines):
+                        line_name = f"Line {num} at {line.loc:.1f}"
+                        line_item = QTreeWidgetItem([line_name])
+                        line_item.setData(0, Qt.UserRole, line)
+                        region_item.addChild(line_item)
+                    spectrum_item.addChild(region_item)
+                group_item.addChild(spectrum_item)
+            if group_item.childCount() > 0:
+                self.tree_widget.addTopLevelItem(group_item)
+        self.tree_widget.expandAll()
+    
+    def traverse(self, item):
+        if item.childCount() > 0:
+            l = []
+            for i in range(item.childCount()):
+                l.extend(self.traverse(item.child(i)))
+            return l
+        else:
+            return [item]
+
+    def add_items(self):
+        """Move selected objects from tree to list, preventing duplicates."""
+        selected_items = self.tree_widget.selectedItems()
+        selected_lines = []
+        for item in selected_items:
+            selected_lines.extend(self.traverse(item))
+        for item in selected_lines:
+            if item.data(0, Qt.UserRole) not in self.selected_objects:
+                self.selected_objects.append(item.data(0, Qt.UserRole))
+        self.update_table()
+    
+    def update_attrs(self):
+        self.selected_objects_attrs = []
+        for item in self.selected_objects:
+            params = [fmt.format(getattr(item, attr)) for attr, fmt in zip(self.attrs, self.fmt)]
+            self.selected_objects_attrs.append(params)
+
+    def update_table(self):
+        self.table_widget.setRowCount(0)
+        self.update_attrs()
+        for line in self.selected_objects_attrs:
+            self.append_row(line)
+    
+    def append_row(self, iterable):
+        row_count = self.table_widget.rowCount()
+        new_row = row_count
+        self.table_widget.insertRow(new_row)
+        for i, item in enumerate(iterable):
+            self.table_widget.setItem(new_row, i, QTableWidgetItem(str(item)))
+    
+    def update_lists_layout(self):
+        self.populate_tree()
+        self.update_table()
+
+    def remove_items(self):
+        """Remove selected objects from the table."""
+        selected_rows = sorted(set(index.row() for index in self.table_widget.selectedIndexes()), reverse=True)
+        for row in selected_rows:
+            self.table_widget.removeRow(row)
+            self.selected_objects.pop(row)
+            self.selected_objects_attrs.pop(row)
+
+    def view(self):
+        plot_dialog = QDialog()
+        plot_layout = QVBoxLayout()
+        plot_dialog.setLayout(plot_layout)
+        plot_widget = pg.PlotWidget()
+        plot_layout.addWidget(plot_widget)
+
+        color = self.palette().color(QtGui.QPalette.Base)
+        plot_widget.setBackground(color)
+
+        selected_option = self.parameter_option.currentText()
+        y = self.workspace.build_trend(self.selected_objects, selected_option)
+        x = np.arange(1, len(y) + 1)
+        plot_widget.plot(x, y, pen={'width': 2, 'color': 'k'}, symbol='o')
+
+        plot_dialog.exec()
 
 class WorkerThread(QThread):
     progress_signal = Signal(int)  # Signal to update progress bar
@@ -937,16 +1142,16 @@ class ScrollableWidget(QWidget):
         # self.resize(300, 400)  # Set window size
 
 class PlotCanvas(pg.PlotWidget):
-    colors = [
-        'darkblue',
-        'crimson',
-        'khaki',
-        'orange',
-        'lightgreen',
-        'magenta',
-        'lightpink',
-        'deepskyblue'
-    ]
+    # colors = [
+    #     'darkblue',
+    #     'crimson',
+    #     'khaki',
+    #     'orange',
+    #     'lightgreen',
+    #     'magenta',
+    #     'lightpink',
+    #     'deepskyblue'
+    # ]
 
     def __init__(self, parent, workspace):        
         super().__init__(parent)
@@ -1042,18 +1247,19 @@ class PlotCanvas(pg.PlotWidget):
             pg.PlotDataItem(reg_x, s, pen={'color': 'k', 'width': 2, 'style': Qt.DotLine})
         ])
 
-        for line, color in zip(reg_lines, cycle(self.colors)):
+        for i, line in enumerate(reg_lines):
+            color = pg.mkColor((i, len(reg_lines)))
             region_curves.append(
-                pg.PlotDataItem(reg_x, line, pen={'color': color, 'width': 2})
+                pg.PlotDataItem(reg_x, line, pen={'color': color, 'width': 3})
             )
         self.regions_lines.append(region_curves)
     
-    def delete_line(self, region_idx, line_idx):
-        line = self.regions_lines[region_idx].pop(2 + line_idx)
-        self.removeItem(line)
+    # def delete_line(self, region_idx, line_idx):
+    #     line = self.regions_lines[region_idx].pop(2 + line_idx)
+    #     self.removeItem(line)
     
-    def add_line(self, region_idx):
-        self.regions_lines[region_idx].append(pg.PlotDataItem(0, 0, pen=next(self.colors)))
+    # def add_line(self, region_idx):
+    #     self.regions_lines[region_idx].append(pg.PlotDataItem(0, 0, pen=next(self.colors)))
     
     def update_data(self):
         for region_curves, region in zip(self.regions_lines, self.spectrum.regions):
@@ -1102,9 +1308,12 @@ class PlotCanvas(pg.PlotWidget):
         c.sigPositionChangeFinished.connect(lambda cursor: self.update_position(cursor.value(), param))
         return c
 
-    def set_cursors(self, pos1, pos2):
+    def update_cursors(self, pos1, pos2):
         self.c1.setPos(pos1)
         self.c2.setPos(pos2)
+
+    def set_cursors(self, pos1, pos2):
+        self.update_cursors(pos1, pos2)
         self.c1.setPen(self.cursor_pen)
         self.c2.setPen(self.cursor_pen)
         self.addItem(self.c1)

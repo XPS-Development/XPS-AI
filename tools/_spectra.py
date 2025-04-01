@@ -158,6 +158,11 @@ class Spectrum():
         self.is_predicted = False
         self.is_analyzed = False
 
+        if len(self.x) > 500:
+            self.is_survey = True
+        else:
+            self.is_survey = False
+
         self.peak = None
         self.max = None
 

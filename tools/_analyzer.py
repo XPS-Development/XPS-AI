@@ -339,7 +339,7 @@ class Analyzer():
         return np.array(params)
     
     def aggregate_params(self, param, lines):
-        return [getattr(l, param) for l in lines]
+        return np.array([getattr(l, param) for l in lines])
 
     #TODO: active shirley and static shirley
     def post_process(self, spectrum, active_background_fitting=False, ):

@@ -151,7 +151,7 @@ class Workspace():
     def delete_spectrum(self, group_name, idx):
         self.groups[group_name].pop(idx)
     
-    def aggregate_spectra(self, groups=None, idxs=None):
+    def aggregate_spectra(self, groups=None, idxs=None, skip_survey=True):
         spectra = []
         if idxs is None and not groups :
             for group in self.groups:
@@ -166,6 +166,8 @@ class Workspace():
         elif isinstance(idxs, list):
             for idx in idxs:
                 spectra.append(self.groups[groups][idx])
+        if skip_survey:
+            spectra = [s for s in spectra if not s.is_survey]
         return spectra
     
     def predict(self, spectra):
@@ -236,8 +238,21 @@ class Workspace():
         self.analyzer.refit_region(region, use_norm_y, fixed_params, full_refit, tol, fit_alg, loc_tol=loc_tol)
 
     #TODO: build trend
-    def build_trend(self, param, lines, x):
-        params = self.analyzer.aggregate_params(param, lines)
+    def build_trend(self, lines, selected_option):
+        if selected_option == "Relative area":
+            areas = np.array([line.area for line in lines])
+            sum_area = sum(areas)
+            rel_areas = areas / sum_area
+            return rel_areas
+        elif selected_option == "Position":
+            attr = "loc"
+        elif selected_option == "Area":
+            attr = "area"
+        elif selected_option == "FWHM":
+            attr = "fwhm"
+        elif selected_option == "GL":
+            attr = "gl"
+        return self.analyzer.aggregate_params(attr, lines)
 
     def __repr__(self):
         return f'Workspace(groups={self.groups})'
