@@ -541,7 +541,6 @@ class Sidebars():
     def open_analysis_window(self):
         self.logger.debug("Opening analysis window")
         self.analysis_window = AnalysisWindow(self.workspace)
-        self.analysis_window.setAttribute(Qt.WA_DeleteOnClose)  # Auto-delete on close
         self.analysis_window.show()
 
     #TODO: updating window on change
