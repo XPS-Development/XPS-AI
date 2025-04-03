@@ -1002,11 +1002,19 @@ class AnalysisWindow(QDialog):
             self.selected_objects_attrs.pop(row)
 
     def view(self):
-        plot_dialog = QDialog()
+        self.plot_dialog = QDialog()
+        self.plot_dialog.setWindowTitle("Trend Plot")
+        self.plot_dialog.setGeometry(100, 100, 800, 600)
         plot_layout = QVBoxLayout()
-        plot_dialog.setLayout(plot_layout)
+        self.plot_dialog.setLayout(plot_layout)
         plot_widget = pg.PlotWidget()
         plot_layout.addWidget(plot_widget)
+
+        vb = plot_widget.getViewBox()
+        for action in vb.menu.actions():
+            action.setVisible(False)
+        pi = plot_widget.getPlotItem()
+        pi.ctrlMenu.menuAction().setVisible(False)
 
         color = self.palette().color(QtGui.QPalette.Base)
         plot_widget.setBackground(color)
@@ -1016,7 +1024,7 @@ class AnalysisWindow(QDialog):
         x = np.arange(1, len(y) + 1)
         plot_widget.plot(x, y, pen={'width': 2, 'color': 'k'}, symbol='o')
 
-        plot_dialog.exec()
+        self.plot_dialog.show()
 
 class WorkerThread(QThread):
     progress_signal = Signal(int)  # Signal to update progress bar
@@ -1161,7 +1169,9 @@ class PlotCanvas(pg.PlotWidget):
         self.showGrid(x=True, y=True)
         self.setMouseEnabled(x=True, y=True)
         self.setLabel("bottom", "Binding Energy (eV)")
-        self.getViewBox().setMouseMode(pg.ViewBox.RectMode)
+        vb = self.getViewBox()
+        vb.setMouseMode(pg.ViewBox.RectMode)
+        vb.setMenuEnabled(False)
 
         self.c1 = self.create_cursor('start_point')
         self.c2 = self.create_cursor('end_point')
@@ -1216,9 +1226,6 @@ class PlotCanvas(pg.PlotWidget):
         if peak_mask.any():
             c1 = np.where(peak_mask, y, np.nan)
             c2 = np.where(peak_mask, min_to_fill, np.nan)
-
-            np.savetxt('mask.txt', np.column_stack((x, y, c1, c2, peak_mask)))
-
             curve_peak_1 = pg.PlotDataItem(x, c1, pen=self.mask_parameters[0])
             curve_peak_2 = pg.PlotDataItem(x, c2, pen=self.mask_parameters[0])
             fill_peak = pg.FillBetweenItem(curve_peak_1, curve_peak_2, brush=self.mask_parameters[0])
