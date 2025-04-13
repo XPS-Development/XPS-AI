@@ -2,11 +2,11 @@ import io
 import sys
 import logging
 import traceback
+from pathlib import Path
 from datetime import datetime
-from itertools import chain, cycle
+from itertools import chain
 
 import numpy as np
-
 import pyqtgraph as pg
 
 from PySide6 import QtGui
@@ -65,9 +65,10 @@ class MainWindow(QMainWindow):
     def load_model(self):
         self.logger.debug("Loading model")
         try:
-            path = f'{sys._MEIPASS}/model.onnx'
+            path = f'{sys._MEIPASS}/model.onnx' # For PyInstaller
         except Exception:
-            path = 'model.onnx'
+            main_dir = Path(sys.modules["__main__"].__file__).parent # For development and Nuitka
+            path = main_dir.joinpath('model.onnx')
         return path
 
     def initUI(self):
@@ -98,10 +99,9 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(central_layout)
     
     def update_viewer(self):
-        self.logger.debug("Updating viewer")
         spectrum = self.sidebars.current_spectrum
         region = self.sidebars.current_region
-        self.logger.debug(f"Spectrum: {spectrum}, Region: {region}")
+        self.logger.debug(f"Updating viewer with Spectrum: {spectrum}, Region: {region}")
         if spectrum is not None:
             self.canvas.reload_spectrum(spectrum)
 
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
                     self.canvas.load_cursors(region)
 
     def update_cursors(self, region):
-        self.canvas.update_cursors(region.start_point, region.end_point)
+        self.canvas.load_cursors(region)
     
     def update_sidebars(self):
         self.logger.debug("Updating sidebars")
@@ -562,10 +562,10 @@ class Sidebars():
         # Region list
         self.region_list = QListWidget()
         self.region_list.setFixedHeight(100)
-        # self.region_list.itemClicked.connect(self.set_current_region)
-        # self.region_list.itemClicked.connect(self.load_region_tab)
-        self.region_list.currentItemChanged.connect(self.set_current_region)
-        self.region_list.currentItemChanged.connect(self.load_region_tab)
+        self.region_list.itemClicked.connect(self.set_current_region)
+        self.region_list.itemClicked.connect(self.load_region_tab)
+        # self.region_list.currentItemChanged.connect(self.set_current_region)
+        # self.region_list.currentItemChanged.connect(self.load_region_tab)
         right_panel_layout.addWidget(self.region_list)
 
         refit_layout = QHBoxLayout()
@@ -610,15 +610,16 @@ class Sidebars():
             self.parent.update_cursors(self.current_region)
 
     def update_region_list(self):
-        self.logger.debug("Updating region list")
-        spectrum = self.current_spectrum
         self.region_list.clear()
-        if spectrum is not None and len(spectrum.regions) != 0:
+        spectrum = self.current_spectrum
+        self.logger.debug(f"Updating region list for {spectrum}")
+        if spectrum is not None and len(spectrum.regions) > 0:
             for region in spectrum.regions:
                 item = QListWidgetItem(f"Region {spectrum.regions.index(region)}")
                 item.setData(Qt.UserRole, region)
                 self.region_list.addItem(item)
             if len(spectrum.regions) > 0:
+                self.current_region = spectrum.regions[0]
                 self.region_list.setCurrentRow(0)
             self.load_region_tab()
 
@@ -1022,7 +1023,7 @@ class AnalysisWindow(QDialog):
         selected_option = self.parameter_option.currentText()
         y = self.workspace.build_trend(self.selected_objects, selected_option)
         x = np.arange(1, len(y) + 1)
-        plot_widget.plot(x, y, pen={'width': 2, 'color': 'k'}, symbol='o')
+        plot_widget.plot(x, y, pen={'width': 2, 'color': 'k'}, symbol='o', symbolPen={'color': 'k'}, symbolBrush=(0, 0, 0))
 
         self.plot_dialog.show()
 
