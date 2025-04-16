@@ -307,15 +307,19 @@ class Sidebars():
         self.update_spectra_tree()
 
         # Buttons for prediction and postprocessing
-        predict_button = QPushButton("Predict")
-        predict_button.clicked.connect(self.predict)
-        left_panel_layout.addWidget(predict_button)
+        # predict_button = QPushButton("Predict")
+        # predict_button.clicked.connect(self.predict)
+        # left_panel_layout.addWidget(predict_button)
 
-        post_process_button = QPushButton("Post process")
-        post_process_button.clicked.connect(self.post_process)
-        left_panel_layout.addWidget(post_process_button)
+        # post_process_button = QPushButton("Post process")
+        # post_process_button.clicked.connect(self.post_process)
+        # left_panel_layout.addWidget(post_process_button)
 
-        analysis_button = QPushButton("Analysis")
+        automatic_analysis_button = QPushButton("Automatic analysis")
+        automatic_analysis_button.clicked.connect(self.automatic_analysis)
+        left_panel_layout.addWidget(automatic_analysis_button)
+
+        analysis_button = QPushButton("Trend analysis")
         analysis_button.clicked.connect(self.open_analysis_window)
         left_panel_layout.addWidget(analysis_button)
 
@@ -534,9 +538,26 @@ class Sidebars():
         progress_window.exec()
 
         self.parent.toolbar.toggle_lines_action.setChecked(True)
-        self.parent.update_viewer()
         self.update_region_list()
         self.update_analysis_window()
+        self.parent.update_viewer()
+    
+    def automatic_analysis(self):
+        self.logger.debug("Automatic analysis")
+        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
+        spectra_list = self.get_selected_spectra(skip_survey)
+        if spectra_list is None or len(spectra_list) == 0:
+            spectra_list = self.workspace.aggregate_spectra()
+        self.workspace.predict(spectra=spectra_list)
+        spectra_list = [s for s in spectra_list if not s.is_analyzed and s.is_predicted]
+
+        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
+        progress_window.exec()
+
+        self.parent.toolbar.toggle_lines_action.setChecked(True)
+        self.update_region_list()
+        self.update_analysis_window()
+        self.parent.update_viewer()
     
     def open_analysis_window(self):
         self.logger.debug("Opening analysis window")
@@ -545,8 +566,8 @@ class Sidebars():
 
     #TODO: updating window on change
     def update_analysis_window(self):
-        self.logger.debug("Updating analysis window")
         if self.analysis_window is not None and self.analysis_window.isVisible():
+            self.logger.debug("Updating analysis window")
             self.analysis_window.update_lists_layout()
 
     def init_right_panel(self):
@@ -626,7 +647,7 @@ class Sidebars():
     def create_region_tabs(self):
         """
         Creates the tabs for the right panel of the window.
-        The tabs are Region settings and Line settings.
+        The tabs are Region settings and Peaks settings.
         """
         self.logger.debug("Creating region tabs")
         region_debug_tab = QWidget()
@@ -635,10 +656,10 @@ class Sidebars():
         self.region_tabs.addTab(region_debug_tab, "Region settings")
 
         lines_debug_tab = ScrollableWidget()
-        add_line_button = QPushButton("Add line")
+        add_line_button = QPushButton("Add peak")
         add_line_button.clicked.connect(self.add_line)
         lines_debug_tab.layout().addWidget(add_line_button)
-        self.region_tabs.addTab(lines_debug_tab, "Line settings")
+        self.region_tabs.addTab(lines_debug_tab, "Peaks settings")
 
     def load_region_tab(self):
         self.logger.debug("Loading region tab")
@@ -694,7 +715,7 @@ class Sidebars():
         self.workspace.change_region_parameter(region, self.current_spectrum, param, value)
 
     def add_line_to_tab(self, line):
-        self.logger.debug("Adding line to tab")
+        self.logger.debug("Adding peak to tab")
 
         region = self.current_region
         tab_layout = self.region_tabs.widget(1).content_layout
@@ -709,7 +730,7 @@ class Sidebars():
             ('Area', 'area'),
             ('Height', 'height')
         )
-        line_group = QGroupBox(f"Line {region.lines.index(line)}")
+        line_group = QGroupBox(f"Peak {region.lines.index(line)}")
         line_layout = QFormLayout()
         line_group.setLayout(line_layout)
         cb_layout = QHBoxLayout()
@@ -743,7 +764,7 @@ class Sidebars():
     #     pass
 
     def load_lines_settings_tab(self):
-        self.logger.debug("Loading lines settings tab")
+        self.logger.debug("Loading peaks settings tab")
         region = self.current_region
         for line in region.lines:
             self.add_line_to_tab(line)
@@ -753,12 +774,12 @@ class Sidebars():
         tab = self.region_tabs.widget(1)
         region = self.current_region
         for line, line_setting in zip(region.lines, tab.findChildren(QGroupBox)):
-            line_setting.setTitle(f"Line {region.lines.index(line)}")
+            line_setting.setTitle(f"Peak {region.lines.index(line)}")
             for param, param_input in zip(('loc', 'fwhm', 'const', 'gl_ratio', 'area', 'height'), line_setting.findChildren(QLineEdit)):
                 param_input.setText(f"{getattr(line, param):.2f}")
 
     def remove_line_settings(self, line_idx):
-        self.logger.debug("Removing line settings")
+        self.logger.debug("Removing peak settings")
         tab_layout = self.region_tabs.widget(1).content_layout
         widget = tab_layout.itemAt(line_idx).widget()
         tab_layout.removeWidget(widget)
@@ -766,7 +787,7 @@ class Sidebars():
         self.fixed_params_cb.pop(line_idx)
 
     def delete_line(self, line_idx):
-        self.logger.debug("Deleting line")
+        self.logger.debug("Deleting peak")
         self.workspace.delete_line(self.current_region, line_idx)
         self.remove_line_settings(line_idx)
         self.parent.update_viewer()
@@ -784,7 +805,7 @@ class Sidebars():
         return input_edit
 
     def update_line_param(self, line, param, value, edit):
-        self.logger.debug(f"Updating line parameter {param} to {value}")
+        self.logger.debug(f"Updating peak parameter {param} to {value}")
         edit.setText(value)
         value = float(value)
         self.workspace.change_line_parameter(line, param, value)
@@ -810,9 +831,9 @@ class Sidebars():
             self.region_list.addItem(item)
             self.region_list.setCurrentRow(self.region_list.count() - 1)
 
-    #TODO: adding lines to maxima fitting errors
+    #TODO: adding lines by maxima fitting errors
     def add_line(self):
-        self.logger.debug("Adding line button clicked")
+        self.logger.debug("Adding peak button clicked")
         region = self.current_region
         if region is not None:
             if len(region.lines) != 0:
@@ -901,7 +922,7 @@ class AnalysisWindow(QDialog):
 
         # Dropdown for analysis options
         self.parameter_option = QComboBox()
-        self.options = ['Position', 'Area', 'FWHM', 'GL', 'Relative area']
+        self.options = ['Position', 'Area', 'FWHM', 'GL']
         self.parameter_option.addItems(self.options)
         tree_layout.addWidget(QLabel("Select parameter to view:"))
         tree_layout.addWidget(self.parameter_option)
@@ -918,10 +939,6 @@ class AnalysisWindow(QDialog):
         btn_proceed = QPushButton("Visualize")
         btn_proceed.clicked.connect(self.view)
         btn_layout_bottom.addWidget(btn_proceed)
-
-        btn_close = QPushButton("Close")
-        btn_close.clicked.connect(self.close)
-        btn_layout_bottom.addWidget(btn_close)
 
         # Add widgets to layout
         layout.addLayout(lists_layout)
@@ -941,7 +958,7 @@ class AnalysisWindow(QDialog):
                 for reg_n, region in enumerate(spectrum.regions):
                     region_item = QTreeWidgetItem([f"Region {reg_n}"])
                     for num, line in enumerate(region.lines):
-                        line_name = f"Line {num} at {line.loc:.1f}"
+                        line_name = f"Peak {num} at {line.loc:.1f}"
                         line_item = QTreeWidgetItem([line_name])
                         line_item.setData(0, Qt.UserRole, line)
                         region_item.addChild(line_item)
@@ -1171,7 +1188,7 @@ class PlotCanvas(pg.PlotWidget):
         self.setMouseEnabled(x=True, y=True)
         self.setLabel("bottom", "Binding Energy (eV)")
         vb = self.getViewBox()
-        vb.setMouseMode(pg.ViewBox.RectMode)
+        # vb.setMouseMode(pg.ViewBox.RectMode)
         vb.setMenuEnabled(False)
 
         self.c1 = self.create_cursor('start_point')
