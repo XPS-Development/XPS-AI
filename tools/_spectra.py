@@ -147,8 +147,16 @@ class Region():
 
 class Spectrum():
     """Initialize tool for saving spectrum info."""
-    def __init__(self, energies, intensities, name=None, window_length=10, poly_order=2):
+    def __init__(
+            self, energies, intensities, 
+            name=None, file=None, group=None,
+            window_length=10, poly_order=2
+    ):
+
         self.name = name
+        self.file = file
+        self.group = group
+
         if energies[0] > energies[-1]:
             energies = energies[::-1].copy()
             intensities = intensities[::-1].copy()
@@ -217,8 +225,11 @@ class Spectrum():
         self.add_region(region)
         return region
 
-    def delete_region(self, region):
-        self.regions.remove(region)
+    def delete_region(self, r):
+        if isinstance(r, Region):
+            self.regions.remove(r)
+        elif isinstance(r, int):
+            self.regions.pop(r)
     
     def change_region_range(self, region, start_idx, end_idx):
         region.start_idx = start_idx

@@ -97,6 +97,8 @@ class MainWindow(QMainWindow):
         central_layout = QHBoxLayout()
         central_layout.addWidget(splitter)
         central_widget.setLayout(central_layout)
+
+        self.toolbar.setFocus()
     
     def update_viewer(self):
         spectrum = self.sidebars.current_spectrum
@@ -292,7 +294,12 @@ class Sidebars():
         self.left_panel = left_panel
         left_panel_layout = QVBoxLayout()
 
-        self.spectra_tree = SpectraTreeWidget(workspace=self.workspace)
+        self.search_box = QLineEdit()
+        self.search_box.setPlaceholderText("Search...")
+        self.search_box.textChanged.connect(self.filter_tree)
+        left_panel_layout.addWidget(self.search_box)
+
+        self.spectra_tree = QTreeWidget()
         self.spectra_tree.itemClicked.connect(self.set_currents_spectrum)
         self.spectra_tree.itemClicked.connect(self.update_region_list)
         self.spectra_tree.itemClicked.connect(self.parent.update_viewer)
@@ -305,15 +312,6 @@ class Sidebars():
         self.spectra_tree.customContextMenuRequested.connect(self.show_context_menu)
         left_panel_layout.addWidget(self.spectra_tree)
         self.update_spectra_tree()
-
-        # Buttons for prediction and postprocessing
-        # predict_button = QPushButton("Predict")
-        # predict_button.clicked.connect(self.predict)
-        # left_panel_layout.addWidget(predict_button)
-
-        # post_process_button = QPushButton("Post process")
-        # post_process_button.clicked.connect(self.post_process)
-        # left_panel_layout.addWidget(post_process_button)
 
         automatic_analysis_button = QPushButton("Automatic analysis")
         automatic_analysis_button.clicked.connect(self.automatic_analysis)
@@ -487,15 +485,60 @@ class Sidebars():
     def update_spectra_tree(self):
         self.logger.debug("Updating spectra tree")
         self.spectra_tree.clear()
-        for group, spectra in self.workspace.groups.items():
-            group_item = QTreeWidgetItem([group])
-            group_item.setFlags(group_item.flags() | Qt.ItemIsDropEnabled)
-            for spectrum in spectra:
-                spectrum_item = QTreeWidgetItem([spectrum.name])
-                spectrum_item.setData(0, Qt.UserRole, spectrum)
-                spectrum_item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsDragEnabled)
-                group_item.addChild(spectrum_item)
-            self.spectra_tree.addTopLevelItem(group_item)
+        tree = {}
+        # construct tree
+        for s in self.workspace.spectra:
+            file = s.file
+            group = s.group
+            spectrum_item = QTreeWidgetItem([s.name])
+            QTreeWidgetItem.setExpanded
+            spectrum_item.setData(0, Qt.UserRole, s)
+            if file is None:
+                file = "Unsorted"
+            if group is None:
+                group = "Unsorted"
+            if file not in tree:
+                file_item = QTreeWidgetItem([file])
+                tree[file] = (file_item, {})
+                self.spectra_tree.addTopLevelItem(file_item)
+            if group not in tree[file][1]:
+                group_item = QTreeWidgetItem([group])
+                tree[file][1][group] = group_item
+                tree[file][0].addChild(group_item)
+            tree[file][1][group].addChild(spectrum_item)
+        self.spectra_tree.expandAll()
+
+    def filter_tree(self, text):
+        text = text.lower()
+        for i in range(self.spectra_tree.topLevelItemCount()):
+            file_item = self.spectra_tree.topLevelItem(i)
+            self.filter_item(file_item, text)
+    
+    def filter_item(self, item, text):
+        match = text in item.text(0).lower()
+
+        if match:
+            # If the item matches, show it and all its children
+            item.setHidden(False)
+            for i in range(item.childCount()):
+                child = item.child(i)
+                self.show_all_children(child)
+            return True
+        else:
+            # If item doesn't match, check if any children match
+            child_match = False
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if self.filter_item(child, text):
+                    child_match = True
+
+            item.setHidden(not child_match)
+            return child_match
+
+    def show_all_children(self, item):
+        item.setHidden(False)
+        for i in range(item.childCount()):
+            self.show_all_children(item.child(i))
 
     def get_selected_spectra(self, skip_survey=True):
         self.logger.debug("Getting selected spectra")
@@ -1106,41 +1149,6 @@ class ProgressBarWindow(QDialog):
         self.worker_thread.quit()  # Ensure it exits
         self.worker_thread.wait()  # Wait for cleanup
         self.close()  # Close the progress window
-
-class SpectraTreeWidget(QTreeWidget):
-    """Custom QTreeWidget to restrict drag-and-drop behavior."""
-    def __init__(self, parent=None, workspace=None):
-        super().__init__(parent)
-        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.setDragDropMode(QTreeWidget.InternalMove)
-        self.viewport().installEventFilter(self)  # Allow drag filtering
-        self.workspace = workspace
-
-    def dropEvent(self, event):
-        """Control where items can be dropped."""
-        target_item = self.itemAt(event.position().toPoint())
-        selected_items = self.selectedItems()
-
-        if not target_item:
-            event.ignore()
-            return
-
-        # If the target is a spectrum (child node), prevent nesting
-        if target_item.parent():
-            event.ignore()
-            return
-
-        # Move each selected spectrum into the target group
-        for item in selected_items:
-            if item.parent():  # Only move spectrum, not groups
-                old_parent = item.parent()
-                old_parent.removeChild(item)  # Remove from old group
-                target_item.addChild(item)  # Move to new group
-                spectrum = item.data(0, Qt.UserRole)
-                idx = self.workspace.groups[old_parent.text(0)].index(spectrum)
-                self.workspace.move_spectrum(idx, old_parent.text(0), target_item.text(0))
-
-        event.accept()
 
 class ScrollableWidget(QWidget):
     def __init__(self):

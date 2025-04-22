@@ -13,7 +13,7 @@ class Workspace():
     def __init__(self, model):
         self.analyzer = Analyzer(model)
         self.pred_threshold = 0.5
-        self.groups = {}
+        self.spectra = []
 
     def set_prediction_threshold(self, threshold):
         self.pred_threshold = threshold
@@ -21,51 +21,83 @@ class Workspace():
             if s.is_predicted:
                 self.analyzer.restrict_mask(s, threshold=threshold)
 
-    def create_group(self, group_name):
-        self.groups[group_name] = []
+    def aggregate_spectra(self, files=[], groups=[], skip_survey=True):
+        spectra = []
+        if len(files) == 0 and len(groups) == 0:
+            spectra.extend(self.spectra)
+        else:
+            for s in self.spectra:
+                if s.file in files or s.group in groups:
+                    spectra.append(s)
 
-    def add_spectrum(self, x, y, group_name=None, name=None):
-        spectrum = Spectrum(x, y, name=name)
-        if group_name not in self.groups:
-            self.create_group(group_name)
-        self.groups[group_name].append(spectrum)
+        if skip_survey:
+            spectra = [s for s in spectra if not s.is_survey]
 
-    def load_txt(self, file: Path, group_name=None):
-        if group_name is None:
-            group_name = file.parent.name
+        return spectra
+
+    def add_spectrum(self, x, y, name=None, file=None, group=None):
+        spectrum = Spectrum(x, y, name=name, file=file, group=group)
+        self.spectra.append(spectrum)
+    
+    def delete_spectrum(self, spectrum):
+        self.spectra.remove(spectrum)
+    
+    def rename_spectrum(self, spectrum, new_name):
+        setattr(spectrum, 'name', new_name)
+    
+    def move_spectrum(self, spectrum, new_group_name):
+        setattr(spectrum, 'group', new_group_name)
+
+    def rename_group(self, group_name, new_group_name):
+        spectra = self.aggregate_spectra(groups=[group_name], skip_survey=False)
+        for s in spectra:
+            self.move_spectrum(s, new_group_name)
+
+    def merge_groups(self, new_group_name, other_groups):
+        spectra = self.aggregate_spectra(groups=other_groups, skip_survey=False)
+        for s in spectra:
+            self.move_spectrum(s, new_group_name)
+    
+    def delete_group(self, group_name):
+        spectra = self.aggregate_spectra(groups=[group_name], skip_survey=False)
+        for s in spectra:
+            self.delete_spectrum(s)
+
+    def load_txt(self, file: Path):
+        file_name = file.parent.name
         with open(file, 'r') as f:
             s = f.readline().split()
             if len(s) == 1: # casa format
                 name = s[0]
                 data = np.loadtxt(f, delimiter='\t', skiprows=3, usecols=(1, 3))
-                self.add_spectrum(data[:, 1], data[:, 0], group_name=group_name, name=name)
+                self.add_spectrum(data[:, 1], data[:, 0], name=name, file=file_name)
             elif len(s) == 2: # numpy format
                 name = file.stem
                 data = np.loadtxt(f)
-                self.add_spectrum(data[:, 0], data[:, 1], group_name=group_name, name=name)
+                self.add_spectrum(data[:, 0], data[:, 1], name=name, file=file_name)
 
-    def load_vamas(self, file: Path, group_name=None):
+    def load_vamas(self, file: Path):
         obj = VAMAS(file)
-        if group_name is None:
-            group_name = file.name
+        file_name = file.name
         for b in obj.blocks:
+            group = b.sample
             name = b.name
             x = np.array(b.binding_axis, dtype=np.float32)
             y = np.array(b.data[0], dtype=np.float32)
-            self.add_spectrum(x, y, name=name, group_name=group_name)
+            self.add_spectrum(x, y, name=name, file=file_name, group=group)
 
-    def load_specs2(self, file: Path, group_name=None):
+    def load_specs2(self, file: Path):
         obj = SPECS(file)
-        if group_name is None:
-            group_name = file.name
-        for i, g in enumerate(obj.groups):
+        file_name = file.name
+        for g in obj.groups:
+            group = g.name
             for r in g.regions:
                 name = r.name
                 x = r.binding_axis
                 y = r.counts
-                self.add_spectrum(x, y, name=name, group_name=group_name)
+                self.add_spectrum(x, y, name=name, file=file_name, group=group)
 
-    def load_files(self, *files, group_name=None):
+    def load_files(self, *files):
         for f in files:
             if isinstance(f, str):
                 f = Path(f)
@@ -73,21 +105,30 @@ class Workspace():
                 print(f'File {f} must be str or Path')
                 continue
 
-            if f.suffix == '.txt':
-                self.load_txt(f, group_name=group_name)
+            if f.suffix == '.txt' or f.suffix == '.dat' or f.suffix == '.csv':
+                self.load_txt(f)
             elif f.suffix == '.vms':
-                self.load_vamas(f, group_name=group_name)
+                self.load_vamas(f)
             elif f.suffix == '.xml':
-                self.load_specs2(f, group_name=group_name)
+                self.load_specs2(f)
 
     def save_workspace(self, file: str):
         file = Path(file).with_suffix('.pkl')
         with file.open('wb') as f:
-            pkl.dump(self.groups, f)
+            pkl.dump(self.spectra, f)
     
     def load_workspace(self, file: str):
+        self.spectra = []
         with open(file, 'rb') as f:
-            self.groups.update(pkl.load(f))
+            obj = pkl.load(f)
+        if isinstance(obj, list):
+            self.spectra = obj
+        elif isinstance(obj, dict): # compatibility with older versions
+            for obj in obj.values():
+                self.spectra.extend(obj)
+                for s in obj:
+                    s.file = None
+                    s.group = None
     
     def save_spectra(self, save_dir: str, spectra):
         save_dir_path = Path(save_dir)
@@ -131,44 +172,6 @@ class Workspace():
             fmt = ('%-13d', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f', '%-13.3f')
 
         np.savetxt(file, params, delimiter=' ', header=header, fmt=fmt, comments='')
-
-    def rename_group(self, group_name, new_group_name):
-        self.groups[new_group_name] = self.groups.pop(group_name)
-    
-    def move_spectrum(self, spectrum_idx, group_name, new_group_name):
-        self.groups[new_group_name].append(self.groups[group_name].pop(spectrum_idx))
-
-    def merge_groups(self, new_group_name, other_groups):
-        
-        self.create_group(new_group_name)
-        for group in other_groups:
-            self.groups[new_group_name] += self.groups[group]
-            self.delete_group(group)
-
-    def delete_group(self, group_name):
-        self.groups.pop(group_name)
-
-    def delete_spectrum(self, group_name, idx):
-        self.groups[group_name].pop(idx)
-    
-    def aggregate_spectra(self, groups=None, idxs=None, skip_survey=True):
-        spectra = []
-        if idxs is None and not groups :
-            for group in self.groups:
-                spectra.extend(self.groups[group])
-        elif idxs is None and isinstance(groups, str):
-            spectra.extend(self.groups[groups])
-        elif idxs is None and isinstance(groups, list):
-            for group in groups:
-                spectra.extend(self.groups[group])
-        elif isinstance(idxs, int):
-            spectra.append(self.groups[groups][idxs])
-        elif isinstance(idxs, list):
-            for idx in idxs:
-                spectra.append(self.groups[groups][idx])
-        if skip_survey:
-            spectra = [s for s in spectra if not s.is_survey]
-        return spectra
     
     def predict(self, spectra):
         self.analyzer.predict(*spectra, pred_threshold=self.pred_threshold)
