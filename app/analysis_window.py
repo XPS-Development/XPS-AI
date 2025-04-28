@@ -8,7 +8,6 @@ from PySide6.QtWidgets import *
 from app.app_utils import TreeWithSearch
 
 
-
 class AnalysisWindow(QDialog):
     def __init__(self, workspace):
         super().__init__()
@@ -91,28 +90,49 @@ class AnalysisWindow(QDialog):
         layout.addLayout(btn_layout_bottom)
 
         self.setLayout(layout)
+        self.tree_widget.setFocus() # prevent editing of search box
 
     def populate_tree(self):
+        # self.logger.debug("Updating spectra tree")
         self.tree_widget.clear()
-        for group, spectra in self.workspace.region.items():
-            group_item = QTreeWidgetItem([group])
-            group_item.setFlags(group_item.flags() | Qt.ItemIsDropEnabled)
-            for spectrum in spectra:
-                if not spectrum.is_analyzed:
-                    continue
-                spectrum_item = QTreeWidgetItem([spectrum.name])
-                for reg_n, region in enumerate(spectrum.regions):
-                    region_item = QTreeWidgetItem([f"Region {reg_n}"])
-                    for num, line in enumerate(region.lines):
-                        line_name = f"Peak {num} at {line.loc:.1f}"
-                        line_item = QTreeWidgetItem([line_name])
-                        line_item.setData(0, Qt.UserRole, line)
-                        region_item.addChild(line_item)
-                    spectrum_item.addChild(region_item)
-                group_item.addChild(spectrum_item)
-            if group_item.childCount() > 0:
-                self.tree_widget.addTopLevelItem(group_item)
+        tree = {}
+        # construct tree
+        for s in self.workspace.spectra:
+            if not s.is_analyzed:
+                continue
+            file = s.file
+            group = s.group
+            spectrum_item = QTreeWidgetItem([s.name])
+            if file is None:
+                file = "Unsorted"
+            if group is None:
+                group = "Unsorted"
+            if file not in tree:
+                file_item = QTreeWidgetItem([file])
+                tree[file] = (file_item, {})
+                self.tree_widget.addTopLevelItem(file_item)
+            if group not in tree[file][1]:
+                group_item = QTreeWidgetItem([group])
+                tree[file][1][group] = group_item
+                tree[file][0].addChild(group_item)
+            tree[file][1][group].addChild(spectrum_item)
+            for reg_n in s.regions:
+                i = 0
+                for p in reg_n.lines:
+                    peak_name = f"Peak {i} at {p.loc:.1f}"
+                    peak_item = QTreeWidgetItem([peak_name])
+                    peak_item.setData(0, Qt.UserRole, p)
+                    spectrum_item.addChild(peak_item)
+                    i += 1
         self.tree_widget.expandAll()
+    
+    def highlight_added_items(self):
+        for i in range(self.tree_widget.topLevelItemCount()):
+            file_item = self.tree_widget.topLevelItem(i)
+            all_childs = self.traverse(file_item)
+            for item in all_childs:
+                if item.data(0, Qt.UserRole) in self.selected_objects:
+                    item.setBackground(0, QtGui.QColor(0, 255, 0, 30))
     
     def traverse(self, item):
         if item.childCount() > 0:
@@ -132,6 +152,7 @@ class AnalysisWindow(QDialog):
         for item in selected_lines:
             if item.data(0, Qt.UserRole) not in self.selected_objects:
                 self.selected_objects.append(item.data(0, Qt.UserRole))
+        self.highlight_added_items()
         self.update_table()
     
     def update_attrs(self):
@@ -155,6 +176,7 @@ class AnalysisWindow(QDialog):
     
     def update_lists_layout(self):
         self.populate_tree()
+        self.highlight_added_items()
         self.update_table()
 
     def remove_items(self):

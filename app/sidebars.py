@@ -221,7 +221,6 @@ class Sidebars():
             file = s.file
             group = s.group
             spectrum_item = QTreeWidgetItem([s.name])
-            QTreeWidgetItem.setExpanded
             spectrum_item.setData(0, Qt.UserRole, s)
             if file is None:
                 file = "Unsorted"
@@ -237,38 +236,6 @@ class Sidebars():
                 tree[file][0].addChild(group_item)
             tree[file][1][group].addChild(spectrum_item)
         self.spectra_tree.expandAll()
-
-    def filter_tree(self, text):
-        text = text.lower()
-        for i in range(self.spectra_tree.topLevelItemCount()):
-            file_item = self.spectra_tree.topLevelItem(i)
-            self.filter_item(file_item, text)
-    
-    def filter_item(self, item, text):
-        match = text in item.text(0).lower()
-
-        if match:
-            # If the item matches, show it and all its children
-            item.setHidden(False)
-            for i in range(item.childCount()):
-                child = item.child(i)
-                self.show_all_children(child)
-            return True
-        else:
-            # If item doesn't match, check if any children match
-            child_match = False
-            for i in range(item.childCount()):
-                child = item.child(i)
-                if self.filter_item(child, text):
-                    child_match = True
-
-            item.setHidden(not child_match)
-            return child_match
-
-    def show_all_children(self, item):
-        item.setHidden(False)
-        for i in range(item.childCount()):
-            self.show_all_children(item.child(i))
 
     def get_selected_spectra(self, skip_survey=True):
         self.logger.debug("Getting selected spectra")
