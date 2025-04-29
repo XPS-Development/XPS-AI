@@ -208,6 +208,11 @@ class AnalysisWindow(QDialog):
         selected_option = self.parameter_option.currentText()
         y = self.workspace.build_trend(self.selected_objects, selected_option)
         x = np.arange(1, len(y) + 1)
-        plot_widget.plot(x, y, pen={'width': 2, 'color': 'k'}, symbol='o', symbolPen={'color': 'k'}, symbolBrush=(0, 0, 0))
+        color = self.palette().color(QtGui.QPalette.Text)
+        plot_widget.plot(
+            x, y, pen={'width': 2, 'color': color}, 
+            symbol='o', symbolPen={'color': color}, 
+            symbolBrush=color
+        )
 
         self.plot_dialog.show()

@@ -81,8 +81,6 @@ class MainWindow(QMainWindow):
 
         self.canvas = PlotCanvas(self, self.workspace)
         self.canvas.resize(800, 600) 
-        color = self.palette().color(QtGui.QPalette.Base)
-        self.canvas.setBackground(color)
         self.sidebars = Sidebars(self, self.workspace, self.logger)
 
         splitter.addWidget(self.sidebars.left_panel)

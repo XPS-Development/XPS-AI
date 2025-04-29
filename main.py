@@ -6,18 +6,19 @@ from PySide6.QtGui import QPalette, QColor
 from app.main_window import MainWindow
 
 
-def main():
+def main(light=False):
     app = QApplication(sys.argv)
 
     # Set the application palette to a light theme
-    set_palette(app)
+    if light:
+        set_light_palette(app)
 
     main_window = MainWindow()
     main_window.show()
     sys.exit(app.exec())
 
 
-def set_palette(app):
+def set_light_palette(app):
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(240, 240, 240))  # Light gray background
     palette.setColor(QPalette.WindowText, QColor(0, 0, 0))  # Black text

@@ -1,6 +1,7 @@
 import numpy as np
 import pyqtgraph as pg
 
+from PySide6 import QtGui
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel
 
@@ -35,7 +36,10 @@ class PlotCanvas(pg.PlotWidget):
         self.c2 = self.create_cursor('end_point')
         self.cursor_pen = {'color': 'r', 'width': 2, 'style': Qt.DashLine}
 
+        self.main_curves_color = self.palette().color(QtGui.QPalette.Text)
         self.mask_parameters = ((0, 0, 255, 100), {255, 0, 0, 255})
+        self.setBackground(self.palette().color(QtGui.QPalette.Base))
+
         self.cursor_label = QLabel("Click Position: (x, y)")
         self.scene().sigMouseClicked.connect(self.mouse_clicked)
     
@@ -62,8 +66,8 @@ class PlotCanvas(pg.PlotWidget):
         self.regions_lines = []
 
         self.main_curves.extend([
-            pg.PlotDataItem(x, y, pen={'color': 'k', 'width': 2}),
-            pg.PlotDataItem(x, y_smooth, pen={'color': 'k', 'width': 2})
+            pg.PlotDataItem(x, y, pen={'color': self.main_curves_color, 'width': 2}),
+            pg.PlotDataItem(x, y_smooth, pen={'color': self.main_curves_color, 'width': 2})
         ])
 
         self.create_masks()
@@ -89,7 +93,7 @@ class PlotCanvas(pg.PlotWidget):
         x = self.spectrum.x_interpolated
         y = self.spectrum.y_interpolated
         
-        curve = pg.PlotDataItem(x, y, pen={'color': 'k', 'width': 2})
+        curve = pg.PlotDataItem(x, y, pen={'color': self.main_curves_color, 'width': 2})
         min_to_fill = np.zeros_like(x)
 
         self.main_curves.append(curve)
@@ -120,8 +124,8 @@ class PlotCanvas(pg.PlotWidget):
 
         reg_x, back, s, *reg_lines = region.draw_lines()
         region_curves.extend([
-            pg.PlotDataItem(reg_x, back, pen={'color': 'k', 'width': 2, 'style': Qt.DashLine}),
-            pg.PlotDataItem(reg_x, s, pen={'color': 'k', 'width': 2, 'style': Qt.DotLine})
+            pg.PlotDataItem(reg_x, back, pen={'color': self.main_curves_color, 'width': 2, 'style': Qt.DashLine}),
+            pg.PlotDataItem(reg_x, s, pen={'color': self.main_curves_color, 'width': 2, 'style': Qt.DotLine})
         ])
 
         for i, line in enumerate(reg_lines):
@@ -145,8 +149,8 @@ class PlotCanvas(pg.PlotWidget):
                 line_curve.setData(reg_x, data)
     
     def change_smoothing_plotting(self, smoothed=False):
-        vis = {'color': 'k', 'width': 2, 'alpha': 1}
-        transp = {'color': 'k', 'width': 1, 'alpha': 0.2}
+        vis = {'color': self.main_curves_color, 'width': 2, 'alpha': 1}
+        transp = {'color': self.main_curves_color, 'width': 1, 'alpha': 0.2}
 
         if smoothed:
             self.main_curves[0].setPen(transp)
