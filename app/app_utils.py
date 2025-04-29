@@ -104,6 +104,42 @@ class ProgressBarWindow(QDialog):
         self.worker_thread.wait()  # Wait for cleanup
         self.close()  # Close the progress window
 
+
+class FittingThread(QThread):
+    progress_signal = Signal(int)  # Signal to update progress bar
+    finished_signal = Signal()  # Signal to close progress window
+
+    def __init__(self, process, *args, **kwargs):
+        super().__init__()
+        self.process = process
+        self.args = args
+        self.kwargs = kwargs
+    
+    def run(self):
+        self.process(
+            *self.args,
+            **self.kwargs
+        )
+        self.finished_signal.emit()
+
+class FittingWindow(QDialog):
+    """Popup window that displays fitting process."""
+    def __init__(self, process, *args, **kwargs):
+        super().__init__()
+
+        self.setWindowTitle("Fitting...")
+        self.setFixedSize(200, 80)
+
+        # Layout
+        self.layout = QVBoxLayout(self)
+        label = QLabel("Optimization in progress")
+        self.layout.addWidget(label)
+
+        # Worker Thread
+        self.worker_thread = FittingThread(process, *args, **kwargs)
+        self.worker_thread.finished_signal.connect(self.close)
+        self.worker_thread.start()  # Start processing
+
 class ScrollableWidget(QWidget):
     def __init__(self):
         super().__init__()

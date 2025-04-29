@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import *
 
 from app.analysis_window import AnalysisWindow
-from app.app_utils import TreeWithSearch, ProgressBarWindow, ScrollableWidget
+from app.app_utils import TreeWithSearch, ProgressBarWindow, ScrollableWidget, FittingWindow
 
 class Sidebars():
     def __init__(self, parent, workspace, logger):
@@ -515,11 +515,14 @@ class Sidebars():
         else:
             fit_alg = 'differential evolution'
         region = selected_item.data(Qt.UserRole)
+        
         if self.reoptimize_all_box.isChecked():
-            self.workspace.refit(region, tol=0.15, full_refit=True, fit_alg=fit_alg)
+            fw = FittingWindow(self.workspace.refit, region, tol=0.15, full_refit=True, fit_alg=fit_alg)
+            fw.exec()
         else:
             fixed_params = self.parse_fixed_params()
-            self.workspace.refit(region, fixed_params=fixed_params, tol=0.2, fit_alg=fit_alg, loc_tol=1)
+            fw = FittingWindow(self.workspace.refit, region, fixed_params=fixed_params, tol=0.2, fit_alg=fit_alg, loc_tol=1)
+            fw.exec()
 
     def parse_fixed_params(self):
         return [i for i, box in enumerate(chain(*self.fixed_params_cb)) if box.isChecked()]
