@@ -27,6 +27,10 @@ class Workspace():
             spectra.extend(self.spectra)
         else:
             for s in self.spectra:
+                if s.file is None:
+                    s.file = 'Unsorted'
+                if s.group is None:
+                    s.group = 'Unsorted'
                 if s.file in files or s.group in groups:
                     spectra.append(s)
 
@@ -34,6 +38,16 @@ class Workspace():
             spectra = [s for s in spectra if not s.is_survey]
 
         return spectra
+
+    def aggregate_unique_spectra(self, spectra=[], files=[], groups=[], skip_survey=True):
+        if spectra and not files and not groups:
+            return spectra
+        else:
+            agg_spectra = self.aggregate_spectra(files, groups, skip_survey=skip_survey)
+            for s in spectra:
+                if s not in agg_spectra:
+                    agg_spectra.append(s)
+            return agg_spectra
 
     def add_spectrum(self, x, y, name=None, file=None, group=None):
         spectrum = Spectrum(x, y, name=name, file=file, group=group)
@@ -47,21 +61,55 @@ class Workspace():
     
     def move_spectrum(self, spectrum, new_group_name):
         setattr(spectrum, 'group', new_group_name)
+    
+    def move_spectra(self, spectra, new_group_name):
+        for s in spectra:
+            self.move_spectrum(s, new_group_name)
 
     def rename_group(self, group_name, new_group_name):
         spectra = self.aggregate_spectra(groups=[group_name], skip_survey=False)
-        for s in spectra:
-            self.move_spectrum(s, new_group_name)
+        self.move_spectra(spectra, new_group_name)
 
     def merge_groups(self, new_group_name, other_groups):
         spectra = self.aggregate_spectra(groups=other_groups, skip_survey=False)
         for s in spectra:
             self.move_spectrum(s, new_group_name)
     
-    def delete_group(self, group_name):
-        spectra = self.aggregate_spectra(groups=[group_name], skip_survey=False)
+    def delete_spectra(self, spectra=[], files=[], groups=[]):
+        spectra = self.aggregate_unique_spectra(spectra, files, groups, skip_survey=False)
         for s in spectra:
             self.delete_spectrum(s)
+    
+    def paste_region(self, region_to_copy, other_spectra, keep_old_regions=False):
+        init_min_coef, init_max_coef = region_to_copy.norm_coefs
+        s_idx = region_to_copy.start_idx
+        e_idx = region_to_copy.end_idx
+        init_lines = []
+        for l in region_to_copy.lines:
+            loc = l.loc
+            scale = l.scale
+            norm_const = (l.const - init_min_coef) / (init_max_coef - init_min_coef)
+            gl_ratio = l.gl_ratio
+            init_lines.append((loc, scale, norm_const, gl_ratio))
+
+        for s in other_spectra:
+            min_coef, max_coef = s.norm_coefs
+            if not keep_old_regions:
+                s.regions = []
+            new_r = s.create_region(s_idx, e_idx)
+            self.recalculate_background(new_r)
+            for l in init_lines:
+                loc = l[0]
+                scale = l[1]
+                const = l[2] * (max_coef - min_coef) + min_coef
+                gl_ratio = l[3]
+                new_r.add_line(loc, scale, const, gl_ratio)
+    
+    def paste_spectra(self, spectrum, other_spectra, keep_old_regions=False):
+        reg = spectrum.regions[0]
+        self.paste_region(reg, other_spectra, keep_old_regions)
+        for reg in spectrum.regions[1:]:
+            self.paste_region(reg, other_spectra, keep_old_regions=True)
 
     def load_txt(self, file: Path):
         file_name = file.parent.name
@@ -127,8 +175,8 @@ class Workspace():
             for obj in obj.values():
                 self.spectra.extend(obj)
                 for s in obj:
-                    s.file = None
-                    s.group = None
+                    s.file = 'Unsorted'
+                    s.group = 'Unsorted'
     
     def save_spectra(self, save_dir: str, spectra):
         save_dir_path = Path(save_dir)

@@ -18,6 +18,8 @@ class Sidebars():
         self.current_region = None
         self.analysis_window = None
 
+        self.copied_spectrum = None
+
         self.init_right_panel()
         self.init_left_panel()
 
@@ -70,147 +72,109 @@ class Sidebars():
         self.logger.debug("Aggregating left panel items")
         selected_items = self.spectra_tree.selectedItems()  # Get all selected items
 
-        if not selected_items:
-            return
+        files = [item.text(0) for item in selected_items if not item.parent()]
+        groups = [item.text(0) for item in selected_items if item.parent() and item.childCount() > 0]
+        spectra = [item.data(0, Qt.UserRole) for item in selected_items if item.parent() and item.childCount() == 0]
 
-        files = [item for item in selected_items if not item.parent()]
-        groups = [item for item in selected_items if item.parent() and item.childCount() != 0]
-        spectra = [item for item in selected_items if item.parent()]
-
-        return groups, spectra
+        return files, groups, spectra
     
     def show_context_menu(self, position):
-        """Shows a right-click menu with rename & delete options for multiple items."""
+        """Shows a right-click menu with rename, delete, move, copy and paste options for multiple items."""
         self.logger.debug("Showing context menu")
-        selected_items = self.aggregate_left_panel_items()
+        files, groups, spectra = self.aggregate_left_panel_items()
 
-        if not selected_items:
+        if len(files) + len(groups) + len(spectra) == 0:
             return  # No item was clicked
-
-        groups, spectra = selected_items
 
         left_panel = self.left_panel
         menu = QMenu(left_panel)
 
-        # If multiple groups are selected, show "Merge Groups"
-        if len(groups) > 1 and not spectra:
-            merge_action = QAction("Merge Groups", left_panel)
-            merge_action.triggered.connect(lambda: self.merge_selected_groups(groups))
+        if len(groups) > 1 and not spectra and not files: # If multiple groups are selected, show "Merge groups"
+            merge_action = QAction("Merge groups", left_panel)
+            merge_action.triggered.connect(lambda: self.merge_selected(groups))
             menu.addAction(merge_action)
-        # If multiple items are selected, show "Delete"
-        if len(groups) + len(spectra) > 1:
+        elif len(spectra) >= 1 and not groups and not files: # If at least one spectrum is selected, show "Move spectra" and "Paste"
+            paste_action = QAction("Paste spectrum", left_panel)
+            paste_action.triggered.connect(lambda: self.paste_spectrum(spectra))
+            menu.addAction(paste_action)
+            if not self.copied_spectrum:
+                paste_action.setEnabled(False)
+            
+            move_action = QAction("Move spectra", left_panel)
+            move_action.triggered.connect(lambda: self.move_selected_spectra(spectra))
+            menu.addAction(move_action)
+
+        if len(spectra) == 1 and not groups and not files: # If one spectrum is selected, show "Copy" and "Rename"
+            copy_action = QAction("Copy spectrum", left_panel)
+            copy_action.triggered.connect(lambda: self.copy_spectrum(spectra[0]))
+            menu.addAction(copy_action)
+            rename_action = QAction("Rename", left_panel)
+            rename_action.triggered.connect(lambda: self.rename_spectra(spectra[0]))
+            menu.addAction(rename_action)
+        elif len(groups) == 1 and not files and not spectra: # If one group is selected, show "Rename"
+            rename_action = QAction("Rename", left_panel)
+            rename_action.triggered.connect(lambda: self.rename_group(groups[0]))
+            menu.addAction(rename_action)
+
+        if len(files) + len(groups) + len(spectra) >= 1: # If at least one item is selected, show "Delete"
             delete_action = QAction("Delete", left_panel)
-            delete_action.triggered.connect(lambda: self.delete_selected_items(groups + spectra))
+            delete_action.triggered.connect(lambda: self.delete_selected_items(spectra, files, groups))
             menu.addAction(delete_action)
-        else:
-            selected_items = groups + spectra
-            item = selected_items[0]
-            if not item.parent():
-                rename_action = QAction("Rename", left_panel)
-                rename_action.triggered.connect(lambda: self.rename_group(item))
-                menu.addAction(rename_action)
-                delete_action = QAction("Delete", left_panel)
-                delete_action.triggered.connect(lambda: self.delete_group(item))
-                menu.addAction(delete_action)
-            else:
-                rename_action = QAction("Rename", left_panel)
-                rename_action.triggered.connect(lambda: self.rename_spectra(item))
-                menu.addAction(rename_action)
-                delete_action = QAction("Delete", left_panel)
-                delete_action.triggered.connect(lambda: self.delete_spectrum(item))
-                menu.addAction(delete_action)
 
         menu.exec(self.spectra_tree.viewport().mapToGlobal(position))
 
-    def merge_selected_groups(self, items):
-        """Merges multiple selected groups into one."""
+    def merge_selected(self, group_names):
+        """Merges multiple selected groups or files into one."""
         self.logger.debug("Merging selected groups")
-        # Get names of selected groups
-        group_names = [item.text(0) for item in items]
-        # Ask user for the new group name
-        new_group_name, ok = QInputDialog.getText(self.left_panel, "Merge Groups", "Enter new group name:", text="New Group")
+        new_group_name, ok = QInputDialog.getText(self.left_panel, "Merge groups", "Enter new group name:", text=f"{group_names[0]}")
         if not ok or not new_group_name:
             return  # User canceled
-        if new_group_name in self.workspace.groups:
-            QMessageBox.warning(self.left_panel, "Merge Error", "A group with this name already exists.")
-            return
         self.workspace.merge_groups(new_group_name, group_names)
-        # Remove old groups from UI
-        for item in items:
-            index = self.spectra_tree.indexOfTopLevelItem(item)
-            self.spectra_tree.takeTopLevelItem(index)
-        # Add new merged group to UI
-        new_group_item = QTreeWidgetItem([new_group_name])
-        self.spectra_tree.addTopLevelItem(new_group_item)
-        # Add merged spectra to new group in UI
-        for spectrum in self.workspace.groups[new_group_name]:
-            spectrum_item = QTreeWidgetItem([spectrum.name])
-            spectrum_item.setData(0, Qt.UserRole, spectrum)
-            new_group_item.addChild(spectrum_item)
+        self.update_spectra_tree()
+    
+    def paste_spectrum(self, spectra):
+        """Paste regions from copied spectrum to selected spectra"""
+        self.logger.debug("Pasting spectrum")
+        self.workspace.paste_spectra(self.copied_spectrum, spectra)
+        self.load_region_tab()
+        self.copied_spectrum = None
 
-    def delete_selected_items(self, items):
+    def move_selected_spectra(self, spectra):
+        """Move selected spectra to a new group."""
+        self.logger.debug("Moving selected spectra")
+        new_group_name, ok = QInputDialog.getText(self.left_panel, "Move spectra", "Enter new group name:")
+        if ok and new_group_name:
+            self.workspace.move_spectra(spectra, new_group_name)
+            self.update_spectra_tree()
+    
+    def copy_spectrum(self, spectrum):
+        self.logger.debug("Copying selected spectrum")
+        self.copied_spectrum = spectrum
+    
+    def rename_spectra(self, spectrum):
+        self.logger.debug("Renaming spectrum")
+        new_name, ok = QInputDialog.getText(self.left_panel, "Rename spectrum", "Enter new name:", text=spectrum.name)
+        if ok and new_name:
+            self.workspace.rename_spectrum(spectrum, new_name)
+            self.update_spectra_tree()
+
+    def rename_group(self, group):
+        self.logger.debug("Renaming group")
+        new_name, ok = QInputDialog.getText(self.left_panel, "Rename group", "Enter new group name:")
+        if ok and new_name:
+            self.workspace.rename_group(group, new_name)
+            self.update_spectra_tree()
+
+    def delete_selected_items(self, spectra, files, groups):
         self.logger.debug("Deleting selected items")
+        l = len(spectra) + len(files) + len(groups)
         confirm = QMessageBox.question(
-            self.left_panel, "Delete Selected Items",
-            f"Are you sure you want to delete {len(items)} selected items?",
+            self.left_panel, "Delete selected items",
+            f"Are you sure you want to delete {l} selected items?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if confirm == QMessageBox.Yes:
-            groups_to_delete = []
-            spectra_to_delete = []
-            for item in items:
-                if not item.parent():
-                    groups_to_delete.append(item)
-                else:
-                    spectra_to_delete.append(item)
-            for spectrum_item in spectra_to_delete:
-                self.delete_spectrum(spectrum_item, with_dialog=False)
-            for group_item in groups_to_delete:
-                self.delete_group(group_item, with_dialog=False)
-
-    def rename_group(self, item):
-        self.logger.debug("Renaming group")
-        new_name, ok = QInputDialog.getText(self.left_panel, "Rename Group", "Enter new group name:")
-        if ok and new_name:
-            self.workspace.rename_group(item.text(0), new_name)
-            item.setText(0, new_name)
-
-    def delete_group(self, item, with_dialog=True):
-        self.logger.debug("Deleting group")
-        group_name = item.text(0)
-        if with_dialog:
-            confirm = QMessageBox.question(
-                self.left_panel, "Delete Group", f"Are you sure you want to delete {group_name} and all its spectra?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if not with_dialog or confirm == QMessageBox.Yes:
-            self.workspace.delete_group(group_name)
-            index = self.spectra_tree.indexOfTopLevelItem(item)
-            self.spectra_tree.takeTopLevelItem(index)  # Remove from UI
-
-    def rename_spectra(self, item):
-        self.logger.debug("Renaming spectrum")
-        spectrum = item.data(0, Qt.UserRole)  # Retrieve an object
-        if not spectrum:
-            return
-        new_name, ok = QInputDialog.getText(self.left_panel, "Rename Spectrum", "Enter new name:", text=spectrum.name)
-        if ok and new_name:
-            spectrum.name = new_name  # Update an object
-            item.setText(0, new_name)  # Update UI
-
-    def delete_spectrum(self, item, with_dialog=True):
-        self.logger.debug("Deleting spectrum")
-        parent_item = item.parent()
-        if not parent_item:
-            return
-        spectrum = item.data(0, Qt.UserRole)  # Retrieve an object
-        group_name = parent_item.text(0)
-        if with_dialog:
-            confirm = QMessageBox.question(
-                self.left_panel, "Delete Spectrum", f"Are you sure you want to delete {spectrum.name}?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if not with_dialog or confirm == QMessageBox.Yes:
-            idx = self.workspace.groups[group_name].index(spectrum)
-            self.workspace.delete_spectrum(group_name, idx)
-            parent_item.removeChild(item)  # Remove from UI
+            self.workspace.delete_spectra(spectra=spectra, files=files, groups=groups)
+            self.update_spectra_tree()
 
     def update_spectra_tree(self):
         self.logger.debug("Updating spectra tree")
@@ -236,62 +200,18 @@ class Sidebars():
                 tree[file][0].addChild(group_item)
             tree[file][1][group].addChild(spectrum_item)
         self.spectra_tree.expandAll()
-
-    def get_selected_spectra(self, skip_survey=True):
-        self.logger.debug("Getting selected spectra")
-        selected_items = self.aggregate_left_panel_items()
-        if not selected_items:
-            return
-
-        groups, spectra = selected_items
-        spectra_list = []
-        for group in groups:
-            spectra_list.extend(self.workspace.groups[group.text(0)])
-        for spectrum_item in spectra:
-            spectrum = spectrum_item.data(0, Qt.UserRole)
-            if spectrum not in spectra_list:
-                spectra_list.append(spectrum)
-
-        if skip_survey:
-            spectra_list = [s for s in spectra_list if not s.is_survey]
-
-        return spectra_list
-    
-    def predict(self):
-        self.logger.debug("Predicting")
-        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
-        spectra_list = self.get_selected_spectra(skip_survey)
-        if spectra_list is None or len(spectra_list) == 0:
-            spectra_list = self.workspace.aggregate_spectra()
-        self.workspace.predict(spectra=spectra_list)
-        self.parent.toolbar.toggle_labeled_data_action.setChecked(True)
-        self.parent.update_viewer()
-
-    def post_process(self):
-        self.logger.debug("Post processing")
-        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
-        spectra_list = self.get_selected_spectra(skip_survey)
-        if spectra_list is None or len(spectra_list) == 0:
-            spectra_list = self.workspace.aggregate_spectra()
-        spectra_list = [s for s in spectra_list if not s.is_analyzed and s.is_predicted]
-        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
-        progress_window.exec()
-
-        self.parent.toolbar.toggle_lines_action.setChecked(True)
-        self.update_region_list()
-        self.update_analysis_window()
-        self.parent.update_viewer()
     
     def automatic_analysis(self):
         self.logger.debug("Automatic analysis")
         skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
-        spectra_list = self.get_selected_spectra(skip_survey)
-        if spectra_list is None or len(spectra_list) == 0:
-            spectra_list = self.workspace.aggregate_spectra()
-        self.workspace.predict(spectra=spectra_list)
-        spectra_list = [s for s in spectra_list if not s.is_analyzed and s.is_predicted]
+        files, groups, spectra = self.aggregate_left_panel_items()
+        spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
+        if spectra is None or len(spectra) == 0:
+            spectra = self.workspace.aggregate_spectra()
+        self.workspace.predict(spectra=spectra)
+        spectra = [s for s in spectra if not s.is_analyzed and s.is_predicted]
 
-        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra_list), spectra_list)
+        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra), spectra)
         progress_window.exec()
 
         self.parent.toolbar.toggle_lines_action.setChecked(True)
