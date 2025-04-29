@@ -88,6 +88,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.sidebars.left_panel)
         splitter.addWidget(self.canvas)
         splitter.addWidget(self.sidebars.right_panel)
+        self.sidebars.right_panel.layout().addWidget(self.canvas.cursor_label)
 
         # Set the splitter to the central widget
         central_layout = QHBoxLayout()

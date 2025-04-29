@@ -2,6 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel
 
 
 class PlotCanvas(pg.PlotWidget):
@@ -29,13 +30,27 @@ class PlotCanvas(pg.PlotWidget):
         # vb.setMouseMode(pg.ViewBox.RectMode)
         vb.setMenuEnabled(False)
 
+        # Cursors to set region parameters
         self.c1 = self.create_cursor('start_point')
         self.c2 = self.create_cursor('end_point')
         self.cursor_pen = {'color': 'r', 'width': 2, 'style': Qt.DashLine}
 
         self.mask_parameters = ((0, 0, 255, 100), {255, 0, 0, 255})
+        self.cursor_label = QLabel("Click Position: (x, y)")
+        self.scene().sigMouseClicked.connect(self.mouse_clicked)
+    
+    def mouse_clicked(self, mouse_event):
+            # if mouse_event.button():
+            scene_pos = mouse_event.scenePos()
+            vb = self.plotItem.vb
+            if vb.sceneBoundingRect().contains(scene_pos):
+                mouse_point = vb.mapSceneToView(scene_pos)
+                x = mouse_point.x()
+                y = mouse_point.y()
+                self.cursor_label.setText(f"Click Position: ({x:.2f}, {y:.2f})")
 
     def reload_spectrum(self, spectrum):
+        
         self.spectrum = spectrum
         self.setTitle(spectrum.name)
 
