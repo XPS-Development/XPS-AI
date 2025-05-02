@@ -194,34 +194,64 @@ class Toolbar(QToolBar):
         super().__init__("Main Toolbar", parent)
 
         # Files Menu
-        files_menu = QMenu("Files...", parent)
-        files_menu_action = self.addAction("Files...")
+        files_menu = QMenu("Files", parent)
+        files_menu_action = self.addAction("Files")
         files_menu_action.setMenu(files_menu)
         files_menu_action.triggered.connect(lambda: files_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
         
-        save_workspace_action = QAction("Save Workspace", parent)
+        save_workspace_action = QAction("Save workspace", parent)
         save_workspace_action.triggered.connect(parent.save_workspace)
         files_menu.addAction(save_workspace_action)
 
-        load_workspace_action = QAction("Load Workspace", parent)
+        load_workspace_action = QAction("Load workspace", parent)
         load_workspace_action.triggered.connect(parent.load_workspace)
         files_menu.addAction(load_workspace_action)
 
-        load_spectra_action = QAction("Load Spectra", parent)
+        load_spectra_action = QAction("Load spectra", parent)
         load_spectra_action.triggered.connect(parent.load_spectra)
         files_menu.addAction(load_spectra_action)
 
-        save_spectra_action = QAction('Export Spectra', parent)
+        save_spectra_action = QAction('Export spectra', parent)
         save_spectra_action.triggered.connect(parent.save_spectra)
         files_menu.addAction(save_spectra_action)
 
-        export_parameters_action = QAction('Export Parameters', parent)
+        export_parameters_action = QAction('Export parameters', parent)
         export_parameters_action.triggered.connect(parent.export_parameters)
         files_menu.addAction(export_parameters_action)
 
+        # View Menu
+        view_menu = QMenu("View", parent)
+        view_menu_action = self.addAction("View")
+        view_menu_action.setMenu(view_menu)
+        view_menu_action.triggered.connect(lambda: view_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
+        
+        # Spectra Viewer Options Group
+        self.data_togglers_group = QActionGroup(parent)
+        self.data_togglers_group.setExclusive(True)
+
+        self.toggle_labeled_data_action = QAction("Labeled data", parent, checkable=True)
+        self.toggle_labeled_data_action.triggered.connect(parent.update_viewer)
+        view_menu.addAction(self.toggle_labeled_data_action)
+        self.data_togglers_group.addAction(self.toggle_labeled_data_action)
+
+        self.toggle_raw_data_action = QAction("Raw data", parent, checkable=True)
+        self.toggle_raw_data_action.triggered.connect(parent.update_viewer)
+        view_menu.addAction(self.toggle_raw_data_action)
+        self.data_togglers_group.addAction(self.toggle_raw_data_action)
+
+        self.toggle_lines_action = QAction("Peaks", parent, checkable=True)
+        self.toggle_lines_action.triggered.connect(parent.update_viewer)
+        view_menu.addAction(self.toggle_lines_action)
+        self.data_togglers_group.addAction(self.toggle_lines_action)
+        self.toggle_lines_action.setChecked(True) # On by default
+
+        self.toggle_smoothed_data_action = QAction("Smoothed data", parent, checkable=True)
+        self.toggle_smoothed_data_action.triggered.connect(parent.update_viewer)
+        view_menu.addAction(self.toggle_smoothed_data_action)
+
         # Options Menu
-        options_menu = QMenu("Options...", parent)
-        options_action = self.addAction("Options...")
+        options_menu = QMenu("Options", parent)
+        options_action = self.addAction("Options")
         options_action.setMenu(options_menu)
         options_action.triggered.connect(lambda: options_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
 
@@ -229,33 +259,6 @@ class Toolbar(QToolBar):
         change_threshold_action = QAction("Change prediction threshold", parent)
         change_threshold_action.triggered.connect(parent.change_prediction_threshold)
         options_menu.addAction(change_threshold_action)
-
-        # Spectra Viewer Options Group
-        self.data_togglers_group = QActionGroup(parent)
-        self.data_togglers_group.setExclusive(True)
-
-        # Toggle Labeled Data Action
-        self.toggle_labeled_data_action = QAction("Show labeled data", parent, checkable=True)
-        self.toggle_labeled_data_action.triggered.connect(parent.update_viewer)
-        options_menu.addAction(self.toggle_labeled_data_action)
-        self.data_togglers_group.addAction(self.toggle_labeled_data_action)
-
-        # Toggle Raw Action
-        self.toggle_raw_data_action = QAction("Show raw data", parent, checkable=True)
-        self.toggle_raw_data_action.triggered.connect(parent.update_viewer)
-        options_menu.addAction(self.toggle_raw_data_action)
-        self.data_togglers_group.addAction(self.toggle_raw_data_action)
-
-        # Toggle Line Data Action
-        self.toggle_lines_action = QAction("Show lines", parent, checkable=True)
-        self.toggle_lines_action.triggered.connect(parent.update_viewer)
-        options_menu.addAction(self.toggle_lines_action)
-        self.data_togglers_group.addAction(self.toggle_lines_action)
-        self.toggle_lines_action.setChecked(True)
-
-        self.toggle_smoothed_data_action = QAction("Show smoothed data", parent, checkable=True)
-        self.toggle_smoothed_data_action.triggered.connect(parent.update_viewer)
-        options_menu.addAction(self.toggle_smoothed_data_action)
 
         self.toggle_aggregate_before_export = QAction("Aggregate before export", parent, checkable=True)
         self.toggle_aggregate_before_export.setChecked(True)

@@ -81,7 +81,7 @@ class AnalysisWindow(QDialog):
         # Buttons for actions
         btn_layout_bottom = QHBoxLayout()
 
-        btn_proceed = QPushButton("Visualize")
+        btn_proceed = QPushButton("Plot")
         btn_proceed.clicked.connect(self.view)
         btn_layout_bottom.addWidget(btn_proceed)
 
