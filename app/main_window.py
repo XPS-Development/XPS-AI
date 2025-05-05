@@ -146,7 +146,9 @@ class MainWindow(QMainWindow):
     def save_spectra(self):
         self.logger.debug("Saving spectra")
         folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
-        spectra = self.sidebars.get_selected_spectra()
+        skip_survey = self.toolbar.toggle_skip_survey.isChecked()
+        files, groups, spectra = self.sidebars.aggregate_left_panel_items()
+        spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
         if spectra is None or len(spectra) == 0:
             spectra = [self.sidebars.current_spectrum]
         if folder_rpath and spectra is not None:
@@ -154,7 +156,9 @@ class MainWindow(QMainWindow):
     
     def export_parameters(self):
         self.logger.debug("Exporting parameters")
-        spectra = self.sidebars.get_selected_spectra()
+        skip_survey = self.toolbar.toggle_skip_survey.isChecked()
+        files, groups, spectra = self.sidebars.aggregate_left_panel_items()
+        spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
         if spectra is None or len(spectra) == 0:
             spectra = [self.sidebars.current_spectrum]
     
