@@ -318,13 +318,16 @@ class Sidebars():
         right_panel_layout.addLayout(refit_layout)
 
         create_delete_layout = QHBoxLayout()
-        self.create_region_button = QPushButton("Create Region")
+        self.create_region_button = QPushButton("Create region")
         self.create_region_button.clicked.connect(self.create_new_region)
+        self.create_region_button.clicked.connect(self.parent.update_viewer)
+        self.create_region_button.clicked.connect(self.update_region_list)
         create_delete_layout.addWidget(self.create_region_button)
 
-        delete_button = QPushButton("Delete Region")
+        delete_button = QPushButton("Delete region")
         delete_button.clicked.connect(self.delete_region)
         delete_button.clicked.connect(self.parent.update_viewer)
+        delete_button.clicked.connect(self.update_region_list)
         create_delete_layout.addWidget(delete_button)
 
         right_panel_layout.addLayout(create_delete_layout)
@@ -352,7 +355,7 @@ class Sidebars():
             if len(spectrum.regions) > 0:
                 self.current_region = spectrum.regions[0]
                 self.region_list.setCurrentRow(0)
-            self.load_region_tab()
+        self.load_region_tab()
 
     def create_region_tabs(self):
         """
@@ -527,7 +530,15 @@ class Sidebars():
             region = selected_item.data(Qt.UserRole)
             self.workspace.delete_region(region, self.current_spectrum)
             self.region_list.takeItem(self.region_list.row(selected_item))
-            self.region_list.setCurrentRow(self.region_list.count() - 1)
+            if self.region_list.count() > 0:
+                item_idx = self.region_list.count() - 1
+                self.region_list.setCurrentRow(item_idx)
+                item = self.region_list.item(item_idx)
+                self.set_current_region(item)
+            else:
+                # If all regions are deleted the spectrum is no longer analyzed
+                self.current_spectrum.is_analyzed = False
+                self.current_region = None
 
     def create_new_region(self):
         self.logger.debug("Creating new region")
@@ -540,6 +551,7 @@ class Sidebars():
             item.setData(Qt.UserRole, region)
             self.region_list.addItem(item)
             self.region_list.setCurrentRow(self.region_list.count() - 1)
+            self.set_current_region(item)
 
     #TODO: adding lines by maxima fitting errors
     def add_line(self):
