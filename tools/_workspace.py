@@ -20,6 +20,10 @@ class Workspace():
         for s in self.aggregate_spectra():
             if s.is_predicted:
                 self.analyzer.restrict_mask(s, threshold=threshold)
+    
+    def check_survey(self, spectra, check=True):
+        for s in spectra:
+            s.is_survey = check
 
     def aggregate_spectra(self, files=[], groups=[], skip_survey=True):
         spectra = []
@@ -41,7 +45,10 @@ class Workspace():
 
     def aggregate_unique_spectra(self, spectra=[], files=[], groups=[], skip_survey=True):
         if spectra and not files and not groups:
-            return spectra
+            if skip_survey:
+                return [s for s in spectra if not s.is_survey]
+            else:
+                return spectra
         else:
             agg_spectra = self.aggregate_spectra(files, groups, skip_survey=skip_survey)
             for s in spectra:
