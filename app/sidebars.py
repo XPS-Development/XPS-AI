@@ -44,10 +44,31 @@ class Sidebars():
         left_panel_layout.addWidget(self.spectra_tree)
         self.update_spectra_tree()
 
-        automatic_analysis_button = QPushButton("Automatic analysis")
-        automatic_analysis_button.clicked.connect(self.automatic_analysis)
-        left_panel_layout.addWidget(automatic_analysis_button)
+        # Automatic analysis and options
+        layout_1 = QHBoxLayout()
+        layout_2 = QHBoxLayout()
+        left_panel_layout.addLayout(layout_1)
+        left_panel_layout.addLayout(layout_2)
 
+        automatic_analysis_button = QPushButton("Automatic analysis")
+        # automatic_analysis_button.setFixedSize(150, 30)
+        automatic_analysis_button.clicked.connect(self.automatic_analysis)
+        layout_1.addWidget(automatic_analysis_button)
+
+        change_prediction_threshold_button = QPushButton("Set threshold")
+        change_prediction_threshold_button.clicked.connect(self.change_prediction_threshold)
+        # change_prediction_threshold_button.setFixedSize(150, 30)
+        layout_2.addWidget(change_prediction_threshold_button)
+
+        self.force_analysis_box = QCheckBox("Force analysis")
+        self.force_analysis_box.setChecked(False)
+        layout_2.addWidget(self.force_analysis_box)
+
+        self.skip_survey_box = QCheckBox("Skip survey")
+        self.skip_survey_box.setChecked(True)
+        layout_2.addWidget(self.skip_survey_box)
+
+        # Trend analysis
         analysis_button = QPushButton("Trend analysis")
         analysis_button.clicked.connect(self.open_analysis_window)
         left_panel_layout.addWidget(analysis_button)
@@ -67,6 +88,14 @@ class Sidebars():
             self.current_region = item.data(Qt.UserRole)
             self.logger.debug(f"Current region set to {self.current_region}")
             self.set_cursors()
+
+    def change_prediction_threshold(self):
+        self.logger.debug("Changing prediction threshold")
+        value = self.workspace.pred_threshold
+        new_threshold, ok = QInputDialog.getDouble(self.left_panel, "Change Prediction Threshold", "Enter new prediction threshold:", value, 0, 1, 2, step=0.01)
+        if ok:
+            self.workspace.set_prediction_threshold(new_threshold)
+        self.parent.update_viewer()
 
     def aggregate_left_panel_items(self):
         self.logger.debug("Aggregating left panel items")
@@ -203,15 +232,24 @@ class Sidebars():
     
     def automatic_analysis(self):
         self.logger.debug("Automatic analysis")
-        skip_survey = self.parent.toolbar.toggle_skip_survey.isChecked()
+        skip_survey = self.skip_survey_box.isChecked()
         files, groups, spectra = self.aggregate_left_panel_items()
         spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
         if spectra is None or len(spectra) == 0:
             spectra = self.workspace.aggregate_spectra()
-        self.workspace.predict(spectra=spectra)
-        spectra = [s for s in spectra if not s.is_analyzed and s.is_predicted]
+        
+        # predict
+        not_predicted = [s for s in spectra if not s.is_predicted]
+        self.workspace.predict(spectra=not_predicted)
 
-        progress_window = ProgressBarWindow(self.workspace.post_process, len(spectra), spectra)
+        # post process with progress bar
+        if self.force_analysis_box.isChecked(): # analyze all selected
+            # drop previous regions
+            for s in spectra:
+                s.regions = []
+                s.is_analyzed = False
+        not_analyzed = [s for s in spectra if not s.is_analyzed and s.is_predicted]
+        progress_window = ProgressBarWindow(self.workspace.post_process, len(not_analyzed), not_analyzed)
         progress_window.exec()
 
         self.parent.toolbar.toggle_lines_action.setChecked(True)
