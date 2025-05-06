@@ -133,6 +133,14 @@ class Sidebars():
             move_action.triggered.connect(lambda: self.move_selected_spectra(spectra))
             menu.addAction(move_action)
 
+            check_survey = QAction("Check survey", left_panel, checkable=True)
+            if len([s for s in spectra if s.is_survey]) == len(spectra):
+                check_survey.setChecked(True)
+            else:
+                check_survey.setChecked(False)
+            check_survey.changed.connect(lambda: self.check_survey(spectra, check=check_survey.isChecked()))
+            menu.addAction(check_survey)
+
         if len(spectra) == 1 and not groups and not files: # If one spectrum is selected, show "Copy" and "Rename"
             copy_action = QAction("Copy spectrum", left_panel)
             copy_action.triggered.connect(lambda: self.copy_spectrum(spectra[0]))
@@ -175,6 +183,10 @@ class Sidebars():
         if ok and new_group_name:
             self.workspace.move_spectra(spectra, new_group_name)
             self.update_spectra_tree()
+
+    def check_survey(self, spectra, check=True):
+        self.logger.debug("Checking survey")
+        self.workspace.check_survey(spectra, check)
     
     def copy_spectrum(self, spectrum):
         self.logger.debug("Copying selected spectrum")
