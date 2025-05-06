@@ -264,7 +264,6 @@ class Sidebars():
         progress_window = ProgressBarWindow(self.workspace.post_process, len(not_analyzed), not_analyzed)
         progress_window.exec()
 
-        self.parent.toolbar.toggle_lines_action.setChecked(True)
         self.update_region_list()
         self.update_analysis_window()
         self.parent.update_viewer()

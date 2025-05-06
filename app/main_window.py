@@ -111,10 +111,10 @@ class MainWindow(QMainWindow):
                     self.canvas.update_plot(disp_type='raw', smoothed=add_smoothing)
                 else:
                     self.canvas.update_plot(disp_type='lines', smoothed=add_smoothing)
-                
-                if region is not None:
-                    self.logger.debug("Setting cursors")
-                    self.canvas.load_cursors(region)
+
+                    if region is not None:
+                        self.logger.debug("Setting cursors")
+                        self.canvas.load_cursors(region)
 
     def update_cursors(self, region):
         self.canvas.load_cursors(region)
