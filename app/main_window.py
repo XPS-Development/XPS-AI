@@ -125,20 +125,20 @@ class MainWindow(QMainWindow):
     
     def load_spectra(self):
         self.logger.debug("Loading spectra")
-        files, _ = QFileDialog.getOpenFileNames(self, "Load Spectra", ".", "All Files (*);;Vamas Files (*.vms);;Text Files (*.txt);;SPECS Files (*.xml)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Load spectra", ".", "Data files (*.txt *.csv *.dat *.vms);;SPECS files (*.xml);;All files (*)")
         if files:
             self.workspace.load_files(*files)
             self.update_sidebars()
     
     def save_workspace(self):
         self.logger.debug("Saving workspace")
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Workspace", ".", "Workspace files (*.pkl)")
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save workspace", ".", "Workspace files (*.pkl)")
         if file_path:
             self.workspace.save_workspace(file_path)
     
     def load_workspace(self):
         self.logger.debug("Loading workspace")
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load Workspace", ".", "Workspace files (*.pkl)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Load workspace", ".", "Workspace files (*.pkl)")
         if file_path:
             self.workspace.load_workspace(file_path)
             self.update_sidebars()
