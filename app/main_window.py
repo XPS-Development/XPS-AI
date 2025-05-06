@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
     def save_spectra(self):
         self.logger.debug("Saving spectra")
         folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
-        skip_survey = self.toolbar.toggle_skip_survey.isChecked()
+        skip_survey = self.sidebars.skip_survey_box.isChecked()
         files, groups, spectra = self.sidebars.aggregate_left_panel_items()
         spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
         if spectra is None or len(spectra) == 0:
@@ -156,7 +156,7 @@ class MainWindow(QMainWindow):
     
     def export_parameters(self):
         self.logger.debug("Exporting parameters")
-        skip_survey = self.toolbar.toggle_skip_survey.isChecked()
+        skip_survey = self.sidebars.skip_survey_box.isChecked()
         files, groups, spectra = self.sidebars.aggregate_left_panel_items()
         spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
         if spectra is None or len(spectra) == 0:
@@ -170,15 +170,6 @@ class MainWindow(QMainWindow):
             folder_rpath = QFileDialog.getExistingDirectory(self, 'Select Folder')
             if folder_rpath and spectra is not None:
                 self.workspace.export_params(folder_rpath, spectra)
-
-    def change_prediction_threshold(self):
-        self.logger.debug("Changing prediction threshold")
-        value = self.workspace.pred_threshold
-        new_threshold, ok = QInputDialog.getDouble(self, "Change Prediction Threshold", "Enter new prediction threshold:", value, 0, 1, 2, step=0.01)
-        if ok:
-            self.workspace.set_prediction_threshold(new_threshold)
-
-        self.update_viewer()
     
     def save_logs(self):
         self.logger.debug("Saving logs")
@@ -202,26 +193,39 @@ class Toolbar(QToolBar):
         files_menu_action = self.addAction("Files")
         files_menu_action.setMenu(files_menu)
         files_menu_action.triggered.connect(lambda: files_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
-        
+
+        save_menu = QMenu("Save")
+        files_menu.addMenu(save_menu)
+
+        load_menu = QMenu("Load")
+        files_menu.addMenu(load_menu)
+
+        export_menu = QMenu("Export")
+        files_menu.addMenu(export_menu)
+
         save_workspace_action = QAction("Save workspace", parent)
         save_workspace_action.triggered.connect(parent.save_workspace)
-        files_menu.addAction(save_workspace_action)
+        save_menu.addAction(save_workspace_action)
 
         load_workspace_action = QAction("Load workspace", parent)
         load_workspace_action.triggered.connect(parent.load_workspace)
-        files_menu.addAction(load_workspace_action)
+        load_menu.addAction(load_workspace_action)
 
         load_spectra_action = QAction("Load spectra", parent)
         load_spectra_action.triggered.connect(parent.load_spectra)
-        files_menu.addAction(load_spectra_action)
+        load_menu.addAction(load_spectra_action)
 
         save_spectra_action = QAction('Export spectra', parent)
         save_spectra_action.triggered.connect(parent.save_spectra)
-        files_menu.addAction(save_spectra_action)
+        export_menu.addAction(save_spectra_action)
 
         export_parameters_action = QAction('Export parameters', parent)
         export_parameters_action.triggered.connect(parent.export_parameters)
-        files_menu.addAction(export_parameters_action)
+        export_menu.addAction(export_parameters_action)
+
+        self.toggle_aggregate_before_export = QAction("Aggregate parameters into single file", parent, checkable=True)
+        self.toggle_aggregate_before_export.setChecked(True)
+        export_menu.addAction(self.toggle_aggregate_before_export)
 
         # View Menu
         view_menu = QMenu("View", parent)
@@ -252,25 +256,6 @@ class Toolbar(QToolBar):
         self.toggle_smoothed_data_action = QAction("Smoothed data", parent, checkable=True)
         self.toggle_smoothed_data_action.triggered.connect(parent.update_viewer)
         view_menu.addAction(self.toggle_smoothed_data_action)
-
-        # Options Menu
-        options_menu = QMenu("Options", parent)
-        options_action = self.addAction("Options")
-        options_action.setMenu(options_menu)
-        options_action.triggered.connect(lambda: options_menu.exec(self.mapToGlobal(self.rect().bottomLeft())))
-
-        # Change Prediction Threshold Action
-        change_threshold_action = QAction("Change prediction threshold", parent)
-        change_threshold_action.triggered.connect(parent.change_prediction_threshold)
-        options_menu.addAction(change_threshold_action)
-
-        self.toggle_aggregate_before_export = QAction("Aggregate before export", parent, checkable=True)
-        self.toggle_aggregate_before_export.setChecked(True)
-        options_menu.addAction(self.toggle_aggregate_before_export)
-
-        self.toggle_skip_survey = QAction("Skip survey spectra", parent, checkable=True)
-        self.toggle_skip_survey.setChecked(True)
-        options_menu.addAction(self.toggle_skip_survey)
 
         save_logs_action = QAction("Print logs", parent)
         save_logs_action.triggered.connect(parent.save_logs)
