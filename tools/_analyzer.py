@@ -7,6 +7,7 @@ import onnxruntime as ort
 from tools._spectra import Region, Line
 from tools._tools import peak_sum
 
+
 class Analyzer():
     """Tool for spectra analyzing."""
     def __init__(self, model):
@@ -189,41 +190,12 @@ class Analyzer():
 
     def _refit(
             self,
-            x,
-            y,
+            x, y, background,
             n_peaks,
             initial_params,
-            background,
-            tol=0.1,
-            fixed_params=[],
+            bounds,
             fit_alg='differential evolution',
-            abs_tol=False,
-            loc_tol=1
     ):
-        bounds = []
-        for num, param in enumerate(initial_params):
-            if num in fixed_params:
-                bounds.append(
-                    self._construct_bounds(param, 1e-6)
-                )
-            elif num % 4 == 0: # loc
-                if loc_tol is not None:
-                    bounds.append(
-                        self._construct_bounds(param, loc_tol, abs_tol=True)
-                    )
-                else:
-                    bounds.append(
-                        self._construct_bounds(param, tol, abs_tol=True)
-                    )
-            elif num % 4 == 3: # gl_ratio
-                bounds.append(
-                    self._construct_bounds(param, tol, min_bound=0, max_bound=1, abs_tol=abs_tol)
-                )
-            else: # num % 4 == 1 or num % 4 == 2 for scale or const
-                bounds.append(
-                    self._construct_bounds(param, tol, min_bound=0, abs_tol=abs_tol)
-                )
-
         if fit_alg == 'differential evolution':
             y = y - background
             params = self._diff_ev_fit(x, y, bounds)
@@ -238,9 +210,7 @@ class Analyzer():
         return params
 
     def refit_region(
-        self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution',
-        loc_tol=None
-    ):
+        self, region, use_norm_y=True, full_refit=False, fit_alg='differential evolution'):
         x = region.x
         n_peaks = len(region.lines)
 
@@ -258,16 +228,14 @@ class Analyzer():
             y = region.y_norm
             norm_coefs = region.norm_coefs
             background = (region.background  - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])
-            initial_params = self.lines_to_params(region.lines, norm_coefs)
+            initial_params, bounds = self.lines_to_params(region.lines, norm_coefs)
         else:
             y = region.y
             norm_coefs = (0, 1)
             background = region.background
-            initial_params = self.lines_to_params(region.lines, norm_coefs)
+            initial_params, bounds = self.lines_to_params(region.lines, norm_coefs)
 
-        params = self._refit(
-            x, y, n_peaks, initial_params, background, tol, fixed_params, fit_alg, loc_tol=loc_tol
-        )
+        params = self._refit(x, y, background, n_peaks, initial_params, bounds, fit_alg)
         self.update_lines(params, region.lines, norm_coefs)
     
     def recalculate_idx(self, idx, array_1, array_2):
@@ -317,7 +285,7 @@ class Analyzer():
             l = Line(
                 loc=params[4 * idx],
                 scale=params[4 * idx + 1],
-                const=(max_value - min_value)*params[4 * idx + 2],
+                const=(max_value - min_value) * params[4 * idx + 2],
                 gl_ratio=params[4 * idx + 3]
             )
             lines.append(l)
@@ -331,18 +299,26 @@ class Analyzer():
             lines[idx].const = (max_value - min_value)*params[4 * idx + 2]
             lines[idx].gl_ratio = params[4 * idx + 3]
 
-    def lines_to_params(self, lines, norm_coefs=(0, 1)):
+    def lines_to_params(self, lines, norm_coefs=(0, 1), with_constraints=True):
         params = []
+        constraints = []
         min_value, max_value = norm_coefs
         for line in lines:
             params.extend([line.loc, line.scale, line.const / (max_value - min_value), line.gl_ratio])
-        return np.array(params)
+            if with_constraints:
+                loc, scale, const, gl_ratio = line.constraints
+                const = const[0] / (max_value - min_value), const[1] / (max_value - min_value)
+                constraints.extend([loc, scale, const, gl_ratio])
+        if with_constraints:
+            return np.array(params), np.array(constraints)
+        else:
+            return np.array(params)
     
     def aggregate_params(self, param, lines):
         return np.array([getattr(l, param) for l in lines])
 
     #TODO: active shirley and static shirley
-    def post_process(self, spectrum, active_background_fitting=False, ):
+    def post_process(self, spectrum, active_background_fitting=False):
         # fit normalized spectrum
         x, y_norm = spectrum.x, spectrum.y_norm
         x_int, y_smoothed = spectrum.x_interpolated, spectrum.y_norm_smoothed

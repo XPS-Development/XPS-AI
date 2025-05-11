@@ -9,17 +9,46 @@ from tools._tools import interpolate, pseudo_voight
 
 
 class Line():
-    #TODO: проверить площадь
+    default_constraints_builder = {
+        'loc': lambda x: (x - 0.5, x + 0.5),
+        'scale': lambda x: (x/4, x*4), 
+        'const': lambda x: (x/5, x*10),
+        'gl_ratio': (0, 1)
+    }
+    default_parameters = ['loc', 'scale', 'const', 'gl_ratio']
+
     def __init__(self, loc, scale, const, gl_ratio, color=None):
-        self.loc = loc
-        self.scale = scale
+        self._loc = loc
+        self._scale = scale
         self._c = const
-        self._gl = gl_ratio
+        self._gl = gl_ratio 
 
         self.area = const * (1 + gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.height = self.f(loc)
 
+        self.constraints = [None] * 4
+        self.fixed_parameters = [False] * 4
+        self.update_all_constraints()
+
         self.color = color
+    
+    @property
+    def loc(self):
+        return self._loc
+    
+    @loc.setter
+    def loc(self, loc):
+        self._loc = loc
+        self.update_constraint('loc')
+    
+    @property
+    def scale(self):
+        return self._scale
+    
+    @scale.setter
+    def scale(self, scale):
+        self._scale = scale
+        self.update_constraint('scale')
     
     @property
     def fwhm(self):
@@ -35,8 +64,13 @@ class Line():
     
     @gl_ratio.setter
     def gl_ratio(self, gl_ratio):
+        if gl_ratio < 0:
+            gl_ratio = 0
+        elif gl_ratio > 1:
+            gl_ratio = 1
         self._gl = gl_ratio
         self.area = self.const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
+        self.update_constraint('gl_ratio')
     
     @gl_ratio.getter
     def gl_ratio(self):
@@ -50,17 +84,45 @@ class Line():
     def const(self, const):
         self._c = const
         self.area = const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
+        self.update_constraint('const')
+
+    def fixed_constraint(self, value):
+        if value == 0:
+            return (0, value + 1e-6)
+        else:
+            return (value - value * 1e-6, value + value * 1e-6)
+
+    def update_constraint(self, parameter):
+        idx = self.default_parameters.index(parameter)
+        val = getattr(self, parameter)
+        if self.fixed_parameters[idx]:
+            constraint = self.fixed_constraint(val)
+        else:
+            constraint = self.default_constraints_builder[parameter]
+        
+        if callable(constraint):
+            constraint = constraint(val)
+
+        self.constraints[idx] = constraint
+
+    def toggle_parameter(self, parameter, set_constraint=True):
+        idx = self.default_parameters.index(parameter)
+        is_fixed = self.fixed_parameters[idx]
+        self.fixed_parameters[self.default_parameters.index(parameter)] = not is_fixed
+        self.update_constraint(parameter)
     
-    @const.getter
-    def const(self):
-        return self._c
+    def update_all_constraints(self):
+        for parameter in self.default_parameters:
+            self.update_constraint(parameter)
+    
+    def get_constraints(self):
+        return self.constraints
 
     def f(self, x):
         return pseudo_voight(x, self.loc, self.scale, self.const, self.gl_ratio)
 
     def get_params(self, xps_peak_like=True):
         if xps_peak_like:
-            # params = 
             params = list(map(lambda x: f'{x:.3f}', [self.loc, self.area, self.fwhm]))
             params.append(f'{round(self.gl_ratio * 100)}')
             return params
@@ -68,7 +130,7 @@ class Line():
             return [self.loc, self.fwhm, self.const, self.gl_ratio, self.area, self.height]
 
     def __repr__(self):
-        return f'Line(Position={self.loc}, Scale={self.scale}, Amplitude={self.const}, GL%={self.gl_ratio})'
+        return f'Line(Position={self.loc}, Scale={self.scale}, Amplitude={self.const}, GL={self.gl_ratio})'
 
 
 class Region():
