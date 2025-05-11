@@ -290,10 +290,16 @@ class Workspace():
         self.analyzer.calculate_region_background(region)
 
     def refit(
-            self, region, use_norm_y=True, fixed_params=[], full_refit=False, tol=0.1, fit_alg='differential evolution',
-            loc_tol=None
-    ):
-        self.analyzer.refit_region(region, use_norm_y, fixed_params, full_refit, tol, fit_alg, loc_tol=loc_tol)
+            self, region, use_norm_y=True, full_refit=False, fit_alg='differential evolution'):
+        self.analyzer.refit_region(region, use_norm_y, full_refit, fit_alg)
+    
+    def refit_all_regions(self, spectrum, use_norm_y=True, full_refit=False, fit_alg='differential evolution'):
+        for region in spectrum.regions:
+            self.refit(region, use_norm_y, full_refit, fit_alg)
+    
+    def refit_all_spectra(self, spectra, use_norm_y=True, full_refit=False, fit_alg='differential evolution'):
+        for spectrum in spectra:
+            self.refit_all_regions(spectrum, use_norm_y, full_refit, fit_alg)
 
     #TODO: build trend
     def build_trend(self, lines, selected_option):
