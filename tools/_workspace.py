@@ -95,7 +95,7 @@ class Workspace():
         for l in region_to_copy.lines:
             loc = l.loc
             scale = l.scale
-            norm_const = (l.const - init_min_coef) / (init_max_coef - init_min_coef)
+            norm_const = l.const / (init_max_coef - init_min_coef)
             gl_ratio = l.gl_ratio
             init_lines.append((loc, scale, norm_const, gl_ratio))
 
@@ -110,7 +110,7 @@ class Workspace():
             for l in init_lines:
                 loc = l[0]
                 scale = l[1]
-                const = l[2] * (max_coef - min_coef) + min_coef
+                const = l[2] * (max_coef - min_coef)
                 gl_ratio = l[3]
                 new_r.add_line(loc, scale, const, gl_ratio)
     
@@ -217,7 +217,7 @@ class Workspace():
         params[:, 0] += 1
 
         if xps_peak_like:
-            header = ['Peak', 'Position (eV)', 'Area', 'FWHM (eV)', '%GL (%)']
+            header = ['Peak', 'Position (eV)', 'Area', 'FWHM (eV)', 'GL']
             pattern = '{:<14}' * (len(header) - 1) + '{}'
             header = pattern.format(*header)
             params = params[:, [0, 1, 5, 2, 4]]
@@ -313,7 +313,7 @@ class Workspace():
         elif selected_option == "Position":
             attr = "loc"
         elif selected_option == "Area":
-            attr = "area"
+            attr = "const"
         elif selected_option == "FWHM":
             attr = "fwhm"
         elif selected_option == "GL":
