@@ -153,10 +153,16 @@ class Sidebars():
             rename_action.triggered.connect(lambda: self.rename_group(groups[0]))
             menu.addAction(rename_action)
 
-        if len(files) + len(groups) + len(spectra) >= 1: # If at least one item is selected, show "Delete"
+        if len(files) + len(groups) + len(spectra) >= 1: # If at least one item is selected, show "Delete" and "Run optimization"
             delete_action = QAction("Delete", left_panel)
             delete_action.triggered.connect(lambda: self.delete_selected_items(spectra, files, groups))
             menu.addAction(delete_action)
+
+            run_optimization_action = QAction("Run optimization", left_panel)
+            run_optimization_action.triggered.connect(self.refit_all_spectra)
+            run_optimization_action.triggered.connect(self.update_lines_settings_tab)
+            run_optimization_action.triggered.connect(self.parent.update_viewer)
+            menu.addAction(run_optimization_action)
 
         menu.exec(self.spectra_tree.viewport().mapToGlobal(position))
 
@@ -298,6 +304,12 @@ class Sidebars():
         # self.region_list.currentItemChanged.connect(self.load_region_tab)
         right_panel_layout.addWidget(self.region_list)
 
+        refit_all_regions_button = QPushButton("Optimize regions")
+        refit_all_regions_button.clicked.connect(self.refit_all_regions)
+        refit_all_regions_button.clicked.connect(self.update_lines_settings_tab)
+        refit_all_regions_button.clicked.connect(self.parent.update_viewer)
+        right_panel_layout.addWidget(refit_all_regions_button)
+
         refit_layout = QHBoxLayout()
         self.refit_region_button = QPushButton("Optimize")
         self.refit_region_button.clicked.connect(self.refit_region)
@@ -378,7 +390,6 @@ class Sidebars():
         self.clear_tabs()
         if self.current_region is not None:
             self.load_region_settings_tab()
-            self.fixed_params_cb = []
             self.load_lines_settings_tab()
     
     def clear_tabs(self):
@@ -451,14 +462,15 @@ class Sidebars():
         cb_layout.addWidget(cb_label)
         cb_layout.setAlignment(Qt.AlignRight)
         line_layout.addRow(cb_layout)
-        cb_list = []
-        for (param_label, param) in editable_params:
+        # cb_list = []
+        for (param_label, param), is_fixed in zip(editable_params, line.fixed_parameters):
             layout = QHBoxLayout()
             cb = QCheckBox()
+            if is_fixed:
+                cb.setChecked(True)
             #TODO: set constraints button
-            # cb.stateChanged.connect()
+            self.connect_cb_to_toggle_parameter(cb, line, param)
             param_input = self.create_line_param_input(line, param)
-            cb_list.append(cb)
             layout.addWidget(param_input)
             layout.addWidget(cb)
             line_layout.addRow(param_label, layout)
@@ -467,7 +479,6 @@ class Sidebars():
 
         delete_button = QPushButton("Delete")
         delete_button.clicked.connect(lambda: self.delete_line(region.lines.index(line)))
-        self.fixed_params_cb.append(cb_list)
         line_layout.addRow(delete_button)
         tab_layout.addWidget(line_group)
 
@@ -496,7 +507,6 @@ class Sidebars():
         widget = tab_layout.itemAt(line_idx).widget()
         tab_layout.removeWidget(widget)
         widget.deleteLater()
-        self.fixed_params_cb.pop(line_idx)
 
     def delete_line(self, line_idx):
         self.logger.debug("Deleting peak")
@@ -519,6 +529,7 @@ class Sidebars():
     def update_line_param(self, line, param, value, edit):
         self.logger.debug(f"Updating peak parameter {param} to {value}")
         edit.setText(value)
+        value = value.replace(',', '.')
         value = float(value)
         self.workspace.change_line_parameter(line, param, value)
 
@@ -565,6 +576,15 @@ class Sidebars():
                 self.workspace.add_line(region)
             self.add_line_to_tab(self.current_region.lines[-1])
             self.parent.update_viewer()
+    
+    def connect_cb_to_toggle_parameter(self, cb, line, param):
+        cb.stateChanged.connect(lambda: self.toggle_parameter(line, param))
+
+    def toggle_parameter(self, line, parameter):
+        self.logger.debug(f"Toggling parameter {parameter}")
+        if parameter == 'fwhm':
+            parameter = 'scale'
+        line.toggle_parameter(parameter)
 
     def refit_region(self):
         self.logger.debug("Refitting region")
@@ -578,12 +598,33 @@ class Sidebars():
         region = selected_item.data(Qt.UserRole)
         
         if self.reoptimize_all_box.isChecked():
-            fw = FittingWindow(self.workspace.refit, region, tol=0.15, full_refit=True, fit_alg=fit_alg)
+            fw = FittingWindow(self.workspace.refit, region, full_refit=True, fit_alg=fit_alg)
             fw.exec()
         else:
-            fixed_params = self.parse_fixed_params()
-            fw = FittingWindow(self.workspace.refit, region, fixed_params=fixed_params, tol=0.2, fit_alg=fit_alg, loc_tol=1)
+            fw = FittingWindow(self.workspace.refit, region, fit_alg=fit_alg)
             fw.exec()
-
-    def parse_fixed_params(self):
-        return [i for i, box in enumerate(chain(*self.fixed_params_cb)) if box.isChecked()]
+    
+    def refit_all_regions(self):
+        self.logger.debug("Refitting all regions")
+        if self.fast_fit.isChecked():
+            fit_alg = 'least squares'
+        else:
+            fit_alg = 'differential evolution'
+        fw = FittingWindow(self.workspace.refit_all_regions, self.current_spectrum, full_refit=False, fit_alg=fit_alg)
+        fw.exec()
+    
+    def refit_all_spectra(self):
+        self.logger.debug("Refitting all spectra")
+        if self.fast_fit.isChecked():
+            fit_alg = 'least squares'
+        else:
+            fit_alg = 'differential evolution'
+        
+        skip_survey = self.skip_survey_box.isChecked()
+        files, groups, spectra = self.aggregate_left_panel_items()
+        spectra = self.workspace.aggregate_unique_spectra(spectra, files, groups, skip_survey)
+        if spectra is None or len(spectra) == 0:
+            spectra = self.workspace.aggregate_spectra()
+        
+        fw = FittingWindow(self.workspace.refit_all_spectra, spectra, full_refit=False, fit_alg=fit_alg)
+        fw.exec()
