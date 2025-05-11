@@ -89,8 +89,8 @@ class Workspace():
     
     def paste_region(self, region_to_copy, other_spectra, keep_old_regions=False):
         init_min_coef, init_max_coef = region_to_copy.norm_coefs
-        s_idx = region_to_copy.start_idx
-        e_idx = region_to_copy.end_idx
+        s_x = region_to_copy.x[0]
+        e_x = region_to_copy.x[-1]
         init_lines = []
         for l in region_to_copy.lines:
             loc = l.loc
@@ -103,6 +103,8 @@ class Workspace():
             min_coef, max_coef = s.norm_coefs
             if not keep_old_regions:
                 s.regions = []
+            s_idx = self.find_closest_idx(s_x, s)
+            e_idx = self.find_closest_idx(e_x, s)
             new_r = s.create_region(s_idx, e_idx)
             self.recalculate_background(new_r)
             for l in init_lines:
