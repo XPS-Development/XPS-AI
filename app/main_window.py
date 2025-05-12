@@ -18,16 +18,15 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setup_logging()
 
-        self.setWindowTitle("Spectral Data Processing App")
+        self.setWindowTitle("XPS AI")
         self.setGeometry(100, 100, 1500, 750)
 
         m = self.load_model()
-        self.workspace = Workspace(model=m)  # Initialize your workspace
+        self.workspace = Workspace(model=m)  # Initialize workspace
 
         self.initUI()
     
     def setup_logging(self, log_level=logging.DEBUG):
-        # Set up logging
         self.logger = logging.getLogger(__name__)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 

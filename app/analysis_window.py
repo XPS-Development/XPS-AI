@@ -17,7 +17,7 @@ class AnalysisWindow(QDialog):
 
         self.attrs = ('loc', 'area', 'fwhm', 'gl_ratio')
         self.header = ('Position', 'Area', 'FWHM', 'GL')
-        self.fmt = ('{:.1f}', '{:.1f}', '{:.1f}', '{:.2f}')
+        self.fmt = ('{:.2f}', '{:.2f}', '{:.2f}', '{:.2f}')
 
         layout = QVBoxLayout()
 
@@ -27,7 +27,7 @@ class AnalysisWindow(QDialog):
         self.tree_widget.setHeaderHidden(True)
         self.populate_tree()
         tree_layout = QVBoxLayout()
-        tree_layout.addWidget(QLabel("Available Objects:"))
+        tree_layout.addWidget(QLabel("Available objects:"))
         tree_layout.addWidget(self.tree_widget.search_box)
         tree_layout.addWidget(self.tree_widget)
 
@@ -43,7 +43,7 @@ class AnalysisWindow(QDialog):
         self.table_widget.setMinimumSize(total_width, 300)
         self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         list_layout = QVBoxLayout()
-        list_layout.addWidget(QLabel("Selected Objects:"))
+        list_layout.addWidget(QLabel("Selected objects:"))
         list_layout.addWidget(self.table_widget)
 
         # Buttons to move items
@@ -116,8 +116,8 @@ class AnalysisWindow(QDialog):
                 tree[file][1][group] = group_item
                 tree[file][0].addChild(group_item)
             tree[file][1][group].addChild(spectrum_item)
+            i = 0
             for reg_n in s.regions:
-                i = 0
                 for p in reg_n.lines:
                     peak_name = f"Peak {i} at {p.loc:.1f}"
                     peak_item = QTreeWidgetItem([peak_name])
@@ -150,7 +150,7 @@ class AnalysisWindow(QDialog):
         for item in selected_items:
             selected_lines.extend(self.traverse(item))
         for item in selected_lines:
-            if item.data(0, Qt.UserRole) not in self.selected_objects:
+            if not (item.data(0, Qt.UserRole) in self.selected_objects or item.isHidden()):
                 self.selected_objects.append(item.data(0, Qt.UserRole))
         self.highlight_added_items()
         self.update_table()
@@ -189,7 +189,7 @@ class AnalysisWindow(QDialog):
 
     def view(self):
         self.plot_dialog = QDialog()
-        self.plot_dialog.setWindowTitle("Trend Plot")
+        self.plot_dialog.setWindowTitle("Trend plot")
         self.plot_dialog.setGeometry(100, 100, 800, 600)
         plot_layout = QVBoxLayout()
         self.plot_dialog.setLayout(plot_layout)
