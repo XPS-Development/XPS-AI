@@ -1,3 +1,5 @@
+import csv
+
 import numpy as np
 import pyqtgraph as pg
 
@@ -45,6 +47,11 @@ class AnalysisWindow(QDialog):
         list_layout = QVBoxLayout()
         list_layout.addWidget(QLabel("Selected objects:"))
         list_layout.addWidget(self.table_widget)
+
+        # Export table button
+        btn_export = QPushButton("Export table")
+        btn_export.clicked.connect(self.export_table)
+        list_layout.addWidget(btn_export)
 
         # Buttons to move items
         btn_layout = QVBoxLayout()
@@ -125,6 +132,20 @@ class AnalysisWindow(QDialog):
                     spectrum_item.addChild(peak_item)
                     i += 1
         self.tree_widget.expandAll()
+    
+    def export_table(self):
+        path, ok = QFileDialog.getSaveFileName(
+            self, 'Save CSV', '', 'CSV(*.csv)')
+        if ok:
+            columns = range(self.table_widget.columnCount())
+            header = [self.table_widget.horizontalHeaderItem(column).text()
+                      for column in columns]
+            with open(path, 'w') as csvfile:
+                writer = csv.writer(
+                    csvfile, dialect='excel', lineterminator='\n')
+                writer.writerow(header)
+                for row in range(self.table_widget.rowCount()):
+                    writer.writerow(self.table_widget.item(row, column).text() for column in columns)
     
     def highlight_added_items(self):
         for i in range(self.tree_widget.topLevelItemCount()):
