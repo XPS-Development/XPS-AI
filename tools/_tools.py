@@ -11,7 +11,7 @@ def lorentz(x, loc, scale):
 
 
 def pseudo_voight(x, loc, scale, c, r):
-    return c * (r * gauss(x, loc, scale / np.sqrt(2*np.log(2))) + (1 - r) * lorentz(x, loc, scale))
+    return c * ((1 - r) * gauss(x, loc, scale / np.sqrt(2 * np.log(2))) + r * lorentz(x, loc, scale))
 
 
 def peak_sum(n):
