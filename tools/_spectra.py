@@ -21,10 +21,7 @@ class Line():
         self._loc = loc
         self._scale = scale
         self._c = const
-        self._gl = gl_ratio 
-
-        self.area = const * (1 + gl_ratio * (np.sqrt(2) * np.log(2) - 1))
-        self.height = self.f(loc)
+        self._gl = gl_ratio
 
         self.constraints = [None] * 4
         self.fixed_parameters = [False] * 4
@@ -69,7 +66,6 @@ class Line():
         elif gl_ratio > 1:
             gl_ratio = 1
         self._gl = gl_ratio
-        self.area = self.const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.update_constraint('gl_ratio')
     
     @gl_ratio.getter
@@ -83,7 +79,6 @@ class Line():
     @const.setter
     def const(self, const):
         self._c = const
-        self.area = const * (1 + self.gl_ratio * (np.sqrt(2) * np.log(2) - 1))
         self.update_constraint('const')
 
     def fixed_constraint(self, value):

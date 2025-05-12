@@ -446,12 +446,8 @@ class Sidebars():
         editable_params = (
             ('Position', 'loc'),
             ('FWHM', 'fwhm'),
-            ('Amplitude', 'const'),
+            ('Area', 'const'),
             ('GL ratio', 'gl_ratio'),
-        )
-        noneditable_params = (
-            ('Area', 'area'),
-            ('Height', 'height')
         )
         line_group = QGroupBox(f"Peak {region.lines.index(line)}")
         line_layout = QFormLayout()
@@ -474,8 +470,6 @@ class Sidebars():
             layout.addWidget(param_input)
             layout.addWidget(cb)
             line_layout.addRow(param_label, layout)
-        for (param_label, param) in noneditable_params:
-            line_layout.addRow(param_label, self.create_line_param_input(line, param, read_only=True))
 
         delete_button = QPushButton("Delete")
         delete_button.clicked.connect(lambda: self.delete_line(region.lines.index(line)))
@@ -496,9 +490,13 @@ class Sidebars():
         self.logger.debug("Updating lines settings tab")
         tab = self.region_tabs.widget(1)
         region = self.current_region
+        if region is None: # check region
+            return
+        if region.lines is None: # check if region has lines
+            return
         for line, line_setting in zip(region.lines, tab.findChildren(QGroupBox)):
             line_setting.setTitle(f"Peak {region.lines.index(line)}")
-            for param, param_input in zip(('loc', 'fwhm', 'const', 'gl_ratio', 'area', 'height'), line_setting.findChildren(QLineEdit)):
+            for param, param_input in zip(('loc', 'fwhm', 'const', 'gl_ratio'), line_setting.findChildren(QLineEdit)):
                 param_input.setText(f"{getattr(line, param):.2f}")
 
     def remove_line_settings(self, line_idx):

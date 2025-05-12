@@ -15,7 +15,7 @@ class AnalysisWindow(QDialog):
         self.setGeometry(100, 100, 700, 400)
         self.workspace = workspace
 
-        self.attrs = ('loc', 'area', 'fwhm', 'gl_ratio')
+        self.attrs = ('loc', 'const', 'fwhm', 'gl_ratio')
         self.header = ('Position', 'Area', 'FWHM', 'GL')
         self.fmt = ('{:.2f}', '{:.2f}', '{:.2f}', '{:.2f}')
 
