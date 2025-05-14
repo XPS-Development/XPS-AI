@@ -141,6 +141,7 @@ class Workspace():
             name = b.name
             x = np.array(b.binding_axis, dtype=np.float32)
             y = np.array(b.data[0], dtype=np.float32)
+            y /= (b.signal_collection_time * b.num_scans) # turn counts to counts-per-second
             self.add_spectrum(x, y, name=name, file=file_name, group=group)
 
     def load_specs2(self, file: Path):
