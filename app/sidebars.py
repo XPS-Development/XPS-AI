@@ -181,6 +181,7 @@ class Sidebars():
         self.workspace.paste_spectra(self.copied_spectrum, spectra)
         self.load_region_tab()
         self.copied_spectrum = None
+        self.parent.update_viewer()
 
     def move_selected_spectra(self, spectra):
         """Move selected spectra to a new group."""
