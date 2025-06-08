@@ -3,7 +3,6 @@ import sys
 import logging
 import traceback
 from pathlib import Path
-from datetime import datetime
 
 from PySide6 import QtGui
 from PySide6.QtWidgets import *
@@ -50,8 +49,7 @@ class MainWindow(QMainWindow):
         error_message = "".join(traceback.format_exception(exctype, value, tb))
         self.logger.critical(f"Unhandled Exception:\n{error_message}")
 
-        now = datetime.now()
-        file_path = f'error_log_{now.strftime("%Y%m%d_%H%M%S")}.txt'
+        file_path = f'last_error_log.txt'
         self.log_buffer.seek(0)  # Move to the start of the buffer
         log_contents = self.log_buffer.read()
         with open(file_path, "w") as f:
