@@ -13,10 +13,10 @@ The XPS-AI project is a comprehensive toolset for analyzing X-ray Photoelectron 
 **Requirements**: Python 3.8
 
 1. Clone git repo:  
-`git clone -b dev --single-branch https://github.com/vahahahart/XPS-AI.git`  
+`git clone https://github.com/XPS-Development/XPS-AI.git`  
 (Optional) Create new python virtual environment:  
 `cd XPS-AI`  
-`python -m venv venv`
+`python -m venv venv` (or other methods to create virtual env)
 
 2. Install requirements:  
 `pip install -r app_requirements.txt`
