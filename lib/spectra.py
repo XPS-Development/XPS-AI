@@ -218,6 +218,12 @@ class Peak:
         """
         return pvoigt(x, self.amp, self.cen, self.sig, self.frac)
 
+    def __repr__(self) -> str:
+        return (
+            f"<Peak {self.id}: "
+            f"amp={self.amp}, cen={self.cen}, sig={self.sig}, frac={self.frac}>"
+        )
+
 
 class Region:
     def __init__(self, spectrum_id: str):
