@@ -7,7 +7,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import numpy as np
 import pytest
 from lmfit import Parameters
-from lib import Optimizer, ndpvoigt
+from lib.optimization import Optimizer
+from lib.funcs import ndpvoigt
 
 
 @pytest.fixture
