@@ -1,16 +1,12 @@
 from itertools import chain
-
-import numpy as np
-
-from lib._spectra import Spectrum, Region, Peak
-from ._tools import batch, ndpvoigt, linear_background, static_shirley_background
-
-
 from typing import Sequence, Tuple, Optional, Callable
+
 import numpy as np
 from numpy.typing import NDArray
-from itertools import chain
 from lmfit import Parameters, minimize
+
+from .tools import batch
+from .funcs import ndpvoigt
 
 
 class Optimizer:
