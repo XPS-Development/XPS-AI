@@ -427,14 +427,13 @@ class Spectrum:
             )
 
         region = Region(
-            self.x[start_idx:end_idx],
-            self.y[start_idx:end_idx],
-            self.y_norm[start_idx:end_idx],
-            self.y_smoothed[start_idx],
-            self.y_smoothed[end_idx - 1],
-            start_idx,
-            end_idx,
-            background_type,
+            spectrum_id=self.id,
+            x=self.x[start_idx:end_idx],
+            y=self.y[start_idx:end_idx],
+            y_norm=self.y_norm[start_idx:end_idx],
+            i_1=self.y_smoothed[start_idx],
+            i_2=self.y_smoothed[end_idx - 1],
+            background_type=background_type,
         )
         self.add_region(region)
         return region
