@@ -1,4 +1,5 @@
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Optional, Union, List, Tuple
 from uuid import uuid4
 
 import numpy as np
@@ -232,10 +233,175 @@ class Region:
         self.peaks: list[Peak] = []
 
 
+@dataclass
 class Spectrum:
-    def __init__(self):
-        self.id: str = uuid4().hex
-        self.regions: list[Region] = []
+    """Spectrum data container with optional processed attributes.
+
+    Holds the raw spectrum data and optional preprocessed data, along with
+    regions of interest. Supports charge correction and region management.
+
+    Parameters
+    ----------
+    x : NDArray
+        Energy axis of the spectrum.
+    y : NDArray
+        Intensity axis of the spectrum.
+    name : Optional[str], default=None
+        Human-readable name for the spectrum.
+    file : Optional[str], default=None
+        Source file path for the spectrum.
+    group : Optional[str], default=None
+        Group label for dataset organization.
+
+    Attributes
+    ----------
+    id : str
+        Unique identifier for the spectrum (UUID4 hex).
+    regions : List[Region]
+        List of Region objects associated with this spectrum.
+    charge_correction : float
+        Applied shift to the energy axis.
+    y_norm : Optional[NDArray]
+        Normalized intensity (0-1), filled after normalization.
+    norm_coefs : Optional[Tuple[float, float]]
+        Minimum and maximum used for normalization.
+    x_interpolated : Optional[NDArray]
+        Interpolated x-axis for uniform sampling.
+    y_interpolated : Optional[NDArray]
+        Interpolated intensity corresponding to x_interpolated.
+    y_smoothed : Optional[NDArray]
+        Smoothed intensity using, e.g., Savitzky-Golay filter.
+    y_norm_smoothed : Optional[NDArray]
+        Smoothed normalized intensity.
+    """
+
+    x: NDArray
+    y: NDArray
+    name: Optional[str] = None
+    file: Optional[str] = None
+    group: Optional[str] = None
+
+    id: str = field(default_factory=lambda: uuid4().hex)
+    regions: List[Region] = field(default_factory=list)
+    charge_correction: float = 0.0
+
+    # Optional fields for processed data
+    y_norm: Optional[NDArray] = None
+    norm_coefs: Optional[Tuple[float, float]] = None
+    x_interpolated: Optional[NDArray] = None
+    y_interpolated: Optional[NDArray] = None
+    y_smoothed: Optional[NDArray] = None
+    y_norm_smoothed: Optional[NDArray] = None
+
+    def add_region(self, region: Region) -> None:
+        """Attach a region to the spectrum."""
+        self.regions.append(region)
+
+    def create_region(
+        self, start_idx: int, end_idx: int, background_type: str = "shirley"
+    ) -> Region:
+        """
+        Create a region from spectrum data and attach it.
+
+        Parameters
+        ----------
+        start_idx : int
+            Start index of the region in the spectrum arrays.
+        end_idx : int
+            End index of the region in the spectrum arrays.
+        background_type : str, default 'shirley'
+            Type of background for the region.
+
+        Returns
+        -------
+        Region
+            The newly created region attached to this spectrum.
+
+        Raises
+        ------
+        ValueError
+            If the spectrum has not been normalized and smoothed.
+        """
+        if self.y_norm is None or self.y_smoothed is None:
+            raise ValueError(
+                "Spectrum must be normalized and smoothed before creating regions."
+            )
+
+        region = Region(
+            self.x[start_idx:end_idx],
+            self.y[start_idx:end_idx],
+            self.y_norm[start_idx:end_idx],
+            self.y_smoothed[start_idx],
+            self.y_smoothed[end_idx - 1],
+            start_idx,
+            end_idx,
+            background_type,
+        )
+        self.add_region(region)
+        return region
+
+    def delete_region(self, r: Union[int, Region]) -> None:
+        """
+        Delete a region by index or instance.
+
+        Parameters
+        ----------
+        r : int or Region
+            Index of the region in the regions list or the Region instance.
+        """
+        if isinstance(r, Region):
+            self.regions.remove(r)
+        elif isinstance(r, int):
+            self.regions.pop(r)
+
+    def set_charge_correction(self, delta: float) -> None:
+        """
+        Apply a constant shift to the spectrum energy axis and all regions.
+
+        Parameters
+        ----------
+        delta : float
+            Shift to apply to the x-axis.
+        """
+        self.charge_correction += delta
+        self.x += delta
+        if self.x_interpolated is not None:
+            self.x_interpolated += delta
+        for region in self.regions:
+            region.x += delta
+
+    def remove_charge_correction(self) -> None:
+        """Reset the charge correction to zero."""
+        self.set_charge_correction(-self.charge_correction)
+        self.charge_correction = 0.0
+
+    def summary(self) -> str:
+        """
+        Return a concise summary of the spectrum.
+
+        Returns
+        -------
+        str
+            Summary including size of data arrays, number of regions,
+            charge correction, and status of preprocessing.
+        """
+        lines = [
+            f"Spectrum ID: {self.id}",
+            f"Name: {self.name or 'N/A'}, File: {self.file or 'N/A'}, Group: {self.group or 'N/A'}",
+            f"Data points: {self.x.size}",
+            f"Regions: {len(self.regions)}",
+            f"Charge correction: {self.charge_correction:.3f}",
+            f"Normalized: {'Yes' if self.y_norm is not None else 'No'}",
+            f"Smoothed: {'Yes' if self.y_smoothed is not None else 'No'}",
+            f"Interpolated: {'Yes' if self.x_interpolated is not None else 'No'}",
+        ]
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return (
+            f"<Spectrum id={self.id[:8]} name={self.name or 'N/A'} "
+            f"points={len(self.x)} regions={len(self.regions)} "
+        )
 
 
 class SpectrumCollection:
