@@ -513,12 +513,48 @@ class Spectrum:
 
 
 class SpectrumCollection:
+    """
+    Container for managing and indexing spectra, regions, and peaks.
+
+    SpectrumCollection maintains fast lookup tables (indexes) that map
+    object IDs to their corresponding objects. This allows retrieval
+    of any registered :class:`Spectrum`, :class:`Region`, or :class:`Peak`
+    by its UUID.
+
+    Notes
+    -----
+    - All objects (`Spectrum`, `Region`, `Peak`) must have an `id` attribute
+      that is unique within the collection.
+    - When adding a spectrum via :meth:`add_spectrum`, its regions and peaks
+      are automatically registered.
+    - Removing objects is typically managed through
+      :meth:`Spectrum.remove_region` and :meth:`Region.remove_peak`
+      which also keep the collection in sync.
+
+    Attributes
+    ----------
+    peaks_index : dict[str, Peak]
+        Mapping of peak UUIDs to peak objects.
+    region_index : dict[str, Region]
+        Mapping of region UUIDs to region objects.
+    spectra_index : dict[str, Spectrum]
+        Mapping of spectrum UUIDs to spectrum objects.
+    """
+
     def __init__(self):
-        self.peaks_index = {}  # {id: object}
-        self.region_index = {}
-        self.spectra_index = {}
+        self.peaks_index = {}  # {id: Peak}
+        self.region_index = {}  # {id: Region}
+        self.spectra_index = {}  # {id: Spectrum}
 
     def register(self, obj):
+        """
+        Register an object (spectrum, region, or peak) in the collection.
+
+        Parameters
+        ----------
+        obj : Spectrum or Region or Peak
+            Object to register in the collection.
+        """
         if isinstance(obj, Peak):
             self.peaks_index[obj.id] = obj
         elif isinstance(obj, Region):
@@ -527,6 +563,14 @@ class SpectrumCollection:
             self.spectra_index[obj.id] = obj
 
     def add_spectrum(self, spectrum):
+        """
+        Add a spectrum and automatically register all its regions and peaks.
+
+        Parameters
+        ----------
+        spectrum : Spectrum
+            Spectrum object to add to the collection.
+        """
         self.register(spectrum)
         for region in spectrum.regions:
             self.register(region)
@@ -534,10 +578,49 @@ class SpectrumCollection:
                 self.register(peak)
 
     def get_spectrum(self, id):
+        """
+        Retrieve a spectrum by its UUID.
+
+        Parameters
+        ----------
+        id : str
+            Spectrum UUID.
+
+        Returns
+        -------
+        Spectrum
+            The spectrum corresponding to the given ID.
+        """
         return self.spectra_index[id]
 
     def get_peak(self, id):
+        """
+        Retrieve a peak by its UUID.
+
+        Parameters
+        ----------
+        id : str
+            Peak UUID.
+
+        Returns
+        -------
+        Peak
+            The peak corresponding to the given ID.
+        """
         return self.peaks_index[id]
 
     def get_region(self, id):
+        """
+        Retrieve a region by its UUID.
+
+        Parameters
+        ----------
+        id : str
+            Region UUID.
+
+        Returns
+        -------
+        Region
+            The region corresponding to the given ID.
+        """
         return self.region_index[id]
