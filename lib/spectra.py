@@ -400,7 +400,7 @@ class Spectrum:
     def __repr__(self) -> str:
         return (
             f"<Spectrum id={self.id[:8]} name={self.name or 'N/A'} "
-            f"points={len(self.x)} regions={len(self.regions)} "
+            f"points={self.x.size} regions={len(self.regions)} "
         )
 
 
