@@ -258,16 +258,20 @@ class Region:
     i_2: Optional[float] = None
     background_type: str = "shirley"
 
+    collection: Optional["SpectrumCollection"] = None
+
     id: str = field(default_factory=lambda: uuid4().hex)
     peaks: List[Peak] = field(default_factory=list)
 
     def add_peak(self, peak: Peak) -> None:
-        """Attach a Peak to the region."""
+        """Attach a Peak to the region and notify collection if present."""
         self.peaks.append(peak)
+        if self.collection is not None:
+            self.collection.register(peak)
 
     def remove_peak(self, peak: Union[Peak, str]) -> None:
         """
-        Remove a Peak from the region.
+        Remove a Peak from the region by instance or ID and notify collection.
 
         Parameters
         ----------
@@ -276,8 +280,12 @@ class Region:
         """
         if isinstance(peak, Peak):
             self.peaks = [p for p in self.peaks if p != peak]
+            if self.collection is not None:
+                self.collection.peaks_index.pop(peak.id, None)
         elif isinstance(peak, str):
             self.peaks = [p for p in self.peaks if p.id != peak]
+            if self.collection is not None:
+                self.collection.peaks_index.pop(peak, None)
 
     def update_range(
         self,
@@ -372,6 +380,8 @@ class Spectrum:
     regions: List[Region] = field(default_factory=list)
     charge_correction: float = 0.0
 
+    collection: Optional["SpectrumCollection"] = None
+
     # Optional fields for processed data
     y_norm: Optional[NDArray] = None
     norm_coefs: Optional[Tuple[float, float]] = None
@@ -381,8 +391,10 @@ class Spectrum:
     y_norm_smoothed: Optional[NDArray] = None
 
     def add_region(self, region: Region) -> None:
-        """Attach a region to the spectrum."""
+        """Attach region to spectrum and notify collection if present."""
         self.regions.append(region)
+        if self.collection is not None:
+            self.collection.register(region)
 
     def create_region(
         self, start_idx: int, end_idx: int, background_type: str = "shirley"
@@ -427,21 +439,30 @@ class Spectrum:
         self.add_region(region)
         return region
 
-    def remove_region(self, r: Union[int, Region, str]) -> None:
+    def remove_region(self, region: Union[Region, str]) -> None:
         """
-        Remove a region by index, instance, or UUID.
+        Remove a region from the spectrum by instance or ID and notify collection.
 
         Parameters
         ----------
-        r : int, Region, or str
-            Index in the regions list, Region instance, or Region UUID to remove.
+        region : Region or str
+            Region instance or its UUID to remove.
         """
-        if isinstance(r, int):
-            self.regions.pop(r)
-        elif isinstance(r, Region):
-            self.regions = [reg for reg in self.regions if reg != r]
-        elif isinstance(r, str):
-            self.regions = [reg for reg in self.regions if reg.id != r]
+        if isinstance(region, Region):
+            self.regions = [r for r in self.regions if r.id != region.id]
+            if self.collection is not None:
+                self.collection.region_index.pop(region.id, None)
+                for peak in region.peaks:
+                    self.collection.peaks_index.pop(peak.id, None)
+        elif isinstance(region, str):
+            self.regions = [r for r in self.regions if r.id != region]
+            if self.collection is not None:
+                self.collection.region_index.pop(region, None)
+                # удалить все пики региона тоже:
+                reg = self.collection.region_index.get(region)
+                if reg:
+                    for peak in reg.peaks:
+                        self.collection.peaks_index.pop(peak.id, None)
 
     def set_charge_correction(self, delta: float) -> None:
         """
