@@ -226,11 +226,88 @@ class Peak:
         )
 
 
+@dataclass
 class Region:
-    def __init__(self, spectrum_id: str):
-        self.id: str = uuid4().hex
-        self.spectrum_id: str = spectrum_id
-        self.peaks: list[Peak] = []
+    """Region of interest within a spectrum.
+
+    Stores data arrays, background, and associated peaks.
+
+    Parameters
+    ----------
+    spectrum_id : str
+        ID of the parent Spectrum this region belongs to.
+    x : Optional[NDArray], default=None
+        X-axis values of the region.
+    y : Optional[NDArray], default=None
+        Y-axis values of the region.
+    y_norm : Optional[NDArray], default=None
+        Normalized Y values (0-1).
+    i_1 : Optional[float], default=None
+        Background intensity at start of region.
+    i_2 : Optional[float], default=None
+        Background intensity at end of region.
+    background_type : str, default 'shirley'
+        Type of background applied to the region.
+    """
+
+    spectrum_id: str
+    x: Optional[NDArray] = None
+    y: Optional[NDArray] = None
+    y_norm: Optional[NDArray] = None
+    i_1: Optional[float] = None
+    i_2: Optional[float] = None
+    background_type: str = "shirley"
+
+    id: str = field(default_factory=lambda: uuid4().hex)
+    peaks: List[Peak] = field(default_factory=list)
+
+    def add_peak(self, peak: Peak) -> None:
+        """Attach a Peak to the region."""
+        self.peaks.append(peak)
+
+    def remove_peak(self, peak: Peak) -> None:
+        """Remove a Peak from the region."""
+        self.peaks.remove(peak)
+
+    def update_range(
+        self,
+        x: NDArray,
+        y: NDArray,
+        y_norm: Optional[NDArray] = None,
+        i_1: Optional[float] = None,
+        i_2: Optional[float] = None,
+    ) -> None:
+        """
+        Update the data range and background of the region.
+
+        Parameters
+        ----------
+        x : NDArray
+            New X-axis values.
+        y : NDArray
+            New Y-axis values.
+        y_norm : Optional[NDArray], default=None
+            New normalized Y values.
+        i_1 : Optional[float], default=None
+            Background intensity at start of region.
+        i_2 : Optional[float], default=None
+            Background intensity at end of region.
+        """
+        self.x = x
+        self.y = y
+        if y_norm is not None:
+            self.y_norm = y_norm
+        if i_1 is not None:
+            self.i_1 = i_1
+        if i_2 is not None:
+            self.i_2 = i_2
+
+    def __repr__(self) -> str:
+        return (
+            f"<Region id={self.id[:8]} spectrum_id={self.spectrum_id[:8]} "
+            f"points={self.x.size if self.x is not None else 0} "
+            f"peaks={len(self.peaks)} background_type={self.background_type}>"
+        )
 
 
 @dataclass
