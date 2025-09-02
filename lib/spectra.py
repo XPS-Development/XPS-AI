@@ -265,9 +265,19 @@ class Region:
         """Attach a Peak to the region."""
         self.peaks.append(peak)
 
-    def remove_peak(self, peak: Peak) -> None:
-        """Remove a Peak from the region."""
-        self.peaks.remove(peak)
+    def remove_peak(self, peak: Union[Peak, str]) -> None:
+        """
+        Remove a Peak from the region.
+
+        Parameters
+        ----------
+        peak : Peak or str
+            Peak instance or its UUID to remove.
+        """
+        if isinstance(peak, Peak):
+            self.peaks = [p for p in self.peaks if p != peak]
+        elif isinstance(peak, str):
+            self.peaks = [p for p in self.peaks if p.id != peak]
 
     def update_range(
         self,
@@ -417,19 +427,21 @@ class Spectrum:
         self.add_region(region)
         return region
 
-    def delete_region(self, r: Union[int, Region]) -> None:
+    def remove_region(self, r: Union[int, Region, str]) -> None:
         """
-        Delete a region by index or instance.
+        Remove a region by index, instance, or UUID.
 
         Parameters
         ----------
-        r : int or Region
-            Index of the region in the regions list or the Region instance.
+        r : int, Region, or str
+            Index in the regions list, Region instance, or Region UUID to remove.
         """
-        if isinstance(r, Region):
-            self.regions.remove(r)
-        elif isinstance(r, int):
+        if isinstance(r, int):
             self.regions.pop(r)
+        elif isinstance(r, Region):
+            self.regions = [reg for reg in self.regions if reg != r]
+        elif isinstance(r, str):
+            self.regions = [reg for reg in self.regions if reg.id != r]
 
     def set_charge_correction(self, delta: float) -> None:
         """
