@@ -477,8 +477,6 @@ class Spectrum:
         self.x += delta
         if self.x_interpolated is not None:
             self.x_interpolated += delta
-        for region in self.regions:
-            region.x += delta
 
     def remove_charge_correction(self) -> None:
         """Reset the charge correction to zero."""
