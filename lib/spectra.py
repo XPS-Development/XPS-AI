@@ -545,7 +545,7 @@ class SpectrumCollection:
         self.region_index = {}  # {id: Region}
         self.spectra_index = {}  # {id: Spectrum}
 
-    def register(self, obj):
+    def register(self, obj: Union[Spectrum, Region, Peak]):
         """
         Register an object (spectrum, region, or peak) in the collection.
 
@@ -561,14 +561,9 @@ class SpectrumCollection:
         elif isinstance(obj, Spectrum):
             self.spectra_index[obj.id] = obj
 
-    def add_spectrum(self, spectrum):
+    def add_spectrum(self, spectrum: Spectrum):
         """
         Add a spectrum and automatically register all its regions and peaks.
-
-        Parameters
-        ----------
-        spectrum : Spectrum
-            Spectrum object to add to the collection.
         """
         self.register(spectrum)
         for region in spectrum.regions:
@@ -576,7 +571,7 @@ class SpectrumCollection:
             for peak in region.peaks:
                 self.register(peak)
 
-    def get_spectrum(self, id):
+    def get_spectrum(self, id: str):
         """
         Retrieve a spectrum by its UUID.
 
@@ -592,34 +587,14 @@ class SpectrumCollection:
         """
         return self.spectra_index[id]
 
-    def get_peak(self, id):
+    def get_peak(self, id: str):
         """
         Retrieve a peak by its UUID.
-
-        Parameters
-        ----------
-        id : str
-            Peak UUID.
-
-        Returns
-        -------
-        Peak
-            The peak corresponding to the given ID.
         """
         return self.peaks_index[id]
 
-    def get_region(self, id):
+    def get_region(self, id: str):
         """
         Retrieve a region by its UUID.
-
-        Parameters
-        ----------
-        id : str
-            Region UUID.
-
-        Returns
-        -------
-        Region
-            The region corresponding to the given ID.
         """
         return self.region_index[id]
