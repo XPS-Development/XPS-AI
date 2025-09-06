@@ -145,9 +145,7 @@ def test_multi_spectrum_fit(make_data_multi):
         model=ndpvoigt,
     )
 
-    resid_before = np.sum(
-        opt.ndresid(fit_params, (x1, x2), (y1, y2), combinations) ** 2
-    )
+    resid_before = np.sum(opt.ndresid(fit_params, (x1, x2), (y1, y2), combinations) ** 2)
     res = opt.fit(return_result=True)
     resid_after = np.sum(opt.ndresid(res.params, (x1, x2), (y1, y2), combinations) ** 2)
 
@@ -170,9 +168,7 @@ def test_linked_parameters_across_spectra(make_data_multi):
 
     res = opt.fit(return_result=True)
 
-    assert np.isclose(
-        res.params["p3_amp"].value, res.params["p0_amp"].value * 0.5, rtol=1e-6
-    )
+    assert np.isclose(res.params["p3_amp"].value, res.params["p0_amp"].value * 0.5, rtol=1e-6)
 
 
 def test_invalid_expression_reference(make_data_single):

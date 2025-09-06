@@ -144,18 +144,10 @@ class Peak:
         self.id: str = uuid4().hex
         self.region_id: str = region_id
 
-        self.amp_par: PeakParameter = PeakParameter(
-            "amp", value=1, min_val=0, max_val=np.inf
-        )
-        self.cen_par: PeakParameter = PeakParameter(
-            "cen", value=0, min_val=-np.inf, max_val=np.inf
-        )
-        self.sig_par: PeakParameter = PeakParameter(
-            "sig", value=1, min_val=0, max_val=np.inf
-        )
-        self.frac_par: PeakParameter = PeakParameter(
-            "frac", value=1, min_val=0, max_val=1
-        )
+        self.amp_par: PeakParameter = PeakParameter("amp", value=1, min_val=0, max_val=np.inf)
+        self.cen_par: PeakParameter = PeakParameter("cen", value=0, min_val=-np.inf, max_val=np.inf)
+        self.sig_par: PeakParameter = PeakParameter("sig", value=1, min_val=0, max_val=np.inf)
+        self.frac_par: PeakParameter = PeakParameter("frac", value=1, min_val=0, max_val=1)
 
     @property
     def fwhm(self) -> float:
@@ -220,10 +212,7 @@ class Peak:
         return pvoigt(x, self.amp, self.cen, self.sig, self.frac)
 
     def __repr__(self) -> str:
-        return (
-            f"<Peak {self.id}: "
-            f"amp={self.amp}, cen={self.cen}, sig={self.sig}, frac={self.frac}>"
-        )
+        return f"<Peak {self.id}: " f"amp={self.amp}, cen={self.cen}, sig={self.sig}, frac={self.frac}>"
 
 
 @dataclass
@@ -396,9 +385,7 @@ class Spectrum:
         if self.collection is not None:
             self.collection.register(region)
 
-    def create_region(
-        self, start_idx: int, end_idx: int, background_type: str = "shirley"
-    ) -> Region:
+    def create_region(self, start_idx: int, end_idx: int, background_type: str = "shirley") -> Region:
         """
         Create a region from spectrum data and attach it.
 
@@ -422,9 +409,7 @@ class Spectrum:
             If the spectrum has not been normalized and smoothed.
         """
         if self.y_norm is None or self.y_smoothed is None:
-            raise ValueError(
-                "Spectrum must be normalized and smoothed before creating regions."
-            )
+            raise ValueError("Spectrum must be normalized and smoothed before creating regions.")
 
         region = Region(
             spectrum_id=self.id,

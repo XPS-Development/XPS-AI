@@ -38,18 +38,14 @@ class Optimizer:
 
         self._validate_peaks(peaks_parameters)
         self.x, self.y = self._process_xy(x, y)
-        self.combinations = self._process_combinations(
-            combinations, len(self.x), len(peaks_parameters) // 4
-        )
+        self.combinations = self._process_combinations(combinations, len(self.x), len(peaks_parameters) // 4)
 
         self.init_params = peaks_parameters
         self.model = model if model is not None else ndpvoigt
 
     def _validate_peaks(self, params: Parameters) -> None:
         if len(params) % 4 != 0:
-            raise ValueError(
-                f"Expected number of parameters divisible by 4, got {len(params)}"
-            )
+            raise ValueError(f"Expected number of parameters divisible by 4, got {len(params)}")
 
     def _process_xy(
         self,

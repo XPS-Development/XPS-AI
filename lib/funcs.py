@@ -23,9 +23,7 @@ def gauss(x: NDArray, center: float, sigma: float) -> NDArray:
     NDArray
         Gaussian function evaluated at x.
     """
-    return (
-        1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-((x - center) ** 2) / (2 * sigma**2))
-    )
+    return 1 / (sigma * np.sqrt(2 * np.pi)) * np.exp(-((x - center) ** 2) / (2 * sigma**2))
 
 
 def lorentz(x: NDArray, center: float, sigma: float) -> NDArray:
@@ -49,9 +47,7 @@ def lorentz(x: NDArray, center: float, sigma: float) -> NDArray:
     return 1 / (np.pi * sigma * (1 + ((x - center) / sigma) ** 2))
 
 
-def pvoigt(
-    x: NDArray, amplitude: float, center: float, sigma: float, fraction: float
-) -> NDArray:
+def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: float) -> NDArray:
     """
     Pseudo-Voigt function: linear combination of normalized Gaussian and Lorentzian.
 
@@ -74,10 +70,7 @@ def pvoigt(
         Pseudo-Voigt function evaluated at x.
     """
     sigma_g = sigma / np.sqrt(2 * np.log(2))  # convert to Gaussian sigma for same FWHM
-    return amplitude * (
-        (1 - fraction) * gauss(x, center, sigma_g)
-        + fraction * lorentz(x, center, sigma)
-    )
+    return amplitude * ((1 - fraction) * gauss(x, center, sigma_g) + fraction * lorentz(x, center, sigma))
 
 
 def npvoigt(params: dict[str, float], x: NDArray, combine: Sequence[int]) -> NDArray:
@@ -138,9 +131,7 @@ def ndpvoigt(
     return y_list
 
 
-def static_shirley_background(
-    x: NDArray, y: NDArray, i_1: float, i_2: float, iters: int = 8
-) -> NDArray:
+def static_shirley_background(x: NDArray, y: NDArray, i_1: float, i_2: float, iters: int = 8) -> NDArray:
     """
     Calculate iterative Shirley background.
 
