@@ -232,6 +232,8 @@ class Region:
         X-axis values (energy/binding energy) of the region.
     y : Optional[NDArray], default=None
         Intensity values of the region.
+    norm_coefs : tuple[float, float], default=(0, 1)
+        Coefficients for normalizing the intensity values.
     y_norm : Optional[NDArray], default=None
         Normalized intensity values (0–1).
     i_1 : Optional[float], default=None
@@ -254,6 +256,7 @@ class Region:
     spectrum_id: str
     x: Optional[NDArray] = None
     y: Optional[NDArray] = None
+    norm_coefs: tuple[float, float] = (0, 1)
     y_norm: Optional[NDArray] = None
     i_1: Optional[float] = None
     i_2: Optional[float] = None
@@ -446,6 +449,7 @@ class Spectrum:
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
             y_norm=self.y_norm[start_idx:end_idx],
+            norm_coefs=self.norm_coefs,
             i_1=self.y_smoothed[start_idx],
             i_2=self.y_smoothed[end_idx - 1],
             background_type=background_type,
