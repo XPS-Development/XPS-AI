@@ -141,7 +141,7 @@ class Peak:
     """
 
     def __init__(self, region_id: str) -> None:
-        self.id: str = uuid4().hex
+        self.id: str = f"p{uuid4().hex}"
         self.region_id: str = region_id
 
         self.amp_par: PeakParameter = PeakParameter("amp", value=1, min_val=0, max_val=np.inf)
@@ -260,7 +260,7 @@ class Region:
     background_type: str = "shirley"
     collection: Optional["SpectrumCollection"] = None
 
-    id: str = field(default_factory=lambda: uuid4().hex)
+    id: str = field(default_factory=lambda: f"r{uuid4().hex}")
     peaks: List["Peak"] = field(default_factory=list)
 
     def add_peak(self, peak: "Peak") -> None:
@@ -385,7 +385,7 @@ class Spectrum:
     file: Optional[str] = None
     group: Optional[str] = None
 
-    id: str = field(default_factory=lambda: uuid4().hex)
+    id: str = field(default_factory=lambda: f"s{uuid4().hex}")
     regions: List[Region] = field(default_factory=list)
     charge_correction: float = 0.0
 
