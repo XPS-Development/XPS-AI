@@ -217,26 +217,38 @@ class Peak:
 
 @dataclass
 class Region:
-    """Region of interest within a spectrum.
+    """
+    Region of interest within a spectrum.
 
-    Stores data arrays, background, and associated peaks.
+    A `Region` stores a subsection of spectrum data (X/Y arrays),
+    background information, and associated peaks. Regions may belong
+    to a parent `Spectrum` and can be managed by a `SpectrumCollection`.
 
     Parameters
     ----------
     spectrum_id : str
-        ID of the parent Spectrum this region belongs to.
+        UUID of the parent spectrum this region belongs to.
     x : Optional[NDArray], default=None
-        X-axis values of the region.
+        X-axis values (energy/binding energy) of the region.
     y : Optional[NDArray], default=None
-        Y-axis values of the region.
+        Intensity values of the region.
     y_norm : Optional[NDArray], default=None
-        Normalized Y values (0-1).
+        Normalized intensity values (0–1).
     i_1 : Optional[float], default=None
-        Background intensity at start of region.
+        Background intensity at the start of the region.
     i_2 : Optional[float], default=None
-        Background intensity at end of region.
-    background_type : str, default 'shirley'
-        Type of background applied to the region.
+        Background intensity at the end of the region.
+    background_type : str, default="shirley"
+        Type of background applied (e.g., "shirley", "linear").
+    collection : Optional[SpectrumCollection], default=None
+        Reference to the collection for automatic registration.
+
+    Attributes
+    ----------
+    id : str
+        Unique identifier of the region (UUID4 hex).
+    peaks : list[Peak]
+        Peaks associated with this region.
     """
 
     spectrum_id: str
@@ -246,21 +258,27 @@ class Region:
     i_1: Optional[float] = None
     i_2: Optional[float] = None
     background_type: str = "shirley"
-
     collection: Optional["SpectrumCollection"] = None
 
     id: str = field(default_factory=lambda: uuid4().hex)
-    peaks: List[Peak] = field(default_factory=list)
+    peaks: List["Peak"] = field(default_factory=list)
 
-    def add_peak(self, peak: Peak) -> None:
-        """Attach a Peak to the region and notify collection if present."""
+    def add_peak(self, peak: "Peak") -> None:
+        """
+        Attach a peak to the region and notify collection if present.
+
+        Parameters
+        ----------
+        peak : Peak
+            Peak instance to add.
+        """
         self.peaks.append(peak)
         if self.collection is not None:
             self.collection.register(peak)
 
-    def remove_peak(self, peak: Union[Peak, str]) -> None:
+    def remove_peak(self, peak: Union["Peak", str]) -> None:
         """
-        Remove a Peak from the region by instance or ID and notify collection.
+        Remove a peak from the region by instance or ID and notify collection.
 
         Parameters
         ----------
@@ -285,7 +303,7 @@ class Region:
         i_2: Optional[float] = None,
     ) -> None:
         """
-        Update the data range and background of the region.
+        Update the data arrays and background values of the region.
 
         Parameters
         ----------
@@ -296,9 +314,9 @@ class Region:
         y_norm : Optional[NDArray], default=None
             New normalized Y values.
         i_1 : Optional[float], default=None
-            Background intensity at start of region.
+            Background intensity at the start of the region.
         i_2 : Optional[float], default=None
-            Background intensity at end of region.
+            Background intensity at the end of the region.
         """
         self.x = x
         self.y = y
