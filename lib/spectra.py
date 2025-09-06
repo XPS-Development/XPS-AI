@@ -336,6 +336,8 @@ class Spectrum:
         Source file path for the spectrum.
     group : Optional[str], default=None
         Group label for dataset organization.
+    collection: Optional[SpectrumCollection], default=None
+        Collection to which the spectrum belongs.
 
     Attributes
     ----------
@@ -369,7 +371,7 @@ class Spectrum:
     regions: List[Region] = field(default_factory=list)
     charge_correction: float = 0.0
 
-    collection: Optional["SpectrumCollection"] = None
+    _collection: Optional["SpectrumCollection"] = field(default=None, repr=False, init=False)
 
     # Optional fields for processed data
     y_norm: Optional[NDArray] = None
@@ -378,6 +380,16 @@ class Spectrum:
     y_interpolated: Optional[NDArray] = None
     y_smoothed: Optional[NDArray] = None
     y_norm_smoothed: Optional[NDArray] = None
+
+    @property
+    def collection(self) -> Optional["SpectrumCollection"]:
+        return self._collection
+
+    @collection.setter
+    def collection(self, collection: Optional["SpectrumCollection"]) -> None:
+        self._collection = collection
+        for region in self.regions:
+            region.collection = collection
 
     def add_region(self, region: Region) -> None:
         """Attach region to spectrum and notify collection if present."""
