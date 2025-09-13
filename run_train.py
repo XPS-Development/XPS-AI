@@ -12,7 +12,7 @@ import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader, random_split
 
-from tools import view_labeled_data
+from tools.viewer import view_labeled_data
 from model.train.dataset import SynthGenerator, XPSDataset
 from model.train.metrics import IoU, Accuracy, Precision, Recall, DiceFocalLoss, IoULoss
 from model.models.model_deeper import XPSModel
@@ -22,7 +22,7 @@ from tools import Analyzer, Spectrum
 
 def load_params():
     yaml_loader = YAML(typ='safe', pure=True)
-    params = yaml_loader.load(Path('model/params.yaml'))
+    params = yaml_loader.load(Path('XPS-AI/model/params.yaml'))
 
     seed = params['seed']
     path_to_data = params['data_path']
