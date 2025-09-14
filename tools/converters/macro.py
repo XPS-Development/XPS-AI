@@ -98,9 +98,7 @@ def get_region_coordinates(region_number):
     return (x, y)
 
 def check_region_validity(region_coords):
-
     """Check if region contains empty data by copying text from specific coordinates"""
-
     pyperclip.copy('')
     time.sleep(DELAY)
     
@@ -127,7 +125,7 @@ def check_region_validity(region_coords):
         print(f"Region invalid: no text found")
         return False
 
-def process_region(files, region_number, skip_files):
+def process_region(files, region_number, skip_files, empty_regions_count):
     time.sleep(DELAY)
     region_coords = get_region_coordinates(region_number)
     
@@ -144,8 +142,8 @@ def process_region(files, region_number, skip_files):
         time.sleep(DELAY)
         
         pyautogui.write(ADAPTED_FOLDER_PATH)
-        time.sleep(DELAY)
         #type_text_safe(ADAPTED_FOLDER_PATH)
+        time.sleep(DELAY)
         pyautogui.press('enter')
         time.sleep(DELAY)
         
@@ -161,9 +159,19 @@ def process_region(files, region_number, skip_files):
         pyautogui.click(region_coords)
         
         if not check_region_validity(region_coords):
-            print(f"Region {region_number} invalid for file {filename}, skipping this file for all regions")
-            skip_files.add(filename)
+            print(f"Region {region_number} invalid for file {filename}")
+            
+            if filename not in empty_regions_count:
+                empty_regions_count[filename] = 0
+            empty_regions_count[filename] += 1
+            
+            if empty_regions_count[filename] >= 3:
+                print(f"Two consecutive empty regions for file {filename}, skipping all further regions")
+                skip_files.add(filename)
             continue
+        else:
+            if filename in empty_regions_count:
+                empty_regions_count[filename] = 0
         
         pyautogui.click(COORDINATES_BUTTON2)
         time.sleep(DELAY)
@@ -186,7 +194,7 @@ def process_region(files, region_number, skip_files):
         
         print(f"File {filename} processed for region {region_number}")
     
-    return skip_files
+    return skip_files, empty_regions_count
 
 def process_files():
     subprocess.Popen(APPLICATION_PATH)
@@ -196,9 +204,10 @@ def process_files():
     files = [f.name for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() == '.xps']
     
     skip_files = set()
+    empty_regions_count = {}  
     
     for region_number in range(1, NUM_REGIONS + 1):
-        skip_files = process_region(files, region_number, skip_files)
+        skip_files, empty_regions_count = process_region(files, region_number, skip_files, empty_regions_count)
     
 def move_files(source_folder, target_folder, extensions):
     source_path = Path(source_folder)
