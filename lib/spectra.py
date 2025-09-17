@@ -15,7 +15,7 @@ class PeakParameter:
     Parameters
     ----------
     name : str
-        Parameter name (e.g., "pos", "amp", "fwhm").
+        Parameter name (e.g., "cen", "amp", "sig").
     value : float
         Initial value of the parameter. Will be clipped to [min_val, max_val].
     min_val : float, default=-np.inf
@@ -27,7 +27,7 @@ class PeakParameter:
     expr : str | None, default=None
         Optional string expression for dependency on other parameters.
         Should reference other parameters by their unique names.
-        E.g., '2 * p0123' reference to the same parameter (pos/amp/...) in peak with id 0123.
+        E.g., '2 * p0123' reference to the same parameter (cen/amp/...) in peak with id 0123.
 
     Attributes
     ----------
@@ -564,7 +564,7 @@ class SpectrumCollection:
         self.region_index = {}  # {id: Region}
         self.spectra_index = {}  # {id: Spectrum}
 
-    def register(self, obj: Union[Spectrum, Region, Peak]):
+    def register(self, obj: Union[Spectrum, Region, Peak]) -> None:
         """
         Register an object (spectrum, region, or peak) in the collection.
 
@@ -580,7 +580,7 @@ class SpectrumCollection:
         elif isinstance(obj, Spectrum):
             self.spectra_index[obj.id] = obj
 
-    def add_spectrum(self, spectrum: Spectrum):
+    def add_spectrum(self, spectrum: Spectrum) -> None:
         """
         Add a spectrum and automatically register all its regions and peaks.
         """
@@ -590,7 +590,7 @@ class SpectrumCollection:
             for peak in region.peaks:
                 self.register(peak)
 
-    def get_spectrum(self, id: str):
+    def get_spectrum(self, id: str) -> Spectrum:
         """
         Retrieve a spectrum by its UUID.
 
@@ -606,14 +606,14 @@ class SpectrumCollection:
         """
         return self.spectra_index[id]
 
-    def get_peak(self, id: str):
-        """
-        Retrieve a peak by its UUID.
-        """
-        return self.peaks_index[id]
-
-    def get_region(self, id: str):
+    def get_region(self, id: str) -> Region:
         """
         Retrieve a region by its UUID.
         """
         return self.region_index[id]
+
+    def get_peak(self, id: str) -> Peak:
+        """
+        Retrieve a peak by its UUID.
+        """
+        return self.peaks_index[id]
