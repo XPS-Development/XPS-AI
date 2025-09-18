@@ -140,9 +140,9 @@ class Peak:
         Fraction of Lorentzian component in pseudo-Voigt.
     """
 
-    def __init__(self, region_id: str) -> None:
+    def __init__(self, region_id: str | None = None) -> None:
         self.id: str = f"p{uuid4().hex}"
-        self.region_id: str = region_id
+        self.region_id: str | None = region_id
 
         self.amp_par: PeakParameter = PeakParameter("amp", value=1, min_val=0, max_val=np.inf)
         self.cen_par: PeakParameter = PeakParameter("cen", value=0, min_val=-np.inf, max_val=np.inf)
@@ -226,7 +226,7 @@ class Region:
 
     Parameters
     ----------
-    spectrum_id : str
+    spectrum_id : Optional[str], default=None
         UUID of the parent spectrum this region belongs to.
     x : Optional[NDArray], default=None
         X-axis values (energy/binding energy) of the region.
@@ -253,7 +253,7 @@ class Region:
         Peaks associated with this region.
     """
 
-    spectrum_id: str
+    spectrum_id: Optional[str] = None
     x: Optional[NDArray] = None
     y: Optional[NDArray] = None
     norm_coefs: tuple[float, float] = (0, 1)
@@ -275,6 +275,7 @@ class Region:
         peak : Peak
             Peak instance to add.
         """
+        peak.region_id = self.id
         self.peaks.append(peak)
         if self.collection is not None:
             self.collection.register(peak)
@@ -414,6 +415,7 @@ class Spectrum:
 
     def add_region(self, region: Region) -> None:
         """Attach region to spectrum and notify collection if present."""
+        region.spectrum_id = self.id
         self.regions.append(region)
         if self.collection is not None:
             self.collection.register(region)
@@ -445,7 +447,6 @@ class Spectrum:
             raise ValueError("Spectrum must be normalized and smoothed before creating regions.")
 
         region = Region(
-            spectrum_id=self.id,
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
             y_norm=self.y_norm[start_idx:end_idx],
