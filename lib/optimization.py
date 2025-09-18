@@ -32,7 +32,7 @@ class Optimizer:
         x: NDArray | Sequence[NDArray],
         y: NDArray | Sequence[NDArray],
         peaks_parameters: Parameters,
-        combinations: Optional[Tuple[Tuple[int, ...], ...]] = None,
+        combinations: Optional[Tuple[Tuple[str, ...], ...]] = None,
         model: Callable = None,
     ) -> None:
 
@@ -93,7 +93,7 @@ class Optimizer:
         y_model = np.concatenate(self.model(params, x, combinations)).astype(float)
         return y_model - y_true
 
-    def fit(self, return_result: bool = False, **kwargs):
+    def fit(self, return_result: bool = False, **kwargs) -> Parameters | MinimizerResult:
         """Run optimization.
 
         Parameters
