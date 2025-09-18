@@ -264,9 +264,9 @@ class Region:
     collection: Optional["SpectrumCollection"] = None
 
     id: str = field(default_factory=lambda: f"r{uuid4().hex}")
-    peaks: List["Peak"] = field(default_factory=list)
+    peaks: List[Peak] = field(default_factory=list)
 
-    def add_peak(self, peak: "Peak") -> None:
+    def add_peak(self, peak: Peak) -> None:
         """
         Attach a peak to the region and notify collection if present.
 
@@ -279,7 +279,7 @@ class Region:
         if self.collection is not None:
             self.collection.register(peak)
 
-    def remove_peak(self, peak: Union["Peak", str]) -> None:
+    def remove_peak(self, peak: Union[Peak, str]) -> None:
         """
         Remove a peak from the region by instance or ID and notify collection.
 
