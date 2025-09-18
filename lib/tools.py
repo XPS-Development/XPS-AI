@@ -25,6 +25,44 @@ def batch(iterable: Iterable, n: int = 1) -> Generator:
         yield iterable[idx : idx + n]
 
 
+def norm_with_coefs(value: float, norm_coefs: Tuple[float, float]) -> float:
+    """
+    Normalize a value using the provided coefficients.
+
+    Parameters
+    ----------
+    value : float
+        The value to normalize.
+    norm_coefs : Tuple[float, float]
+        The normalization coefficients. (min, max)
+
+    Returns
+    -------
+    float
+        The normalized value.
+    """
+    return (value - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])
+
+
+def denorm_with_coefs(value: float, norm_coefs: Tuple[float, float]) -> float:
+    """
+    Denormalize a value using the provided coefficients.
+
+    Parameters
+    ----------
+    value : float
+        The value to denormalize.
+    norm_coefs : Tuple[float, float]
+        The normalization coefficients. (min, max)
+
+    Returns
+    -------
+    float
+        The denormalized value.
+    """
+    return value * (norm_coefs[1] - norm_coefs[0]) + norm_coefs[0]
+
+
 def interpolate(x: NDArray, y: NDArray, num: int = 256) -> Tuple[NDArray, NDArray]:
     """
     Linearly interpolate y-values over a new x-grid.
