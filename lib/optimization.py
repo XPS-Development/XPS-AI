@@ -1,12 +1,15 @@
+import re
 from itertools import chain
-from typing import Sequence, Tuple, Optional, Callable
+from typing import Sequence, Tuple, List, Optional, Callable
 
 import numpy as np
 from numpy.typing import NDArray
-from lmfit import Parameters, minimize
+from lmfit import Parameter, Parameters, minimize
+from lmfit.minimizer import MinimizerResult
 
-from .tools import batch
+from .tools import batch, norm_with_coefs, denorm_with_coefs
 from .funcs import ndpvoigt
+from .spectra import SpectrumCollection, Region, Peak, PeakParameter
 
 
 class Optimizer:
@@ -122,3 +125,382 @@ class Optimizer:
             f"norm={self.is_norm}, "
             f"model={self.model.__name__ if self.model else None})"
         )
+
+
+class OptimizationManager:
+    """
+    Manager for preparing and performing optimization of peaks and regions.
+
+    The `OptimizationManager` serves as a bridge between the spectral data
+    (peaks and regions stored in a :class:`SpectrumCollection`) and the
+    optimization routines. It is responsible for:
+
+    - Converting `PeakParameter` objects into lmfit `Parameter` objects.
+    - Handling normalization/denormalization of peak parameters.
+    - Preparing optimization data for regions or groups of regions.
+    - Updating peak values after optimization.
+    """
+
+    def __init__(self) -> None:
+        self.collection: Optional[SpectrumCollection] = None
+        self.def_id_pattern = r"p[\w]{1,32}"
+
+    def set_collection(self, collection: SpectrumCollection) -> None:
+        """
+        Attach a spectrum collection to the manager.
+
+        Parameters
+        ----------
+        collection : SpectrumCollection
+            The spectrum collection containing spectra, regions, and peaks
+            to be used for optimization.
+        """
+        self.collection = collection
+
+    def proceed_query(
+        self, region_ids: Optional[Sequence[str]] = None, peak_ids: Optional[Sequence[str]] = None
+    ):
+        """
+        Define the scope of optimization query.
+
+        Parameters
+        ----------
+        region_ids : sequence of str, optional
+            List of region UUIDs to include in optimization.
+        peak_ids : sequence of str, optional
+            List of peak UUIDs to include in optimization.
+
+        Notes
+        -----
+        Only one of `region_ids` or `peak_ids` should be provided.
+        """
+        if region_ids is not None and peak_ids is None:
+            self.proceed_regions_opt(region_ids)
+            # elif peak_ids is not None and peak_ids is None:
+            #     self.procceed_peaks_opt(peak_ids)
+        else:
+            raise ValueError("Only one of region_ids or peak_ids should be provided.")
+
+    def parse_expr(self, expr: str | None, param_name: str) -> str | None:
+        """
+        Replace parameter references in an expression with normalized names.
+
+        Parameters
+        ----------
+        expr : str
+            Original expression referencing peak IDs.
+        param_name : str
+            Name of the parameter (e.g., "amp", "cen", "sig", "frac").
+
+        Returns
+        -------
+        str
+            Updated expression with expanded parameter references.
+        """
+        if expr is None:
+            return
+
+        def replacer(match):
+            return f"p{match.group(0)[1:]}_{param_name}"
+
+        return re.sub(self.def_id_pattern, replacer, expr)
+
+    def peakparam_to_param(
+        self,
+        peak_id: str,
+        param: PeakParameter,
+        norm_coefs: Optional[Tuple[float, float]] = None,
+        force_fix: bool = False,
+    ) -> Parameter:
+        """
+        Convert a PeakParameter into an lmfit Parameter.
+
+        Parameters
+        ----------
+        peak_id : str
+            Unique identifier of the peak.
+        param : PeakParameter
+            The parameter to convert.
+        norm_coefs : tuple of float, optional
+            Normalization coefficients (min, max). Only used for amplitude.
+        force_fix : bool, default=False
+            If True, override the `vary` flag and fix the parameter.
+
+        Returns
+        -------
+        Parameter
+            The corresponding lmfit parameter object.
+        """
+        norm_coefs = norm_coefs or (0, 1)
+        name = f"{peak_id}_{param.name}"
+        expr = self.parse_expr(param.expr, param.name)
+
+        return Parameter(
+            name,
+            value=norm_with_coefs(param.value, norm_coefs),
+            vary=param.vary if not force_fix else False,
+            min=param.min,
+            max=param.max,
+            expr=expr,
+        )
+
+    @staticmethod
+    def get_peak_params(peak: Peak) -> Tuple[PeakParameter, ...]:
+        """
+        Retrieve the four parameters of a peak.
+
+        Parameters
+        ----------
+        peak : Peak
+            Peak object.
+
+        Returns
+        -------
+        tuple of PeakParameter
+            (amp_par, cen_par, sig_par, frac_par)
+        """
+        return peak.amp_par, peak.cen_par, peak.sig_par, peak.frac_par
+
+    def update_peak_param_values(self, parameters: Parameters, from_norm: bool = True) -> None:
+        """
+        Update peak parameter values from fitted lmfit Parameters.
+
+        Parameters
+        ----------
+        parameters : Parameters
+            Optimized lmfit parameters.
+        from_norm : bool, default=True
+            Whether to denormalize amplitude values using region coefficients.
+        """
+        for param_opt_name in parameters:
+            idx, param = param_opt_name.split("_")
+            peak = self.collection.get_peak(idx)
+            opt_value = parameters[param_opt_name].value
+
+            if param == "amp" and from_norm:
+                region = self.collection.get_region(peak.region_id)
+                norm_coefs = region.norm_coefs
+                opt_value = denorm_with_coefs(opt_value, norm_coefs)
+
+            peak.set(param, value=opt_value)
+
+    def peak_to_params(self, peak: Peak, norm_coefs=None, force_fix: bool = False) -> List[Parameter]:
+        """
+        Convert a peak into a list of lmfit parameters.
+
+        Parameters
+        ----------
+        peak : Peak
+            Peak to convert.
+        norm_coefs : tuple of float, optional
+            Normalization coefficients for amplitude.
+        force_fix : bool, default=False
+            If True, fix all parameters (disable variation).
+
+        Returns
+        -------
+        list of Parameter
+            List of lmfit parameters for this peak.
+        """
+        amp, cen, sig, frac = self.get_peak_params(peak)
+        params = []
+        params.append(self.peakparam_to_param(peak.id, amp, norm_coefs, force_fix=force_fix))
+        for par in (cen, sig, frac):
+            params.append(self.peakparam_to_param(peak.id, par, force_fix=force_fix))
+
+        return params
+
+    def peaks_to_params(
+        self, peaks: Sequence[Peak], norm_coefs=None, force_fix: bool = False
+    ) -> List[Parameter]:
+        """
+        Convert multiple peaks into a flat list of lmfit parameters.
+
+        Parameters
+        ----------
+        peaks : sequence of Peak
+            List of peaks to convert.
+        norm_coefs : tuple of float, optional
+            Normalization coefficients for amplitude.
+        force_fix : bool, default=False
+            If True, fix all parameters (disable variation).
+
+        Returns
+        -------
+        list of Parameter
+            Combined list of lmfit parameters from all peaks.
+        """
+        params = []
+        for peak in peaks:
+            params.extend(self.peak_to_params(peak, norm_coefs, force_fix=force_fix))
+        return params
+
+    @staticmethod
+    def get_combinations(peaks: Sequence[Peak]) -> Tuple[str, ...]:
+        """
+        Get a tuple of peak IDs for optimizer grouping.
+
+        Parameters
+        ----------
+        peaks : sequence of Peak
+            Peaks to group.
+
+        Returns
+        -------
+        tuple of str
+            Tuple of peak UUIDs.
+        """
+        return tuple(peak.id for peak in peaks)
+
+    def prepare_region(
+        self, region: Region, normalize: bool = True
+    ) -> Tuple[NDArray, NDArray, Tuple[str, ...], List[Parameter]]:
+        """
+        Prepare data and parameters for optimizing a single region.
+
+        Parameters
+        ----------
+        region : Region
+            Region to optimize.
+        normalize : bool, default=True
+            Whether to use normalized intensity values.
+
+        Returns
+        -------
+        tuple
+            (x, y, reg_combinations, params)
+            - x : ndarray
+                X-axis values.
+            - y : ndarray
+                Y-axis values (normalized or raw).
+            - reg_combinations : tuple of str
+                Tuple of peak IDs in this region.
+            - params : list of Parameter
+                Parameters corresponding to peaks.
+        """
+        params = []
+        reg_combinations = self.get_combinations(region.peaks)
+        x = region.x
+        peaks = region.peaks
+        if normalize:
+            y = region.y_norm
+            norm_coefs = region.norm_coefs
+        else:
+            y = region.y
+            norm_coefs = None
+
+        params.extend(self.peaks_to_params(peaks, norm_coefs))
+        return x, y, reg_combinations, params
+
+    def resolve_dependencies(self, params: List[Parameter]) -> None:
+        """
+        Remove invalid parameter expressions that reference missing peaks.
+
+        Parameters
+        ----------
+        params : list of Parameter
+            List of lmfit parameters to check and update.
+        """
+        curr_ids = set()
+        curr_ids.update(p.name for p in params)
+
+        for p in params:
+            if p.expr is None:
+                continue
+            peak_dep = re.match(self.def_id_pattern, p.expr)
+            if peak_dep and peak_dep.group(0) not in curr_ids:
+                p.expr = None
+
+    def get_regions_opt(self, region_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt):
+        """
+        Build an Optimizer for the given region IDs.
+
+        Parameters
+        ----------
+        region_ids : sequence of str
+            UUIDs of regions to optimize.
+        normalize : bool, default=True
+            Whether to use normalized intensities.
+        default_model : callable, default=ndpvoigt
+            Model function used for optimization.
+
+        Returns
+        -------
+        Optimizer
+            Configured optimizer instance.
+        """
+        regions = [self.collection.get_region(region_id) for region_id in region_ids]
+        x_data = []
+        y_data = []
+        combinations = []
+        all_params = []
+        for region in regions:
+            x, y, reg_combinations, params = self.prepare_region(region, normalize=normalize)
+            x_data.append(x)
+            y_data.append(y)
+            combinations.append(reg_combinations)
+            all_params.extend(params)
+
+        self.resolve_dependencies(all_params)
+        params_to_opt = Parameters()
+        params_to_opt.add_many(*all_params)
+        opt = Optimizer(x_data, y_data, all_params, combinations, model=default_model)
+
+        return opt
+
+    # def get_peaks_opt(self, peak_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt):
+    #     """
+    #     Build an Optimizer for the given peak IDs.
+
+    #     Parameters
+    #     ----------
+    #     peak_ids : sequence of str
+    #         UUIDs of peaks to optimize.
+    #     normalize : bool, default=True
+    #         Whether to use normalized intensities.
+    #     default_model : callable, default=ndpvoigt
+    #         Model function used for optimization.
+
+    #     Returns
+    #     -------
+    #     Optimizer
+    #         Configured optimizer instance.
+    #     """
+    #     peaks_to_opt = [self.collection.get_peak(peak_id) for peak_id in peak_ids]
+    #     regions = [self.collection.get_region(peak.region_id) for peak in peaks_to_opt]
+
+    def proceed_regions_opt(
+        self, region_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt
+    ) -> None:
+        """
+        Run optimization for the given regions and update peak values.
+
+        Parameters
+        ----------
+        region_ids : sequence of str
+            UUIDs of regions to optimize.
+        normalize : bool, default=True
+            Whether to normalize amplitudes during optimization.
+        default_model : callable, default=ndpvoigt
+            Model function used for optimization.
+        """
+        opt = self.get_regions_opt(region_ids, normalize=normalize, default_model=default_model)
+        opt_params = opt.fit(return_result=False)
+        self.update_peak_param_values(opt_params, from_norm=normalize)
+
+    # def procceed_peaks_opt(self, peak_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt) -> None:
+    #     """
+    #     Run optimization for the given peaks and update peak values.
+
+    #     Parameters
+    #     ----------
+    #     peak_ids : sequence of str
+    #         UUIDs of peaks to optimize.
+    #     normalize : bool, default=True
+    #         Whether to normalize amplitudes during optimization.
+    #     default_model : callable, default=ndpvoigt
+    #         Model function used for optimization.
+    #     """
+    #     opt = self.get_peaks_opt(peak_ids, normalize=normalize, default_model=default_model)
+    #     opt_params = opt.fit(return_result=False)
+    #     self.update_peak_param_values(opt_params, from_norm=normalize
