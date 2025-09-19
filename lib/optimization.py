@@ -383,8 +383,8 @@ class OptimizationManager:
         x = region.x
         peaks = region.peaks
         if normalize:
-            y = region.y_norm
             norm_coefs = region.norm_coefs
+            y = norm_with_coefs(region.y, norm_coefs)
         else:
             y = region.y
             norm_coefs = None
