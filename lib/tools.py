@@ -25,20 +25,20 @@ def batch(iterable: Iterable, n: int = 1) -> Generator:
         yield iterable[idx : idx + n]
 
 
-def norm_with_coefs(value: float, norm_coefs: Tuple[float, float]) -> float:
+def norm_with_coefs(value: float | NDArray, norm_coefs: Tuple[float, float]) -> float | NDArray:
     """
     Normalize a value using the provided coefficients.
 
     Parameters
     ----------
-    value : float
+    value : float | NDArray
         The value to normalize.
     norm_coefs : Tuple[float, float]
         The normalization coefficients. (min, max)
 
     Returns
     -------
-    float
+    float | NDArray
         The normalized value.
     """
     return (value - norm_coefs[0]) / (norm_coefs[1] - norm_coefs[0])

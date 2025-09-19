@@ -83,8 +83,8 @@ def npvoigt(params: dict[str, float], x: NDArray, combine: Sequence[int]) -> NDA
         Dictionary containing parameters of all peaks, keys like '0_amp', '0_cen', etc.
     x : NDArray
         Array of x-values.
-    combine : Sequence[int]
-        Indices of peaks to sum.
+    combine : Sequence[str]
+        Indexes of peaks to sum.
 
     Returns
     -------
