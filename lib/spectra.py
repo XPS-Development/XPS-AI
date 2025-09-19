@@ -234,8 +234,6 @@ class Region:
         Intensity values of the region.
     norm_coefs : tuple[float, float], default=(0, 1)
         Coefficients for normalizing the intensity values.
-    y_norm : Optional[NDArray], default=None
-        Normalized intensity values (0–1).
     i_1 : Optional[float], default=None
         Background intensity at the start of the region.
     i_2 : Optional[float], default=None
@@ -253,18 +251,21 @@ class Region:
         Peaks associated with this region.
     """
 
-    spectrum_id: Optional[str] = None
+    id: str = field(default_factory=lambda: f"r{uuid4().hex}")
     x: Optional[NDArray] = None
     y: Optional[NDArray] = None
     norm_coefs: tuple[float, float] = (0, 1)
-    y_norm: Optional[NDArray] = None
+
     i_1: Optional[float] = None
     i_2: Optional[float] = None
-    background_type: str = "shirley"
-    collection: Optional["SpectrumCollection"] = None
 
-    id: str = field(default_factory=lambda: f"r{uuid4().hex}")
+    spectrum_id: Optional[str] = None
+
+    background: Optional[NDArray] = None
+    background_type: str = "shirley"
+
     peaks: List[Peak] = field(default_factory=list)
+    collection: Optional["SpectrumCollection"] = None
 
     def add_peak(self, peak: Peak) -> None:
         """
@@ -302,7 +303,6 @@ class Region:
         self,
         x: NDArray,
         y: NDArray,
-        y_norm: Optional[NDArray] = None,
         i_1: Optional[float] = None,
         i_2: Optional[float] = None,
     ) -> None:
@@ -315,8 +315,7 @@ class Region:
             New X-axis values.
         y : NDArray
             New Y-axis values.
-        y_norm : Optional[NDArray], default=None
-            New normalized Y values.
+
         i_1 : Optional[float], default=None
             Background intensity at the start of the region.
         i_2 : Optional[float], default=None
@@ -324,8 +323,7 @@ class Region:
         """
         self.x = x
         self.y = y
-        if y_norm is not None:
-            self.y_norm = y_norm
+
         if i_1 is not None:
             self.i_1 = i_1
         if i_2 is not None:
