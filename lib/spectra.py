@@ -369,18 +369,10 @@ class Spectrum:
         List of Region objects associated with this spectrum.
     charge_correction : float
         Applied shift to the energy axis.
-    y_norm : Optional[NDArray]
-        Normalized intensity (0-1), filled after normalization.
     norm_coefs : Optional[Tuple[float, float]]
         Minimum and maximum used for normalization.
-    x_interpolated : Optional[NDArray]
-        Interpolated x-axis for uniform sampling.
-    y_interpolated : Optional[NDArray]
-        Interpolated intensity corresponding to x_interpolated.
     y_smoothed : Optional[NDArray]
         Smoothed intensity using, e.g., Savitzky-Golay filter.
-    y_norm_smoothed : Optional[NDArray]
-        Smoothed normalized intensity.
     """
 
     x: NDArray
@@ -396,12 +388,8 @@ class Spectrum:
     _collection: Optional["SpectrumCollection"] = field(default=None, repr=False, init=False)
 
     # Optional fields for processed data
-    y_norm: Optional[NDArray] = None
     norm_coefs: Optional[Tuple[float, float]] = None
-    x_interpolated: Optional[NDArray] = None
-    y_interpolated: Optional[NDArray] = None
     y_smoothed: Optional[NDArray] = None
-    y_norm_smoothed: Optional[NDArray] = None
 
     @property
     def collection(self) -> Optional["SpectrumCollection"]:
@@ -443,13 +431,12 @@ class Spectrum:
         ValueError
             If the spectrum has not been normalized and smoothed.
         """
-        if self.y_norm is None or self.y_smoothed is None:
-            raise ValueError("Spectrum must be normalized and smoothed before creating regions.")
+        if self.y_smoothed is None:
+            raise ValueError("Spectrum must be smoothed before creating regions.")
 
         region = Region(
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
-            y_norm=self.y_norm[start_idx:end_idx],
             norm_coefs=self.norm_coefs,
             i_1=self.y_smoothed[start_idx],
             i_2=self.y_smoothed[end_idx - 1],
@@ -494,8 +481,6 @@ class Spectrum:
         """
         self.charge_correction += delta
         self.x += delta
-        if self.x_interpolated is not None:
-            self.x_interpolated += delta
 
     def remove_charge_correction(self) -> None:
         """Reset the charge correction to zero."""
@@ -518,9 +503,7 @@ class Spectrum:
             f"Data points: {self.x.size}",
             f"Regions: {len(self.regions)}",
             f"Charge correction: {self.charge_correction:.3f}",
-            f"Normalized: {'Yes' if self.y_norm is not None else 'No'}",
             f"Smoothed: {'Yes' if self.y_smoothed is not None else 'No'}",
-            f"Interpolated: {'Yes' if self.x_interpolated is not None else 'No'}",
         ]
         return "\n".join(lines)
 
