@@ -19,9 +19,8 @@ def sample_spectrum():
 
 
 @pytest.fixture
-def normalized_spectrum(sample_spectrum):
+def smoothed_spectrum(sample_spectrum):
     spec = sample_spectrum
-    spec.y_norm = (spec.y - spec.y.min()) / (spec.y.max() - spec.y.min())
     spec.y_smoothed = spec.y  # для упрощения
     return spec
 
@@ -46,13 +45,11 @@ def test_update_range():
     region = Region(spectrum_id=uuid4().hex)
     x = np.array([1, 2, 3])
     y = np.array([4, 5, 6])
-    y_norm = np.array([0.1, 0.2, 0.3])
 
-    region.update_range(x, y, y_norm, i_1=10, i_2=20)
+    region.update_range(x, y, i_1=10, i_2=20)
 
     assert np.array_equal(region.x, x)
     assert np.array_equal(region.y, y)
-    assert np.array_equal(region.y_norm, y_norm)
     assert region.i_1 == 10
     assert region.i_2 == 20
 
@@ -64,8 +61,8 @@ def test_repr_region():
     assert "peaks=0" in s
 
 
-def test_add_and_remove_region(normalized_spectrum):
-    spec = normalized_spectrum
+def test_add_and_remove_region(smoothed_spectrum):
+    spec = smoothed_spectrum
     region = Region(spectrum_id=spec.id)
     spec.add_region(region)
 
@@ -86,16 +83,16 @@ def test_create_region_without_normalization(sample_spectrum):
         spec.create_region(0, 10)
 
 
-def test_create_region_with_normalization(normalized_spectrum):
-    spec = normalized_spectrum
+def test_create_region_with_normalization(smoothed_spectrum):
+    spec = smoothed_spectrum
     region = spec.create_region(0, 10)
     assert region in spec.regions
     assert np.array_equal(region.x, spec.x[0:10])
     assert np.array_equal(region.y, spec.y[0:10])
 
 
-def test_charge_correction(normalized_spectrum):
-    spec = normalized_spectrum
+def test_charge_correction(smoothed_spectrum):
+    spec = smoothed_spectrum
     x_copy = spec.x.copy()
 
     spec.set_charge_correction(1.0)
@@ -107,14 +104,13 @@ def test_charge_correction(normalized_spectrum):
     assert spec.charge_correction == 0.0
 
 
-def test_summary_and_repr(normalized_spectrum):
-    spec = normalized_spectrum
+def test_summary_and_repr(smoothed_spectrum):
+    spec = smoothed_spectrum
     region = spec.create_region(0, 10)
     summary = spec.summary()
 
     assert "Spectrum ID" in summary
     assert f"Regions: {len(spec.regions)}" in summary
-    assert "Normalized: Yes" in summary
 
     s = repr(spec)
     assert "Spectrum" in s

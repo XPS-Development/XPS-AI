@@ -138,7 +138,6 @@ def test_prepare_region(mock_peaks_to_params, mock_region):
     mgr = OptimizationManager()
     x, y, combos, params = mgr.prepare_region(mock_region, normalize=True)
     assert np.allclose(x, mock_region.x)
-    assert np.allclose(y, mock_region.y_norm)
     assert combos == ("p123",)
     assert params == ["param"]
 
