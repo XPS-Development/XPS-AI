@@ -264,7 +264,7 @@ class Region:
     background: Optional[NDArray] = None
     background_type: str = "shirley"
 
-    peaks: List[Peak] = field(default_factory=list)
+    peaks: List[str] = field(default_factory=list)  # peak IDs
     collection: Optional["SpectrumCollection"] = None
 
     def add_peak(self, peak: Peak) -> None:
@@ -277,7 +277,7 @@ class Region:
             Peak instance to add.
         """
         peak.region_id = self.id
-        self.peaks.append(peak)
+        self.peaks.append(peak.id)
         if self.collection is not None:
             self.collection.register(peak)
 
@@ -291,13 +291,15 @@ class Region:
             Peak instance or its UUID to remove.
         """
         if isinstance(peak, Peak):
-            self.peaks = [p for p in self.peaks if p != peak]
-            if self.collection is not None:
-                self.collection.peaks_index.pop(peak.id, None)
+            p_id = peak.id
         elif isinstance(peak, str):
-            self.peaks = [p for p in self.peaks if p.id != peak]
-            if self.collection is not None:
-                self.collection.peaks_index.pop(peak, None)
+            p_id = peak
+        else:
+            raise TypeError("peak must be a Peak instance or a peak ID string")
+
+        self.peaks.remove(p_id)
+        if self.collection is not None:
+            self.collection.remove(p_id)
 
     def update_range(
         self,
@@ -380,29 +382,19 @@ class Spectrum:
     group: Optional[str] = None
 
     id: str = field(default_factory=lambda: f"s{uuid4().hex}")
-    regions: List[Region] = field(default_factory=list)
+    regions: List[str] = field(default_factory=list)  # region IDs
     charge_correction: float = 0.0
 
-    _collection: Optional["SpectrumCollection"] = field(default=None, repr=False, init=False)
+    collection: Optional["SpectrumCollection"] = None
 
     # Optional fields for processed data
     norm_coefs: Optional[Tuple[float, float]] = None
     y_smoothed: Optional[NDArray] = None
 
-    @property
-    def collection(self) -> Optional["SpectrumCollection"]:
-        return self._collection
-
-    @collection.setter
-    def collection(self, collection: Optional["SpectrumCollection"]) -> None:
-        self._collection = collection
-        for region in self.regions:
-            region.collection = collection
-
     def add_region(self, region: Region) -> None:
         """Attach region to spectrum and notify collection if present."""
         region.spectrum_id = self.id
-        self.regions.append(region)
+        self.regions.append(region.id)
         if self.collection is not None:
             self.collection.register(region)
 
@@ -452,21 +444,17 @@ class Spectrum:
         region : Region or str
             Region instance or its UUID to remove.
         """
+
         if isinstance(region, Region):
-            self.regions = [r for r in self.regions if r.id != region.id]
-            if self.collection is not None:
-                self.collection.region_index.pop(region.id, None)
-                for peak in region.peaks:
-                    self.collection.peaks_index.pop(peak.id, None)
+            r_id = region.id
         elif isinstance(region, str):
-            self.regions = [r for r in self.regions if r.id != region]
-            if self.collection is not None:
-                self.collection.region_index.pop(region, None)
-                # удалить все пики региона тоже:
-                reg = self.collection.region_index.get(region)
-                if reg:
-                    for peak in reg.peaks:
-                        self.collection.peaks_index.pop(peak.id, None)
+            r_id = region
+        else:
+            raise TypeError(f"region must be a Region instance or a region ID string not {type(region)}")
+
+        self.regions.remove(r_id)
+        if self.collection is not None:
+            self.collection.remove(r_id)
 
     def set_charge_correction(self, delta: float) -> None:
         """
