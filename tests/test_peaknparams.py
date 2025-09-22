@@ -1,9 +1,3 @@
-import sys
-import os
-
-# Добавляем корень проекта в sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import numpy as np
 import pytest
 from uuid import uuid4
