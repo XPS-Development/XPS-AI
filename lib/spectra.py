@@ -540,19 +540,23 @@ class SpectrumCollection:
         child : Region | Peak
             Child object to link to the parent.
         """
-        if isinstance(parent, str):  # parents id must be in collection
-            if parent.startswith("s"):
-                parent = self.get_spectrum(parent)
-            elif parent.startswith("r"):
-                parent = self.get_region(parent)
+        if isinstance(parent, str):
+            parent_id = parent
+        else:
+            parent_id = parent.id
+
+        if parent_id.startswith("s"):  # parents id must be in collection
+            parent = self.get_spectrum(parent_id)
+        elif parent_id.startswith("r"):
+            parent = self.get_region(parent_id)
 
         if isinstance(parent, Spectrum) and isinstance(child, Region):
-            child.spectrum_id = parent.id
+            child.spectrum_id = parent_id
             parent.add_region(child.id)  # attach child to parent
             self.register(child)  # attach child to collection
         elif isinstance(parent, Region) and isinstance(child, Peak):
-            child.region_id = parent.id
-            parent.add_peak(child)
+            child.region_id = parent_id
+            parent.add_peak(child.id)
             self.register(child)
         else:
             raise TypeError(
