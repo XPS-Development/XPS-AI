@@ -5,32 +5,29 @@ from lib.spectra import Spectrum, Region, Peak, SpectrumCollection
 
 
 @pytest.fixture
-def spectrum_with_region_and_peak():
-    """Создает коллекцию + спектр с регионом и пиком."""
+def spectrum_region_peak():
+    """Создает спектр, регион и пик отдельно."""
     x = np.linspace(0, 10, 100)
     y = np.sin(x)
     spec = Spectrum(x=x, y=y, name="spec1")
 
-    region = Region(spectrum_id=spec.id)
-    peak = Peak(region_id=region.id)
-
-    region.add_peak(peak)
-    spec.add_region(region)
+    region = Region()
+    peak = Peak()
 
     return spec, region, peak
 
 
-def test_register_objects(spectrum_with_region_and_peak):
+def test_register_objects(spectrum_region_peak):
     collection = SpectrumCollection()
 
-    spec, region, peak = spectrum_with_region_and_peak
+    spec, region, peak = spectrum_region_peak
 
     collection.register(spec)
     collection.register(region)
     collection.register(peak)
 
     assert spec.id in collection.spectra_index
-    assert region.id in collection.region_index
+    assert region.id in collection.regions_index
     assert peak.id in collection.peaks_index
 
     assert collection.get_spectrum(spec.id) is spec
@@ -38,46 +35,85 @@ def test_register_objects(spectrum_with_region_and_peak):
     assert collection.get_peak(peak.id) is peak
 
 
-def test_add_spectrum_registers_nested_objects(spectrum_with_region_and_peak):
+def test_links(spectrum_region_peak):
     collection = SpectrumCollection()
-    spec, region, peak = spectrum_with_region_and_peak
+    spec, region, peak = spectrum_region_peak
 
-    collection.add_spectrum(spec)
+    collection.register(spec)
+    collection.add_link(spec, region)
+
+    assert region.id in collection.regions_index
+    assert region.spectrum_id == spec.id
+    assert region.id in spec.regions
+
+    collection.add_link(region, peak)
+
+    assert peak.id in collection.peaks_index
+    assert peak.region_id == region.id
+    assert peak.id in region.peaks
+
+
+def test_adding_wrong_links(spectrum_region_peak):
+    collection = SpectrumCollection()
+    spec, region, peak = spectrum_region_peak
+
+    collection.register(spec)
+
+    with pytest.raises(TypeError):
+        collection.add_link(spec, peak)
+
+    with pytest.raises(KeyError):
+        collection.add_link(region, spec)
+
+
+def test_remove_peak(spectrum_region_peak):
+    collection = SpectrumCollection()
+    spec, region, peak = spectrum_region_peak
+
+    collection.register(spec)
+    collection.add_link(spec, region)
+    collection.add_link(region, peak)
+
+    collection.remove(peak)
 
     assert spec.id in collection.spectra_index
-    assert region.id in collection.region_index
-    assert peak.id in collection.peaks_index
-
-
-def test_remove_region_updates_collection(spectrum_with_region_and_peak):
-    collection = SpectrumCollection()
-    spec, region, peak = spectrum_with_region_and_peak
-    spec.collection = collection
-    region.collection = collection
-    spec.add_region(region)  # заново, теперь с коллекцией
-    region.add_peak(peak)
-
-    collection.add_spectrum(spec)
-    assert region.id in collection.region_index
-    assert peak.id in collection.peaks_index
-
-    spec.remove_region(region)
-
-    assert region.id not in collection.region_index
+    assert region.id in collection.regions_index
     assert peak.id not in collection.peaks_index
+    assert peak.id not in region.peaks
+    assert peak.region_id is None
 
+    collection.add_link(region, peak)
+    collection.remove(peak.id)
 
-def test_remove_peak_updates_collection(spectrum_with_region_and_peak):
-    collection = SpectrumCollection()
-    spec, region, peak = spectrum_with_region_and_peak
-    spec.collection = collection
-    region.collection = collection
-    spec.add_region(region)
-    region.add_peak(peak)
-
-    collection.add_spectrum(spec)
-    assert peak.id in collection.peaks_index
-
-    region.remove_peak(peak)
-
+    assert spec.id in collection.spectra_index
+    assert region.id in collection.regions_index
     assert peak.id not in collection.peaks_index
+    assert peak.id not in region.peaks
+    assert peak.region_id is None
+
+
+def test_remove_region(spectrum_region_peak):
+    collection = SpectrumCollection()
+    spec, region, peak = spectrum_region_peak
+
+    collection.register(spec)
+    collection.add_link(spec, region)
+    collection.add_link(region, peak)
+
+    collection.remove(region)
+
+    assert spec.id in collection.spectra_index
+    assert region.id not in collection.regions_index
+    assert peak.id not in collection.peaks_index
+    assert region.id not in spec.regions
+    assert region.spectrum_id is None
+
+    collection.add_link(spec, region)
+    collection.add_link(region, peak)
+    collection.remove(region.id)
+
+    assert spec.id in collection.spectra_index
+    assert region.id not in collection.regions_index
+    assert peak.id not in collection.peaks_index
+    assert region.id not in spec.regions
+    assert region.spectrum_id is None
