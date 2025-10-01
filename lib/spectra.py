@@ -265,7 +265,22 @@ class Region:
     background_type: str = "shirley"
 
     peaks: List[str] = field(default_factory=list)  # peak IDs
-    collection: Optional["SpectrumCollection"] = None
+    @property
+    def background(self) -> NDArray:
+        """
+        Compute the static background for the region.
+
+        Returns
+        -------
+        NDArray
+            Background intensity values matching the region's X-axis.
+        """
+        if self.background_type == "shirley":
+            return static_shirley_background(self.x, self.y, self.i_1, self.i_2)
+        elif self.background_type == "linear":
+            return linear_background(self.x, self.i_1, self.i_2)
+        else:
+            raise ValueError(f"Unknown static background type: {self.background_type}")
 
     def add_peak(self, peak_id: str) -> None:
         """
