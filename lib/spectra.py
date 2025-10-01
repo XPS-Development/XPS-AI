@@ -618,16 +618,17 @@ class SpectrumCollection:
             self._remove_peak(obj)
 
     def _remove_peak(self, peak_id: str) -> None:
-        peak = self.peaks_index.pop(peak_id)
-
+        peak = self.get_peak(peak_id)
         parent_region_id = peak.region_id
         peak.region_id = None
 
         if parent_region_id is not None:
             self.get_region(parent_region_id).remove_peak(peak_id)
 
+        self.peaks_index.pop(peak_id)
+
     def _remove_region(self, region_id: str) -> None:
-        region = self.regions_index.pop(region_id)
+        region = self.get_region(region_id)
         parent_spectrum_id = region.spectrum_id
         region.spectrum_id = None
 
@@ -637,11 +638,15 @@ class SpectrumCollection:
         for peak_id in region.peaks:
             self._remove_peak(peak_id)
 
+        self.regions_index.pop(region_id)
+
     def _remove_spectrum(self, spectrum_id: str) -> None:
-        spectrum = self.spectra_index.pop(spectrum_id)
+        spectrum = self.get_spectrum(spectrum_id)
 
         for region_id in spectrum.regions:
             self._remove_region(region_id)
+
+        self.spectra_index.pop(spectrum_id)
 
     def get_spectrum(self, id: str) -> Spectrum:
         """
