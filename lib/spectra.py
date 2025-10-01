@@ -5,7 +5,7 @@ from uuid import uuid4
 import numpy as np
 from numpy.typing import NDArray
 
-from .funcs import pvoigt
+from .funcs import pvoigt, static_shirley_background, linear_background
 
 
 class PeakParameter:
@@ -119,25 +119,32 @@ class Peak:
     """
     Represents a single pseudo-Voigt peak with parameters and FWHM synchronization.
 
+    A `Peak` encapsulates four parameters (amplitude, center, width, Lorentzian fraction)
+    that define a pseudo-Voigt profile. Parameters are stored as `PeakParameter` objects,
+    but can be accessed and modified directly via attributes (`amp`, `cen`, `sig`, `frac`).
+    The class also provides a convenient `fwhm` property synchronized with `sig`.
+
     Parameters
     ----------
-    region_id : str
-        Identifier of the parent region to which this peak belongs.
+    region_id : str or None, optional
+        Identifier of the parent region this peak belongs to. Default is None.
 
     Attributes
     ----------
     id : str
         Unique identifier of the peak (UUID4 hex string).
-    region_id : str
-        Identifier of the parent region.
     amp_par : PeakParameter
-        Amplitude of the peak.
+        Amplitude parameter of the peak. Also accessible via `peak.amp`.
     cen_par : PeakParameter
-        Center position of the peak.
+        Center position parameter of the peak. Also accessible via `peak.cen`.
     sig_par : PeakParameter
-        Gaussian/Lorentzian width parameter of the peak.
+        Gaussian/Lorentzian width parameter of the peak (σ). Related to FWHM as `fwhm = 2 * sig`.
+        Also accessible via `peak.sig`.
     frac_par : PeakParameter
-        Fraction of Lorentzian component in pseudo-Voigt.
+        Fraction of Lorentzian component in the pseudo-Voigt (0 = pure Gaussian, 1 = pure Lorentzian).
+        Also accessible via `peak.frac`.
+    fwhm : float
+        Full width at half maximum of the peak. Setting this property updates `sig`.
     """
 
     def __init__(self, region_id: str | None = None) -> None:
@@ -220,35 +227,39 @@ class Region:
     """
     Region of interest within a spectrum.
 
-    A `Region` stores a subsection of spectrum data (X/Y arrays),
-    background information, and associated peaks. Regions may belong
-    to a parent `Spectrum` and can be managed by a `SpectrumCollection`.
+    A `Region` represents a subsection of spectral data defined by its
+    X/Y arrays. It may include background information, normalization
+    coefficients, and a set of associated peaks. Regions can be linked
+    to a parent :class:`Spectrum` and managed collectively in a
+    :class:`SpectrumCollection`.
 
     Parameters
     ----------
-    spectrum_id : Optional[str], default=None
-        UUID of the parent spectrum this region belongs to.
     x : Optional[NDArray], default=None
-        X-axis values (energy/binding energy) of the region.
+        X-axis values (e.g., binding energy).
     y : Optional[NDArray], default=None
-        Intensity values of the region.
+        Y-axis values (intensity).
     norm_coefs : tuple[float, float], default=(0, 1)
-        Coefficients for normalizing the intensity values.
+        Coefficients used for normalization of intensity values.
     i_1 : Optional[float], default=None
         Background intensity at the start of the region.
     i_2 : Optional[float], default=None
         Background intensity at the end of the region.
+    spectrum_id : Optional[str], default=None
+        UUID of the parent spectrum this region belongs to.
     background_type : str, default="shirley"
-        Type of background applied (e.g., "shirley", "linear").
-    collection : Optional[SpectrumCollection], default=None
-        Reference to the collection for automatic registration.
+        Static background model to apply. Supported values:
+        ``"shirley"`` or ``"linear"``.
 
     Attributes
     ----------
     id : str
-        Unique identifier of the region (UUID4 hex).
-    peaks : list[Peak]
-        Peaks associated with this region.
+        Unique identifier of the region (auto-generated, format ``r<uuid>``).
+    peaks : list[str]
+        List of IDs of peaks associated with this region.
+    background : NDArray
+        Computed background for the region. The algorithm depends on
+        ``background_type`` and uses ``x``, ``y``, ``i_1``, and ``i_2``.
     """
 
     id: str = field(default_factory=lambda: f"r{uuid4().hex}")
@@ -261,10 +272,10 @@ class Region:
 
     spectrum_id: Optional[str] = None
 
-    background: Optional[NDArray] = None
     background_type: str = "shirley"
 
     peaks: List[str] = field(default_factory=list)  # peak IDs
+
     @property
     def background(self) -> NDArray:
         """
