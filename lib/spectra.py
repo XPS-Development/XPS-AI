@@ -267,39 +267,27 @@ class Region:
     peaks: List[str] = field(default_factory=list)  # peak IDs
     collection: Optional["SpectrumCollection"] = None
 
-    def add_peak(self, peak: Peak) -> None:
+    def add_peak(self, peak_id: str) -> None:
         """
-        Attach a peak to the region and notify collection if present.
+        Attach a peak to the region.
 
         Parameters
         ----------
-        peak : Peak
-            Peak instance to add.
+        peak_id : str
+            ID of the peak to add.
         """
-        peak.region_id = self.id
-        self.peaks.append(peak.id)
-        if self.collection is not None:
-            self.collection.register(peak)
+        self.peaks.append(peak_id)
 
-    def remove_peak(self, peak: Union[Peak, str]) -> None:
+    def remove_peak(self, peak_id: str) -> None:
         """
-        Remove a peak from the region by instance or ID and notify collection.
+        Remove a peak from the region.
 
         Parameters
         ----------
-        peak : Peak or str
-            Peak instance or its UUID to remove.
+        peak_id : str
+            ID of the peak to remove.
         """
-        if isinstance(peak, Peak):
-            p_id = peak.id
-        elif isinstance(peak, str):
-            p_id = peak
-        else:
-            raise TypeError("peak must be a Peak instance or a peak ID string")
-
-        self.peaks.remove(p_id)
-        if self.collection is not None:
-            self.collection.remove(p_id)
+        self.peaks.remove(peak_id)
 
     def update_range(
         self,
@@ -317,12 +305,12 @@ class Region:
             New X-axis values.
         y : NDArray
             New Y-axis values.
-
         i_1 : Optional[float], default=None
             Background intensity at the start of the region.
         i_2 : Optional[float], default=None
             Background intensity at the end of the region.
         """
+
         self.x = x
         self.y = y
 
@@ -341,10 +329,12 @@ class Region:
 
 @dataclass
 class Spectrum:
-    """Spectrum data container with optional processed attributes.
+    """
+    Spectrum data container with optional processed attributes.
 
-    Holds the raw spectrum data and optional preprocessed data, along with
-    regions of interest. Supports charge correction and region management.
+    A :class:`Spectrum` stores raw spectral data (`x`, `y`) and may include
+    processed results such as normalization coefficients, smoothing, and
+    identified regions. Supports charge correction and region management.
 
     Parameters
     ----------
@@ -358,21 +348,19 @@ class Spectrum:
         Source file path for the spectrum.
     group : Optional[str], default=None
         Group label for dataset organization.
-    collection: Optional[SpectrumCollection], default=None
-        Collection to which the spectrum belongs.
 
     Attributes
     ----------
     id : str
-        Unique identifier for the spectrum (UUID4 hex).
-    regions : List[Region]
-        List of Region objects associated with this spectrum.
+        Unique identifier for the spectrum (format ``s<uuid>``).
+    regions : list[str]
+        List of region IDs associated with this spectrum.
     charge_correction : float
         Applied shift to the energy axis.
     norm_coefs : Optional[Tuple[float, float]]
-        Minimum and maximum used for normalization.
+        Minimum and maximum values used for normalization.
     y_smoothed : Optional[NDArray]
-        Smoothed intensity using, e.g., Savitzky-Golay filter.
+        Smoothed intensity values (e.g., via Savitzky-Golay filter).
     """
 
     x: NDArray
@@ -385,22 +373,28 @@ class Spectrum:
     regions: List[str] = field(default_factory=list)  # region IDs
     charge_correction: float = 0.0
 
-    collection: Optional["SpectrumCollection"] = None
-
     # Optional fields for processed data
     norm_coefs: Optional[Tuple[float, float]] = None
     y_smoothed: Optional[NDArray] = None
 
-    def add_region(self, region: Region) -> None:
-        """Attach region to spectrum and notify collection if present."""
-        region.spectrum_id = self.id
-        self.regions.append(region.id)
-        if self.collection is not None:
-            self.collection.register(region)
+    def add_region(self, region_id) -> None:
+        """Attach region to spectrum."""
+        self.regions.append(region_id)
+
+    def remove_region(self, region_id: str) -> None:
+        """
+        Remove a region from the spectrum.
+
+        Parameters
+        ----------
+        region_id : str
+            ID of the region to remove.
+        """
+        self.regions.remove(region_id)
 
     def create_region(self, start_idx: int, end_idx: int, background_type: str = "shirley") -> Region:
         """
-        Create a region from spectrum data and attach it.
+        Create a region from a subset of the spectrum data and attach it.
 
         Parameters
         ----------
@@ -408,23 +402,19 @@ class Spectrum:
             Start index of the region in the spectrum arrays.
         end_idx : int
             End index of the region in the spectrum arrays.
-        background_type : str, default 'shirley'
+        background_type : str, default="shirley"
             Type of background for the region.
 
         Returns
         -------
         Region
             The newly created region attached to this spectrum.
-
-        Raises
-        ------
-        ValueError
-            If the spectrum has not been normalized and smoothed.
         """
         if self.y_smoothed is None:
             raise ValueError("Spectrum must be smoothed before creating regions.")
 
         region = Region(
+            spectrum_id=self.id,
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
             norm_coefs=self.norm_coefs,
@@ -434,27 +424,6 @@ class Spectrum:
         )
         self.add_region(region)
         return region
-
-    def remove_region(self, region: Union[Region, str]) -> None:
-        """
-        Remove a region from the spectrum by instance or ID and notify collection.
-
-        Parameters
-        ----------
-        region : Region or str
-            Region instance or its UUID to remove.
-        """
-
-        if isinstance(region, Region):
-            r_id = region.id
-        elif isinstance(region, str):
-            r_id = region
-        else:
-            raise TypeError(f"region must be a Region instance or a region ID string not {type(region)}")
-
-        self.regions.remove(r_id)
-        if self.collection is not None:
-            self.collection.remove(r_id)
 
     def set_charge_correction(self, delta: float) -> None:
         """
