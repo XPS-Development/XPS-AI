@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional, Union, List, Tuple
+from typing import Any, Optional, Dict, List, Tuple
 from uuid import uuid4
 
 import numpy as np
@@ -504,20 +504,19 @@ class SpectrumCollection:
     """
     Container for managing and indexing spectra, regions, and peaks.
 
-    SpectrumCollection maintains fast lookup tables (indexes) that map
-    object IDs to their corresponding objects. This allows retrieval
-    of any registered :class:`Spectrum`, :class:`Region`, or :class:`Peak`
+    A :class:`SpectrumCollection` maintains lookup tables (indexes) that map
+    object IDs to their corresponding objects. This enables retrieval of
+    any registered :class:`Spectrum`, :class:`Region`, or :class:`Peak`
     by its UUID.
 
     Notes
     -----
     - All objects (`Spectrum`, `Region`, `Peak`) must have an `id` attribute
       that is unique within the collection.
-    - When adding a spectrum via :meth:`add_spectrum`, its regions and peaks
-      are automatically registered.
-    - Removing objects is typically managed through
-      :meth:`Spectrum.remove_region` and :meth:`Region.remove_peak`
-      which also keep the collection in sync.
+    - Adding a spectrum via :meth:`register` automatically registers its regions
+      and peaks.
+    - Removing objects updates parent-child relationships to keep the collection
+      consistent.
 
     Attributes
     ----------
@@ -530,18 +529,49 @@ class SpectrumCollection:
     """
 
     def __init__(self):
-        self.peaks_index = {}  # {id: Peak}
-        self.regions_index = {}  # {id: Region}
-        self.spectra_index = {}  # {id: Spectrum}
+        self.peaks_index: Dict[str, Peak] = {}
+        self.regions_index: Dict[str, Region] = {}
+        self.spectra_index: Dict[str, Spectrum] = {}
 
-    def register(self, obj: Union[Spectrum, Region, Peak]) -> None:
+    def add_link(self, parent: Spectrum | Region | str, child: Region | Peak) -> None:
         """
-        Register an object (spectrum, region, or peak) in the collection.
+        Establish a parent-child relationship between objects.
+
+        Parameters
+        ----------
+        parent : Spectrum | Region | str
+            Parent object or its UUID.
+        child : Region | Peak
+            Child object to link to the parent.
+        """
+        if isinstance(parent, str):  # parents id must be in collection
+            if parent.startswith("s"):
+                parent = self.get_spectrum(parent)
+            elif parent.startswith("r"):
+                parent = self.get_region(parent)
+
+        if isinstance(parent, Spectrum) and isinstance(child, Region):
+            child.spectrum_id = parent.id
+            parent.add_region(child.id)  # attach child to parent
+            self.register(child)  # attach child to collection
+        elif isinstance(parent, Region) and isinstance(child, Peak):
+            child.region_id = parent.id
+            parent.add_peak(child)
+            self.register(child)
+        else:
+            raise TypeError(
+                "Given parent and child objects must be compatible"
+                f"but got: parent={parent}, child={child}"
+            )
+
+    def register(self, obj: Spectrum | Region | Peak) -> None:
+        """
+        Register an object in the collection.
 
         Parameters
         ----------
         obj : Spectrum or Region or Peak
-            Object to register in the collection.
+            Object to register.
         """
         if isinstance(obj, Peak):
             self._register_peak(obj)
@@ -556,89 +586,86 @@ class SpectrumCollection:
         """
         self.peaks_index[peak.id] = peak
 
-    # TODO: warns if peak is already registered
-    # TODO: warns if region contains peaks
     def _register_region(self, region: Region) -> None:
         """
         Add a region and automatically register all its peaks.
         """
         self.regions_index[region.id] = region
-        region.collection = self
 
     def _register_spectrum(self, spectrum: Spectrum) -> None:
         """
         Add a spectrum and automatically register all its regions and peaks.
         """
         self.spectra_index[spectrum.id] = spectrum
-        spectrum.collection = self
 
-    def remove(self, obj: Union[Spectrum, Region, Peak, str]) -> None:
+    def remove(self, obj: Spectrum | Region | Peak | str) -> None:
         """
-        Remove an object (spectrum, region, or peak) from the collection.
+        Remove an object from the collection.
+
+        Parameters
+        ----------
+        obj : Spectrum or Region or Peak or str
+            Object instance or its UUID.
         """
-        if isinstance(obj, Peak) or obj.startswith("p"):
-            self._remove_peak(obj)
-        elif isinstance(obj, Region) or obj.startswith("r"):
-            self._remove_region(obj)
-        elif isinstance(obj, Spectrum) or obj.startswith("s"):
+        if isinstance(obj, (Spectrum, Region, Peak)):
+            obj = obj.id
+
+        if obj.startswith("s"):
             self._remove_spectrum(obj)
+        elif obj.startswith("r"):
+            self._remove_region(obj)
+        elif obj.startswith("p"):
+            self._remove_peak(obj)
 
-    def _remove_peak(self, peak: Peak | str) -> None:
-        if isinstance(peak, str):
-            p_id = peak
-        elif isinstance(peak, Peak):
-            p_id = peak.id
+    def _remove_peak(self, peak_id: str) -> None:
+        peak = self.peaks_index.pop(peak_id)
 
-        self.peaks_index.pop(p_id)
+        parent_region_id = peak.region_id
+        peak.region_id = None
 
-    def _remove_region(self, region: Region | str) -> None:
-        if isinstance(region, str):
-            r_id = region
-        elif isinstance(region, Region):
-            r_id = region.id
+        if parent_region_id is not None:
+            self.get_region(parent_region_id).remove_peak(peak_id)
 
-        region = self.regions_index.pop(r_id)
-        region.collection = None
+    def _remove_region(self, region_id: str) -> None:
+        region = self.regions_index.pop(region_id)
+        parent_spectrum_id = region.spectrum_id
+        region.spectrum_id = None
 
-        for peak in region.peaks:
-            self._remove_peak(peak)
+        if parent_spectrum_id is not None:
+            self.get_spectrum(parent_spectrum_id).remove_region(region_id)
 
-    def _remove_spectrum(self, spectrum: Spectrum | str) -> None:
-        if isinstance(spectrum, str):
-            s_id = spectrum
-        elif isinstance(spectrum, Spectrum):
-            s_id = spectrum.id
+        for peak_id in region.peaks:
+            self._remove_peak(peak_id)
 
-        spectrum = self.spectra_index.pop(s_id)
-        spectrum.collection = None
+    def _remove_spectrum(self, spectrum_id: str) -> None:
+        spectrum = self.spectra_index.pop(spectrum_id)
 
-        for region in spectrum.regions:
-            self._remove_region(region)
+        for region_id in spectrum.regions:
+            self._remove_region(region_id)
 
     def get_spectrum(self, id: str) -> Spectrum:
         """
         Retrieve a spectrum by its UUID.
-
-        Parameters
-        ----------
-        id : str
-            Spectrum UUID.
-
-        Returns
-        -------
-        Spectrum
-            The spectrum corresponding to the given ID.
         """
+        if id not in self.spectra_index:
+            raise KeyError(f"Spectrum with ID {id} not found in collection.")
+
         return self.spectra_index[id]
 
     def get_region(self, id: str) -> Region:
         """
         Retrieve a region by its UUID.
         """
+        if id not in self.regions_index:
+            raise KeyError(f"Region with ID {id} not found in collection.")
+
         return self.regions_index[id]
 
     def get_peak(self, id: str) -> Peak:
         """
         Retrieve a peak by its UUID.
         """
+        if id not in self.peaks_index:
+            raise KeyError(f"Peak with ID {id} not found in collection.")
+
         return self.peaks_index[id]
