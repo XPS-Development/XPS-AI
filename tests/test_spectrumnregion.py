@@ -20,23 +20,18 @@ def smoothed_spectrum(sample_spectrum):
 
 
 def test_add_and_remove_peak():
-    region = Region(spectrum_id=uuid4().hex)
-    peak = Peak(region_id=region.id)
+    region = Region()
+    peak = Peak()
 
-    region.add_peak(peak)
-    assert peak in region.peaks
+    region.add_peak(peak.id)
+    assert peak.id in region.peaks
 
-    region.remove_peak(peak)
-    assert peak not in region.peaks
-
-    # через ID
-    region.add_peak(peak)
     region.remove_peak(peak.id)
-    assert peak not in region.peaks
+    assert peak.id not in region.peaks
 
 
 def test_update_range():
-    region = Region(spectrum_id=uuid4().hex)
+    region = Region()
     x = np.array([1, 2, 3])
     y = np.array([4, 5, 6])
 
@@ -49,7 +44,7 @@ def test_update_range():
 
 
 def test_repr_region():
-    region = Region(spectrum_id="abc123")
+    region = Region()
     s = repr(region)
     assert "Region" in s
     assert "peaks=0" in s
@@ -57,27 +52,16 @@ def test_repr_region():
 
 def test_add_and_remove_region(smoothed_spectrum):
     spec = smoothed_spectrum
-    region = Region(spectrum_id=spec.id)
-    spec.add_region(region)
+    region = Region()
+    spec.add_region(region.id)
 
-    assert region in spec.regions
+    assert region.id in spec.regions
 
-    spec.remove_region(region)
-    assert region not in spec.regions
-
-    # через ID
-    spec.add_region(region)
     spec.remove_region(region.id)
-    assert region not in spec.regions
+    assert region.id not in spec.regions
 
 
-def test_create_region_without_normalization(sample_spectrum):
-    spec = sample_spectrum
-    with pytest.raises(ValueError):
-        spec.create_region(0, 10)
-
-
-def test_create_region_with_normalization(smoothed_spectrum):
+def test_create_region(smoothed_spectrum):
     spec = smoothed_spectrum
     region = spec.create_region(0, 10)
     assert region in spec.regions
@@ -96,6 +80,18 @@ def test_charge_correction(smoothed_spectrum):
     spec.remove_charge_correction()
     assert np.allclose(spec.x, x_copy)
     assert spec.charge_correction == 0.0
+
+
+def test_charge_correction_region(smoothed_spectrum):
+    spec = smoothed_spectrum
+    region = spec.create_region(0, 10)
+    x_copy = region.x.copy()
+
+    spec.set_charge_correction(1.0)
+    assert np.allclose(region.x, x_copy + 1.0)
+
+    spec.remove_charge_correction()
+    assert np.allclose(region.x, x_copy)
 
 
 def test_summary_and_repr(smoothed_spectrum):
