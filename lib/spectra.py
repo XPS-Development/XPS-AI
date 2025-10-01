@@ -346,8 +346,9 @@ class Region:
             self.i_2 = i_2
 
     def __repr__(self) -> str:
+        s_id = self.spectrum_id[:8] if self.spectrum_id is not None else "N/A"
         return (
-            f"<Region id={self.id[:8]} spectrum_id={self.spectrum_id[:8]} "
+            f"<Region id={self.id[:8]} spectrum_id={s_id} "
             f"points={self.x.size if self.x is not None else 0} "
             f"peaks={len(self.peaks)} background_type={self.background_type}>"
         )
