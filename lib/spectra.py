@@ -447,15 +447,19 @@ class Spectrum:
             The newly created region attached to this spectrum.
         """
         if self.y_smoothed is None:
-            raise ValueError("Spectrum must be smoothed before creating regions.")
+            i_1 = self.y[start_idx]
+            i_2 = self.y[end_idx]
+        else:
+            i_1 = self.y_smoothed[start_idx]
+            i_2 = self.y_smoothed[end_idx]
 
         region = Region(
             spectrum_id=self.id,
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
             norm_coefs=self.norm_coefs,
-            i_1=self.y_smoothed[start_idx],
-            i_2=self.y_smoothed[end_idx - 1],
+            i_1=i_1,
+            i_2=i_2,
             background_type=background_type,
         )
         self.add_region(region)
