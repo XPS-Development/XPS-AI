@@ -259,7 +259,7 @@ class Region:
 
     Attributes
     ----------
-    id : str
+    id : str | None
         Unique identifier of the region (auto-generated, format ``r<uuid>``).
     peaks : list[str]
         List of IDs of peaks associated with this region.
@@ -271,7 +271,7 @@ class Region:
     id: str = field(default_factory=lambda: f"r{uuid4().hex}")
     x: Optional[NDArray] = None
     y: Optional[NDArray] = None
-    norm_coefs: tuple[float, float] = (0, 1)
+    norm_coefs: Tuple[float, float] = (0, 1)
 
     i_1: Optional[float] = None
     i_2: Optional[float] = None
