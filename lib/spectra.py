@@ -384,7 +384,7 @@ class Spectrum:
         List of region IDs associated with this spectrum.
     charge_correction : float
         Applied shift to the energy axis.
-    norm_coefs : Optional[Tuple[float, float]]
+    norm_coefs : Tuple[float, float]
         Minimum and maximum values used for normalization.
     y_smoothed : Optional[NDArray]
         Smoothed intensity values (e.g., via Savitzky-Golay filter).
@@ -401,8 +401,11 @@ class Spectrum:
     charge_correction: float = 0.0
 
     # Optional fields for processed data
-    norm_coefs: Optional[Tuple[float, float]] = None
     y_smoothed: Optional[NDArray] = None
+
+    @property
+    def norm_coefs(self) -> Tuple[float, float]:
+        return self.y.min(), self.y.max()
 
     def add_region(self, region_id) -> None:
         """Attach region to spectrum."""
