@@ -43,37 +43,31 @@ class TestPeakParameter:
 
 
 class TestPeak:
-    def test_peak_has_unique_id_and_region_id(self):
-        region_id = uuid4().hex
-        peak = Peak(region_id)
-        assert peak.region_id == region_id
-        assert isinstance(peak.id, str)
-
     def test_peak_parameters_are_peakparameters(self):
-        peak = Peak("region1")
+        peak = Peak()
         assert isinstance(peak.amp_par, PeakParameter)
         assert isinstance(peak.cen_par, PeakParameter)
         assert isinstance(peak.sig_par, PeakParameter)
         assert isinstance(peak.frac_par, PeakParameter)
 
     def test_getattr_returns_parameter_values(self):
-        peak = Peak("region1")
+        peak = Peak()
         peak.amp_par.set(value=3.5)
         assert peak.amp == 3.5
 
     def test_setattr_updates_parameter_values(self):
-        peak = Peak("region1")
+        peak = Peak()
         peak.amp = 2.0
         assert peak.amp_par.value == 2.0
 
     def test_set_method_updates_parameter(self):
-        peak = Peak("region1")
+        peak = Peak()
         peak.set("amp", value=4.2, min=0, max=10)
         assert peak.amp == 4.2
         assert peak.amp_par.max == 10
 
     def test_fwhm_property_getter_and_setter(self):
-        peak = Peak("region1")
+        peak = Peak()
         peak.sig = 2.0
         assert peak.fwhm == 4.0
         peak.fwhm = 10.0
@@ -81,7 +75,7 @@ class TestPeak:
 
     def test_pvoigt_evaluation(self):
         x = np.linspace(-5, 5, 100)
-        peak = Peak("region1")
+        peak = Peak()
         y = peak.f(x)
         assert isinstance(y, np.ndarray)
         assert y.shape == x.shape
