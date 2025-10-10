@@ -335,23 +335,6 @@ class OptimizationManager:
             params.extend(self.peak_to_params(peak, norm_coefs, force_fix=force_fix))
         return params
 
-    @staticmethod
-    def get_combinations(peaks: Sequence[Peak]) -> Tuple[str, ...]:
-        """
-        Get a tuple of peak IDs for optimizer grouping.
-
-        Parameters
-        ----------
-        peaks : sequence of Peak
-            Peaks to group.
-
-        Returns
-        -------
-        tuple of str
-            Tuple of peak UUIDs.
-        """
-        return tuple(peak.id for peak in peaks)
-
     def prepare_region(
         self, region: Region, normalize: bool = True
     ) -> Tuple[NDArray, NDArray, Tuple[str, ...], List[Parameter]]:
