@@ -336,44 +336,48 @@ class OptimizationManager:
         return params
 
     def prepare_region(
-        self, region: Region, normalize: bool = True
+        self, region_id: str, normalize: bool = True
     ) -> Tuple[NDArray, NDArray, Tuple[str, ...], List[Parameter]]:
         """
         Prepare data and parameters for optimizing a single region.
 
         Parameters
         ----------
-        region : Region
-            Region to optimize.
+        region_id : str
+            UUID of the Region.
         normalize : bool, default=True
             Whether to use normalized intensity values.
 
         Returns
         -------
         tuple
-            (x, y, reg_combinations, params)
+            (x, y, reg_combination, params)
             - x : ndarray
                 X-axis values.
             - y : ndarray
                 Y-axis values (normalized or raw).
-            - reg_combinations : tuple of str
+            - reg_combination : tuple
                 Tuple of peak IDs in this region.
             - params : list of Parameter
                 Parameters corresponding to peaks.
         """
+        region = self.collection.get_region(region_id)
+
         params = []
-        reg_combinations = self.get_combinations(region.peaks)
+        reg_combination = tuple(region.peaks)
         x = region.x
-        peaks = region.peaks
+
         if normalize:
             norm_coefs = region.norm_coefs
-            y = norm_with_coefs(region.y, norm_coefs)
+            background = norm_with_coefs(region.background, norm_coefs)
+            y = norm_with_coefs(region.y, norm_coefs) - background
         else:
-            y = region.y
+            y = region.y - region.background
             norm_coefs = None
 
+        peaks = tuple(self.collection.get_peak(p) for p in reg_combination)
         params.extend(self.peaks_to_params(peaks, norm_coefs))
-        return x, y, reg_combinations, params
+        return x, y, reg_combination, params
 
     def resolve_dependencies(self, params: List[Parameter]) -> None:
         """
