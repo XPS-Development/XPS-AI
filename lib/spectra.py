@@ -124,11 +124,6 @@ class Peak:
     but can be accessed and modified directly via attributes (`amp`, `cen`, `sig`, `frac`).
     The class also provides a convenient `fwhm` property synchronized with `sig`.
 
-    Parameters
-    ----------
-    region_id : str or None, optional
-        Identifier of the parent region this peak belongs to. Default is None.
-
     Attributes
     ----------
     id : str
@@ -145,16 +140,27 @@ class Peak:
         Also accessible via `peak.frac`.
     fwhm : float
         Full width at half maximum of the peak. Setting this property updates `sig`.
+    region_id : str or None, optional
+        Identifier of the parent region this peak belongs to. Default is None.
     """
 
-    def __init__(self, region_id: str | None = None) -> None:
-        self.id: str = f"p{uuid4().hex}"
+    def __init__(
+        self,
+        id_: str | None = None,
+        amp: float = 1,
+        cen: float = 0,
+        sig: float = 1,
+        frac: float = 1,
+        region_id: str | None = None,
+    ) -> None:
+
+        self.id: str = f"p{uuid4().hex}" if id_ is None else id_
         self.region_id: str | None = region_id
 
-        self.amp_par: PeakParameter = PeakParameter("amp", value=1, min_val=0, max_val=np.inf)
-        self.cen_par: PeakParameter = PeakParameter("cen", value=0, min_val=-np.inf, max_val=np.inf)
-        self.sig_par: PeakParameter = PeakParameter("sig", value=1, min_val=0, max_val=np.inf)
-        self.frac_par: PeakParameter = PeakParameter("frac", value=1, min_val=0, max_val=1)
+        self.amp_par: PeakParameter = PeakParameter("amp", value=amp, min_val=0, max_val=np.inf)
+        self.cen_par: PeakParameter = PeakParameter("cen", value=cen, min_val=-np.inf, max_val=np.inf)
+        self.sig_par: PeakParameter = PeakParameter("sig", value=sig, min_val=0, max_val=np.inf)
+        self.frac_par: PeakParameter = PeakParameter("frac", value=frac, min_val=0, max_val=1)
 
     @property
     def fwhm(self) -> float:
