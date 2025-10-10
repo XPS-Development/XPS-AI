@@ -19,6 +19,14 @@ def smoothed_spectrum(sample_spectrum):
     return spec
 
 
+def test_norm_coefs():
+    x = np.linspace(0, 10, 100)
+    y = np.sin(x)
+    s = Spectrum(x=x, y=y, name="test_spectrum")
+    assert y.min() == s.norm_coefs[0]
+    assert y.max() == s.norm_coefs[1]
+
+
 def test_add_and_remove_peak():
     region = Region()
     peak = Peak()
