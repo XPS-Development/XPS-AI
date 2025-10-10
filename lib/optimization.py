@@ -144,6 +144,7 @@ class OptimizationManager:
     def __init__(self) -> None:
         self.collection: Optional[SpectrumCollection] = None
         self.def_id_pattern = r"p[\w]{1,32}"
+        self.param_name_pattern = r"p[\w]{1,32}_(amp|cen|sig|frac)"
 
     def set_collection(self, collection: SpectrumCollection) -> None:
         """
@@ -435,27 +436,6 @@ class OptimizationManager:
 
         return opt
 
-    # def get_peaks_opt(self, peak_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt):
-    #     """
-    #     Build an Optimizer for the given peak IDs.
-
-    #     Parameters
-    #     ----------
-    #     peak_ids : sequence of str
-    #         UUIDs of peaks to optimize.
-    #     normalize : bool, default=True
-    #         Whether to use normalized intensities.
-    #     default_model : callable, default=ndpvoigt
-    #         Model function used for optimization.
-
-    #     Returns
-    #     -------
-    #     Optimizer
-    #         Configured optimizer instance.
-    #     """
-    #     peaks_to_opt = [self.collection.get_peak(peak_id) for peak_id in peak_ids]
-    #     regions = [self.collection.get_region(peak.region_id) for peak in peaks_to_opt]
-
     def proceed_regions_opt(
         self, region_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt
     ) -> None:
@@ -474,20 +454,3 @@ class OptimizationManager:
         opt = self.get_regions_opt(region_ids, normalize=normalize, default_model=default_model)
         opt_params = opt.fit(return_result=False)
         self.update_peak_param_values(opt_params, from_norm=normalize)
-
-    # def procceed_peaks_opt(self, peak_ids: Sequence[str], normalize: bool = True, default_model=ndpvoigt) -> None:
-    #     """
-    #     Run optimization for the given peaks and update peak values.
-
-    #     Parameters
-    #     ----------
-    #     peak_ids : sequence of str
-    #         UUIDs of peaks to optimize.
-    #     normalize : bool, default=True
-    #         Whether to normalize amplitudes during optimization.
-    #     default_model : callable, default=ndpvoigt
-    #         Model function used for optimization.
-    #     """
-    #     opt = self.get_peaks_opt(peak_ids, normalize=normalize, default_model=default_model)
-    #     opt_params = opt.fit(return_result=False)
-    #     self.update_peak_param_values(opt_params, from_norm=normalize
