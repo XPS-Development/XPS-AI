@@ -394,7 +394,7 @@ class OptimizationManager:
         for p in params:
             if p.expr is None:
                 continue
-            peak_dep = re.match(self.def_id_pattern, p.expr)
+            peak_dep = re.match(self.param_name_pattern, p.expr)
             if peak_dep and peak_dep.group(0) not in curr_ids:
                 p.expr = None
 
