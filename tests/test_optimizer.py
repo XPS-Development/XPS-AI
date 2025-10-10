@@ -71,7 +71,7 @@ def make_data_multi():
 def test_init_and_validation(make_data_single):
     x, y, params_true, combinations = make_data_single
 
-    # Ошибка если параметры не делятся на 4
+    # Ошибка если число параметров не делится на 4
     with pytest.raises(ValueError):
         bad_params = Parameters()
         bad_params.add("p4_amp", value=1)
