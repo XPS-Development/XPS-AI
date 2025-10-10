@@ -413,7 +413,7 @@ class Spectrum:
     def norm_coefs(self) -> Tuple[float, float]:
         return self.y.min(), self.y.max()
 
-    def add_region(self, region_id) -> None:
+    def add_region(self, region_id: str) -> None:
         """Attach region to spectrum."""
         self.regions.append(region_id)
 
@@ -462,7 +462,7 @@ class Spectrum:
             i_2=i_2,
             background_type=background_type,
         )
-        self.add_region(region)
+        self.add_region(region.id)
         return region
 
     def set_charge_correction(self, delta: float) -> None:
