@@ -72,9 +72,10 @@ def test_add_and_remove_region(smoothed_spectrum):
 def test_create_region(smoothed_spectrum):
     spec = smoothed_spectrum
     region = spec.create_region(0, 10)
-    assert region in spec.regions
+    assert region.id in spec.regions
     assert np.array_equal(region.x, spec.x[0:10])
     assert np.array_equal(region.y, spec.y[0:10])
+    assert spec.norm_coefs[1] == region.norm_coefs[1]
 
 
 def test_charge_correction(smoothed_spectrum):
