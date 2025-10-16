@@ -20,8 +20,23 @@ class ValXPSDataGenerator:
         self.min_relative_area = min_relative_area
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
+    
+    def resize_to_256(self, x, y):
+        if len(y) > 256:
+            return x[:256], y[:256]
+        elif len(y) < 256:
+    
+            y_pad = np.pad(y, (0, 256 - len(y)), mode='constant')
+            x_step = -0.1
+            x_pad = np.pad(x, (0, 256 - len(x)), mode='edge')
+            
+            for i in range(len(x), 256):
+                x_pad[i] = x_pad[i-1] + x_step
+            return x_pad, y_pad
+        else:
+            return x, y
         
-    def check_peak_monotonicity(self, peak_intensities, limit = 5.0) -> bool:        
+    def check_peak_monotonicity(self, peak_intensities, limit=1.25) -> bool:        
         intensities = np.array(peak_intensities)
         gradient = np.gradient(intensities)
         num_points = len(gradient)
