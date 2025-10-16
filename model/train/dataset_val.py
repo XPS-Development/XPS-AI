@@ -49,10 +49,7 @@ class ValXPSDataGenerator:
         return np.any(gradient > limit)
 
     def negative_intensities(self, peak_intensities) -> bool:   
-        for intensity in peak_intensities:
-            if intensity < 0:
-                return True
-        return False
+        return np.any(peak_intensities < 0)
 
     def create_mask(self, x, from_x, to_x) -> np.ndarray:  
         zeros = np.zeros_like(x)
