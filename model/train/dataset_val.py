@@ -24,10 +24,12 @@ class ValXPSDataGenerator:
     def check_peak_monotonicity(self, peak_intensities, limit = 5.0) -> bool:        
         intensities = np.array(peak_intensities)
         gradient = np.gradient(intensities)
-        
-        if len(gradient) > 80:
-            gradient[:40] = 0
-            gradient[-40:] = 0
+        num_points = len(gradient)
+        trim_points = int(self.trim_percentage * num_points)
+
+        if num_points > 2 * trim_points:
+            gradient[:trim_points] = 0
+            gradient[-trim_points:] = 0
         
         return np.any(gradient > limit)
 
