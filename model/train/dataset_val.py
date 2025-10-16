@@ -93,12 +93,13 @@ class ValXPSDataGenerator:
             if self.print_data:
                 print(f"Skipping '{spectrum_name}' (file: {json_filename}) - negative intensities")
             return None, None, None, None
+        
+        y = (y - y.min()) / (y.max() - y.min())
 
-        y = (y - y.min()) / (y.max() - y.min() + 1e-8)
-        
+        x, y = self.resize_to_256(x, y)
+
         y_log = np.log(10 * y + 1)
-        
-        y_log = (y_log - y_log.min()) / (y_log.max() - y_log.min() + 1e-8)
+        y_log = (y_log - y_log.min()) / (y_log.max() - y_log.min())
 
         peak_mask = np.zeros_like(x)
         max_mask = np.zeros_like(x)
