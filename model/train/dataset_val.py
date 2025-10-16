@@ -53,7 +53,7 @@ class ValXPSDataGenerator:
         return np.any(gradient > limit)
 
     def negative_intensities(self, peak_intensities) -> bool:   
-        return np.any(peak_intensities < 0)
+        return np.any(np.array(peak_intensities) < 0)
 
     def create_mask(self, x, from_x, to_x) -> np.ndarray:  
         zeros = np.zeros_like(x)
@@ -104,7 +104,7 @@ class ValXPSDataGenerator:
         peak_mask = np.zeros_like(x)
         max_mask = np.zeros_like(x)
 
-        peaks_dict = spectrum_data.get('peaks', {})
+        peaks_dict = spectrum_data['peaks']
         
         total_area = sum(peak_info['area'] for peak_info in peaks_dict.values())
         
@@ -114,9 +114,9 @@ class ValXPSDataGenerator:
             position = peak_info['position']
             fwhm = peak_info['fwhm']
             area = peak_info['area']
-            peak_intensities = peak_info.get('intensity', [])
+            peak_intensities = peak_info['intensity']
             
-            relative_area = area / total_area if total_area > 0 else 0
+            relative_area = area / total_area 
             
             if relative_area < self.min_relative_area:
                 if self.print_data:
@@ -181,7 +181,7 @@ class ValXPSDataGenerator:
                 output_file = self.output_dir / f'{file_counter}.csv'
                 df.to_csv(output_file, header=False, index=False)
                 
-                peaks_dict = spectrum_data.get('peaks', {})
+                peaks_dict = spectrum_data['peaks']
                 valid_peaks_in_spectrum = 0
                 
                 total_area = sum(peak_info['area'] for peak_info in peaks_dict.values())
@@ -189,7 +189,7 @@ class ValXPSDataGenerator:
                 for peak_num, peak_info in peaks_dict.items():
                     area = peak_info['area']
                     relative_area = area / total_area if total_area > 0 else 0
-                    peak_intensities = peak_info.get('intensity', [])
+                    peak_intensities = peak_info['intensity']
                     
                     is_valid = (
                         relative_area >= self.min_relative_area and
