@@ -9,15 +9,19 @@ class ValXPSDataGenerator:
             self,
             json_dir,
             output_dir,
-            width_peak = 1.23,
-            width_max = 0.2,
-            min_relative_area = 0.002,
+            width_peak=1.23,
+            width_max=0.2,
+            min_relative_area=0.002,
+            trim_percentage=0.05,
+            print_data=False
             ):
         self.json_dir = Path(json_dir)
         self.output_dir = Path(output_dir)
         self.width_peak = width_peak
         self.width_max = width_max
         self.min_relative_area = min_relative_area
+        self.trim_percentage = trim_percentage
+        self.print_data = print_data
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -56,6 +60,27 @@ class ValXPSDataGenerator:
         zeros[(x > from_x) & (x < to_x)] = 1
         return zeros
 
+    def plot_peak_intensity(self, peak_intensities, peak_num, spectrum_name, json_filename, show_gradient=True):
+            plt.figure(figsize=(10, 6))
+            
+            if show_gradient:
+                plt.subplot(2, 1, 1)
+            
+            plt.plot(peak_intensities)
+            title_type = "gradient filtered" if show_gradient else "area filtered"
+            plt.title(f'Peak {peak_num} in spectrum "{spectrum_name}" ({title_type})\n(file: {json_filename})')
+            plt.grid(True, alpha=0.3)
+            
+            if show_gradient:
+                plt.subplot(2, 1, 2)
+                gradient = np.gradient(peak_intensities)
+                plt.plot(gradient, 'r-')
+                plt.axhline(y=5.0)
+                plt.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.show()
+
     def process_spectrum(self, spectrum_data, json_filename, spectrum_name) -> tuple:
         start_x = spectrum_data['BE']['start']
         step_x = spectrum_data['BE']['step']
@@ -65,7 +90,8 @@ class ValXPSDataGenerator:
         y = np.array(spectrum_data['raw_intensity'], dtype=np.float32)
 
         if np.any(y < 0):
-            print(f"Пропускаем '{spectrum_name}' (файл: {json_filename}) - отрицательные интенсивности")
+            if self.print_data:
+                print(f"Skipping '{spectrum_name}' (file: {json_filename}) - negative intensities")
             return None, None, None, None
 
         y = (y - y.min()) / (y.max() - y.min() + 1e-8)
@@ -92,11 +118,14 @@ class ValXPSDataGenerator:
             relative_area = area / total_area if total_area > 0 else 0
             
             if relative_area < self.min_relative_area:
-                print(f"пик {peak_num} в '{spectrum_name}' (файл: {json_filename}) с относительной площадью {relative_area:.4f} < {self.min_relative_area}")
+                if self.print_data:
+                    print(f"Peak {peak_num} in '{spectrum_name}' (file: {json_filename}) with relative area {relative_area:.4f} < {self.min_relative_area}")
+                    self.plot_peak_intensity(peak_intensities, peak_num, spectrum_name, json_filename, show_gradient=False)
                 continue
             
             if self.negative_intensities(peak_intensities):
-                print(f"пик {peak_num} в '{spectrum_name}' (файл: {json_filename}) с отрицательной интенсивностью")
+                if self.print_data:
+                    print(f"Peak {peak_num} in '{spectrum_name}' (file: {json_filename}) with negative intensity")
                 continue
             
             if len(peak_intensities) > 0:
@@ -105,7 +134,9 @@ class ValXPSDataGenerator:
                     max_mask += self.create_mask(x, position - self.width_max, position + self.width_max)
                     valid_peaks_count += 1
                 else:
-                    print(f"пик {peak_num} в '{spectrum_name}' (файл: {json_filename}) отфильтрован градиентом")
+                    if self.print_data:
+                        print(f"Peak {peak_num} in '{spectrum_name}' (file: {json_filename}) filtered by gradient")
+                        self.plot_peak_intensity(peak_intensities, peak_num, spectrum_name, json_filename, show_gradient=True)
         
         peak_mask[peak_mask > 0] = 1
         max_mask[max_mask > 0] = 1
@@ -120,10 +151,12 @@ class ValXPSDataGenerator:
         spectra_with_peaks = 0
         total_spectra = 0
         filtered_negative_intensity = 0
+        self.peaks_stats = []
         
         for json_file in json_files:
             json_filename = json_file.name
-            print(f"{json_filename}")
+            if self.print_data:
+                print(f"{json_filename}")
             
             with open(json_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -152,27 +185,52 @@ class ValXPSDataGenerator:
                 
                 total_area = sum(peak_info['area'] for peak_info in peaks_dict.values())
                 
-                for peak_info in peaks_dict.values():
+                for peak_num, peak_info in peaks_dict.items():
                     area = peak_info['area']
                     relative_area = area / total_area if total_area > 0 else 0
+                    peak_intensities = peak_info.get('intensity', [])
                     
-                    if relative_area < self.min_relative_area:
-                        continue
-                    if self.negative_intensities(peak_info.get('intensity', [])):
-                        continue
-                    if self.check_peak_monotonicity(peak_info.get('intensity', [])):
+                    is_valid = (
+                        relative_area >= self.min_relative_area and
+                        not self.negative_intensities(peak_intensities) and
+                        (len(peak_intensities) == 0 or self.check_peak_monotonicity(peak_intensities))
+                    )
+                    
+                    peak_stat = {
+                        'file': json_filename,
+                        'spectrum': spectrum_name,
+                        'peak_number': peak_num,
+                        'area': area,
+                        'fwhm': peak_info['fwhm'],
+                        'position': peak_info['position'],
+                        'relative_area': relative_area,
+                        'valid': is_valid
+                    }
+                    self.peaks_stats.append(peak_stat)
+                    
+                    if is_valid:
                         valid_peaks_in_spectrum += 1
                 
                 total_peaks_count += valid_peaks_in_spectrum
-                spectra_with_peaks += 1
+                if valid_peaks_in_spectrum > 0:
+                    spectra_with_peaks += 1
                 file_counter += 1
+                
+        self.total_spectra = total_spectra
+        self.filtered_negative_intensity = filtered_negative_intensity
+        self.file_counter = file_counter
+        self.total_peaks_count = total_peaks_count
+        self.spectra_with_peaks = spectra_with_peaks
     
-        print(f"Всего обработано спектров: {total_spectra}")
-        print(f"Отфильтровано из-за отрицательных интенсивностей: {filtered_negative_intensity}")
-        print(f"Осталось спектров: {file_counter}")
-        print(f"Всего пиков в спектрах: {total_peaks_count}")
-        print(f"Среднее количество пиков: {total_peaks_count / spectra_with_peaks:.2f}")
+        if self.print_data:
+            print(f"Total spectra processed: {total_spectra}")
+            print(f"Filtered due to negative intensities: {filtered_negative_intensity}")
+            print(f"Remaining spectra: {file_counter}")
+            print(f"Total peaks in spectra: {total_peaks_count}")
+            print(f"Average number of peaks: {total_peaks_count / spectra_with_peaks if spectra_with_peaks > 0 else 0:.2f}")
 
+    def get_stats(self):
+        return self.peaks_stats
 
     def view_labeled_data(self, file_index: int):
         file_path = self.output_dir / f'{file_index}.csv'
@@ -203,7 +261,8 @@ def main():
     generator = ValXPSDataGenerator(
         json_dir, 
         output_dir,
-        min_relative_area=0.002
+        min_relative_area=0.002,
+        print_data=False
     )
     generator.generate_dataset()
     
