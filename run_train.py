@@ -18,6 +18,7 @@ from model.train.metrics import IoU, Accuracy, Precision, Recall, DiceFocalLoss,
 from model.models.model_deeper import XPSModel
 from model.train.trainer import Trainer
 from tools import Analyzer, Spectrum
+from model.train.dataset_val import generate_dataset
 
 
 def load_params():
@@ -26,8 +27,10 @@ def load_params():
 
     seed = params['seed']
     path_to_data = params['data_path']
+    path_to_real_data = params['real_data_path']  
+    json_dir = params['train']['real_json_dir']
 
-    return seed, path_to_data, params['train'], params['synth_data']
+    return seed, path_to_data, path_to_real_data, json_dir, params['train'], params['synth_data']
 
 
 def fix_seed(seed):
@@ -42,6 +45,22 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+def process_real_data(json_dir, output_dir):
+    output_path = Path(output_dir)
+    csv_files = list(output_path.glob('*.csv'))
+    
+    if len(csv_files) == 0:
+        print("Processing val XPS data...")
+        generate_dataset(
+            json_dir=json_dir, 
+            output_dir=output_dir,
+            min_relative_area=0.002,
+            print_data=False 
+        )
+        print("Real XPS data processing completed!")
+    else:
+        print(f"Validation dataset already exists with {len(csv_files)} files")
 
 @torch.no_grad()
 def test_model(test_dir, model, save_dir):
