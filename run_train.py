@@ -79,7 +79,8 @@ def test_model(test_dir, model, save_dir):
         x, y = spectrum.get_data()
         view_labeled_data(x, y, spectrum.get_masks(), save_path=save_path)
 
-def save_train_log_png(self, path: Path):
+
+def save_train_log_png(path: Path):
     with open(path, 'r') as f:
         log_data = pd.read_csv(f)
     fig, axs = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
@@ -95,24 +96,34 @@ def save_train_log_png(self, path: Path):
 
 
 def main():
-    
-    seed, path_to_data, train_params, synth_params = load_params()
+
+    rv_flag = True
+    seed, path_to_data, path_to_real_data, json_dir, train_params, synth_params = load_params()
     gen = fix_seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Device: {device}')
 
-    print('Generating data...')
-    data_generator = SynthGenerator(synth_params, seed)
-    data_generator.gen_dataset(path_to_data)
-    dataset = XPSDataset(path_to_data)
-    print(f'Dataset size: {len(dataset)}')
+    if rv_flag:
+        process_real_data(json_dir, path_to_real_data)
+        print('Generating synthetic data for training...')
+        data_generator = SynthGenerator(synth_params, seed)
+        data_generator.gen_dataset(path_to_data)
+        train_data = XPSDataset(path_to_data)
+        print(f'Synthetic training dataset size: {len(train_data)}')
+        val_data = XPSDataset(path_to_real_data)
+    else:
+        print('Generating data...')
+        data_generator = SynthGenerator(synth_params, seed)
+        data_generator.gen_dataset(path_to_data)
+        dataset = XPSDataset(path_to_data)
+        print(f'Dataset size: {len(dataset)}')
 
-    split = train_params['train_test_split']
-    train_data, val_data = random_split(dataset, (split, 1-split), gen)    
-
+        split = train_params['train_test_split']
+        train_data, val_data = random_split(dataset, (split, 1-split), gen)  
 
     train_dl = DataLoader(train_data, batch_size=train_params['batch_size'], shuffle=True, generator=gen)
     val_dl = DataLoader(val_data, batch_size=train_params['batch_size'], shuffle=False)
+    
     model = XPSModel()
     optimizer = Adam(model.parameters(), lr=train_params['learning_rate'])
     dicefocal = DiceFocalLoss()
@@ -139,9 +150,9 @@ def main():
     print('Training model...')
     trainer = Trainer(model, train_dl, val_dl, optimizer, criterion, metrics, device=device)
     trainer.train(train_params['num_epochs'])
-    # test_model(Path('other/test_data'), model, trainer.log_dir)
+    
+    save_train_log_png(trainer.log)
 
-    # save_train_log_png(trainer.log)
 
 if __name__ == '__main__':
     main()
