@@ -124,14 +124,14 @@ def generate_dataset(
         width_max = 0.2,
         min_relative_area = 0.002,
         trim_percentage = 0.05,
-        **kwargs):
+        print_data = False):
     
     config = {
-        'width_peak': kwargs.get('width_peak', width_peak),
-        'width_max': kwargs.get('width_max', width_max),
-        'min_relative_area': kwargs.get('min_relative_area', min_relative_area),
-        'trim_percentage': kwargs.get('trim_percentage', trim_percentage),
-        'print_data': kwargs.get('print_data', False)
+    'width_peak': width_peak,
+    'width_max': width_max,
+    'min_relative_area': min_relative_area, 
+    'trim_percentage': trim_percentage,
+    'print_data': print_data
     }
     
     json_dir = Path(json_dir)
@@ -246,6 +246,9 @@ def view_labeled_data(output_dir, file_index):
 
     plt.legend()
     plt.show()
+
+def get_peaks_stats(results):
+    return results['peaks_stats']
 
 def main():
     json_dir = 'C:/Users/User/Desktop/Json_spec'
