@@ -163,7 +163,8 @@ class Workspace():
                 print(f'File {f} must be str or Path')
                 continue
 
-            if f.suffix == '.txt' or f.suffix == '.dat' or f.suffix == '.csv':
+            suffix = f.suffix.lower()
+            if suffix == '.txt' or suffix == '.dat' or suffix == '.csv':
                 self.load_txt(f)
             elif f.suffix == '.vms':
                 self.load_vamas(f)

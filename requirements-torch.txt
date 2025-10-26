@@ -6,3 +6,6 @@ PySide6==6.9.1
 PySide6_Addons==6.9.1
 PySide6_Essentials==6.9.1
 scipy==1.16.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+torchvision==0.23.0+cpu
