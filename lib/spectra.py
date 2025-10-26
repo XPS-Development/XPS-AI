@@ -308,6 +308,8 @@ class Region:
         peak_id : str
             ID of the peak to add.
         """
+        if peak_id in self.peaks:
+            return
         self.peaks.append(peak_id)
 
     def remove_peak(self, peak_id: str) -> None:
@@ -415,6 +417,8 @@ class Spectrum:
 
     def add_region(self, region_id: str) -> None:
         """Attach region to spectrum."""
+        if region_id in self.regions:
+            return
         self.regions.append(region_id)
 
     def remove_region(self, region_id: str) -> None:
