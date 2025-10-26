@@ -452,10 +452,10 @@ class Spectrum:
         """
         if self.y_smoothed is None:
             i_1 = self.y[start_idx]
-            i_2 = self.y[end_idx]
+            i_2 = self.y[end_idx - 1]  # to avoid index out of range
         else:
             i_1 = self.y_smoothed[start_idx]
-            i_2 = self.y_smoothed[end_idx]
+            i_2 = self.y_smoothed[end_idx - 1]
 
         region = Region(
             spectrum_id=self.id,
