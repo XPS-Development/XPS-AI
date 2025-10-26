@@ -232,13 +232,12 @@ class OptimizationManager:
         Parameter
             The corresponding lmfit parameter object.
         """
-        norm_coefs = norm_coefs or (0, 1)
         name = f"{peak_id}_{param.name}"
         expr = self.parse_expr(param.expr, param.name)
 
         return Parameter(
             name,
-            value=norm_with_coefs(param.value, norm_coefs),
+            value=param.value / (norm_coefs[1] - norm_coefs[0]) if norm_coefs else param.value,
             vary=param.vary if not force_fix else False,
             min=param.min,
             max=param.max,
@@ -281,11 +280,14 @@ class OptimizationManager:
             if param == "amp" and from_norm:
                 region = self.collection.get_region(peak.region_id)
                 norm_coefs = region.norm_coefs
-                opt_value = denorm_with_coefs(opt_value, norm_coefs)
+                # denormalize amplitude
+                opt_value = opt_value * (norm_coefs[1] - norm_coefs[0])
 
             peak.set(param, value=opt_value)
 
-    def peak_to_params(self, peak: Peak, norm_coefs=None, force_fix: bool = False) -> List[Parameter]:
+    def peak_to_params(
+        self, peak: Peak, norm_coefs: Tuple[float, float] | None = None, force_fix: bool = False
+    ) -> List[Parameter]:
         """
         Convert a peak into a list of lmfit parameters.
 
@@ -305,6 +307,8 @@ class OptimizationManager:
         """
         amp, cen, sig, frac = self.get_peak_params(peak)
         params = []
+        # normalize amplitude before fitting
+        # amp = amp / (max_val - min_val)
         params.append(self.peakparam_to_param(peak.id, amp, norm_coefs, force_fix=force_fix))
         for par in (cen, sig, frac):
             params.append(self.peakparam_to_param(peak.id, par, force_fix=force_fix))
@@ -312,7 +316,7 @@ class OptimizationManager:
         return params
 
     def peaks_to_params(
-        self, peaks: Sequence[Peak], norm_coefs=None, force_fix: bool = False
+        self, peaks: Sequence[Peak], norm_coefs: Tuple[float, float] | None = None, force_fix: bool = False
     ) -> List[Parameter]:
         """
         Convert multiple peaks into a flat list of lmfit parameters.
@@ -417,13 +421,12 @@ class OptimizationManager:
         Optimizer
             Configured optimizer instance.
         """
-        regions = [self.collection.get_region(region_id) for region_id in region_ids]
         x_data = []
         y_data = []
         combinations = []
         all_params = []
-        for region in regions:
-            x, y, reg_combinations, params = self.prepare_region(region, normalize=normalize)
+        for region_id in region_ids:
+            x, y, reg_combinations, params = self.prepare_region(region_id, normalize=normalize)
             x_data.append(x)
             y_data.append(y)
             combinations.append(reg_combinations)
