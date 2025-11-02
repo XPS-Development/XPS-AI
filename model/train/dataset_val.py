@@ -60,27 +60,6 @@ def create_mask(x, from_x, to_x) -> np.ndarray:
     zeros[(x > from_x) & (x < to_x)] = 1
     return zeros
 
-def plot_peak_intensity(peak_intensities, peak_num, spectrum_name, json_filename, show_gradient=True):
-    plt.figure(figsize=(10, 6))
-    
-    if show_gradient:
-        plt.subplot(2, 1, 1)
-    
-    plt.plot(peak_intensities)
-    title_type = "gradient filtered" if show_gradient else "area filtered"
-    plt.title(f'Peak {peak_num} in spectrum "{spectrum_name}" ({title_type})\n(file: {json_filename})')
-    plt.grid(True, alpha=0.3)
-    
-    if show_gradient:
-        plt.subplot(2, 1, 2)
-        gradient = np.gradient(peak_intensities)
-        plt.plot(gradient, 'r-')
-        plt.axhline(y=5.0)
-        plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
 def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
     start_x = spectrum_data['BE']['start']
     step_x = spectrum_data['BE']['step']
@@ -111,22 +90,12 @@ def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
     max_mask = np.zeros_like(x)
 
     peaks_dict = spectrum_data['peaks']
-    total_area = sum(peak_info['area'] for peak_info in peaks_dict.values())
     valid_peaks_count = 0
     
     for peak_num, peak_info in peaks_dict.items():
         position = peak_info['position']
         fwhm = peak_info['fwhm']
-        area = peak_info['area']
         peak_intensities = peak_info['intensity']
-        
-        relative_area = area / total_area 
-        
-        if relative_area < config['min_relative_area']:
-            if config['print_data']:
-                print(f"Peak {peak_num} in '{spectrum_name}' (file: {json_filename}) with relative area {relative_area:.4f} < {config['min_relative_area']}")
-                plot_peak_intensity(peak_intensities, peak_num, spectrum_name, json_filename, show_gradient=False)
-            continue
 
         if negative_intensities(peak_intensities):
             if config['print_data']:
@@ -153,8 +122,6 @@ def generate_dataset(
     config = {
     'width_peak': width_peak,
     'width_max': width_max,
-    'min_relative_area': min_relative_area, 
-    'trim_percentage': trim_percentage,
     'print_data': print_data
     }
     
@@ -207,11 +174,8 @@ def generate_dataset(
             
             peaks_dict = spectrum_data['peaks']
             valid_peaks_in_spectrum = 0
-            total_area = sum(peak_info['area'] for peak_info in peaks_dict.values())
             
             for peak_num, peak_info in peaks_dict.items():
-                area = peak_info['area']
-                relative_area = area / total_area 
                 peak_intensities = peak_info['intensity']
                 
                 if not negative_intensities(peak_intensities):
