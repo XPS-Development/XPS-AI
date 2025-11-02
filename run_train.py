@@ -55,7 +55,6 @@ def process_real_data(json_dir, output_dir):
         generate_dataset(
             json_dir=json_dir, 
             output_dir=output_dir,
-            min_relative_area=0.002,
             print_data=False 
         )
         print("Real XPS data processing completed!")
