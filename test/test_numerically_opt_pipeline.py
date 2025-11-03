@@ -1,3 +1,10 @@
+"""
+Test numerically spectra optimization
+
+NOTE: Some cases may fail due to random perturbations and high noise.
+It's normal behavior. You may try to run test multiple times.
+"""
+
 import pytest
 import random
 
