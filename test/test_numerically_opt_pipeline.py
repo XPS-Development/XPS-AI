@@ -11,11 +11,18 @@ from lib.funcs import pvoigt
 
 
 SPECTRUM_LEN = 200
-SPECTRUM_START = 10
-SPECTRUM_END = 30
-PERTUBATION = 0.3
-NOISE = 10
+SPECTRUM_START = 5
+SPECTRUM_END = 35
+PERTUBATION = 0.5
+NOISE = 5
 RTOL = 0.25
+
+IGNOR_PERTUB_FOR = "frac"
+LOW_PERTUBE_FOR = "cen"
+
+CREATE_PEAK_PARAMS = dict(pertube=PERTUBATION, ignore_for=IGNOR_PERTUB_FOR, low_pertube_for=LOW_PERTUBE_FOR)
+
+RUNS_NUM = pytest.mark.parametrize("run", range(3))
 
 
 def get_xy():
