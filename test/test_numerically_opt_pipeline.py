@@ -199,9 +199,13 @@ def get_params(peak: Peak):
     return peak.amp, peak.cen, peak.sig, peak.frac
 
 
-@pytest.mark.parametrize("_run", range(10))
-def test_s1r1p1_constbg(s1r1p1_constbg, _run):
-    coll, true_params_d = s1r1p1_constbg
+def construct_case(type_: str, bg: str):
+    f = globals()[f"{type_}_{bg}bg"]
+    coll, true_params_d = f()
+    return coll, true_params_d
+
+
+def run_test(coll, true_params_d):
     run(coll)
 
     for p_id, p in coll.peaks_index.items():
@@ -211,25 +215,16 @@ def test_s1r1p1_constbg(s1r1p1_constbg, _run):
         assert np.allclose(p_true, p_params, rtol=RTOL)
 
 
-@pytest.mark.parametrize("_run", range(10))
-def test_s1r1p1_linbg(s1r1p1_linbg, _run):
-    coll, true_params_d = s1r1p1_linbg
-    run(coll)
-
-    for p_id, p in coll.peaks_index.items():
-        p_true = tuple(true_params_d[p_id].values())[1:3]  # ignore amp and frac
-        p_params = get_params(p)[1:3]
-
-        assert np.allclose(p_true, p_params, rtol=RTOL)
+@RUNS_NUM
+@pytest.mark.parametrize("bg", ("const", "lin", "shirley"))
+def test_default(bg, run):
+    coll, true_params_d = construct_case(type_="s1r1p1", bg=bg)
+    run_test(coll, true_params_d)
 
 
-@pytest.mark.parametrize("_run", range(10))
-def test_s1r1p1_shirleybg(s1r1p1_shirleybg, _run):
-    coll, true_params_d = s1r1p1_shirleybg
-    run(coll)
-
-    for p_id, p in coll.peaks_index.items():
-        p_true = tuple(true_params_d[p_id].values())[1:3]  # ignore amp and frac
-        p_params = get_params(p)[1:3]
-
-        assert np.allclose(p_true, p_params, rtol=RTOL)
+@RUNS_NUM
+@pytest.mark.parametrize("bg", ("lin", "shirley"))
+@pytest.mark.parametrize("type_", ("s1r1p2", "s1r2p1"))
+def test_with_links(type_, bg, run):
+    coll, true_params_d = construct_case(type_=type_, bg=bg)
+    run_test(coll, true_params_d)
