@@ -100,6 +100,42 @@ def s1r1p1(x, true_params_d: dict):
     return y_p, p_obj
 
 
+def s1r1p2(x, true_params_d: dict):
+    t_p_1 = gen_params(x)
+    y_p_1, p_obj1 = create_peak(x, t_p_1, **CREATE_PEAK_PARAMS)
+    true_params_d[p_obj1.id] = t_p_1
+
+    t_p_2 = t_p_1.copy()
+    t_p_2["amp"] /= 2
+    t_p_2["cen"] += 5
+
+    y_p_2, p_obj2 = create_peak(x, t_p_2, **CREATE_PEAK_PARAMS)
+    true_params_d[p_obj2.id] = t_p_2
+    p_obj2.set(name="cen", expr=f"{p_obj1.id} + 5")
+
+    y_p = y_p_1 + y_p_2
+    p_objs = (p_obj1, p_obj2)
+    return y_p, p_objs
+
+
+def s1r2p1(x, true_params_d: dict):
+    t_p_1 = gen_params(x)
+    t_p_1["cen"] = x[SPECTRUM_LEN // 4]
+    y_p_1, p_obj1 = create_peak(x, t_p_1, **CREATE_PEAK_PARAMS)
+    true_params_d[p_obj1.id] = t_p_1
+
+    t_p_2 = t_p_1.copy()
+    t_p_2["amp"] /= 2
+    t_p_2["cen"] += 15
+    y_p_2, p_obj2 = create_peak(x, t_p_2, **CREATE_PEAK_PARAMS)
+    p_obj2.set(name="cen", expr=f"{p_obj1.id} + 15")
+    true_params_d[p_obj2.id] = t_p_2
+
+    y_p = y_p_1 + y_p_2
+    p_objs = (p_obj1, p_obj2)
+    return y_p, p_objs
+
+
 def add_bg(x, true_params_d: dict, bg_type="none"):
     if bg_type == "constant":
         y = random.uniform(100, 1000)
@@ -125,7 +161,6 @@ def add_noise(level=10):
     return np.random.normal(0, level, 200)
 
 
-@pytest.fixture
 def s1r1p1_constbg():
     x, y = get_xy()
     true_params_d = {}
@@ -139,14 +174,13 @@ def s1r1p1_constbg():
     coll = SpectrumCollection()
     spec = Spectrum(x=x, y=y)
     coll.register(spec)
-    reg = spec.create_region(0, len(x) - 1, background_type="linear")
+    reg = spec.create_region(0, len(x), background_type="linear")
     coll.add_link(spec, reg)
     coll.add_link(reg, p_obj)
 
     return coll, true_params_d
 
 
-@pytest.fixture
 def s1r1p1_linbg():
     x, y = get_xy()
     true_params_d = {}
@@ -160,14 +194,13 @@ def s1r1p1_linbg():
     coll = SpectrumCollection()
     spec = Spectrum(x=x, y=y)
     coll.register(spec)
-    reg = spec.create_region(0, len(x) - 1, background_type="linear")
+    reg = spec.create_region(0, len(x), background_type="linear")
     coll.add_link(spec, reg)
     coll.add_link(reg, p_obj)
 
     return coll, true_params_d
 
 
-@pytest.fixture
 def s1r1p1_shirleybg():
     x, y = get_xy()
     true_params_d = {}
@@ -181,9 +214,95 @@ def s1r1p1_shirleybg():
     coll = SpectrumCollection()
     spec = Spectrum(x=x, y=y)
     coll.register(spec)
-    reg = spec.create_region(0, len(x) - 1, background_type="shirley")
+    reg = spec.create_region(0, len(x), background_type="shirley")
     coll.add_link(spec, reg)
     coll.add_link(reg, p_obj)
+
+    return coll, true_params_d
+
+
+def s1r1p2_linbg():
+    x, y = get_xy()
+    true_params_d = {}
+
+    y_p, p_objs = s1r1p2(x, true_params_d)
+    y += y_p
+
+    y += add_bg(x, true_params_d, bg_type="linear")
+    y += add_noise(level=NOISE)
+
+    coll = SpectrumCollection()
+    spec = Spectrum(x=x, y=y)
+    coll.register(spec)
+    reg = spec.create_region(0, len(x), background_type="linear")
+    coll.add_link(spec, reg)
+    for p_obj in p_objs:
+        coll.add_link(reg, p_obj)
+
+    return coll, true_params_d
+
+
+def s1r1p2_shirleybg():
+    x, y = get_xy()
+    true_params_d = {}
+
+    y_p, p_objs = s1r1p2(x, true_params_d)
+    y += y_p
+
+    y += add_bg(x, true_params_d, bg_type="shirley")
+    y += add_noise(level=NOISE)
+
+    coll = SpectrumCollection()
+    spec = Spectrum(x=x, y=y)
+    coll.register(spec)
+    reg = spec.create_region(0, len(x), background_type="shirley")
+    coll.add_link(spec, reg)
+    for p_obj in p_objs:
+        coll.add_link(reg, p_obj)
+
+    return coll, true_params_d
+
+
+def s1r2p1_linbg():
+    x, y = get_xy()
+    true_params_d = {}
+
+    y_p, p_objs = s1r2p1(x, true_params_d)
+    y += y_p
+
+    y += add_bg(x, true_params_d, bg_type="linear")
+    y += add_noise(level=NOISE)
+
+    coll = SpectrumCollection()
+    spec = Spectrum(x=x, y=y)
+    coll.register(spec)
+    reg_idxs = ((0, len(x) // 2), (len(x) // 2, len(x)))
+    for p_obj, (s_i, e_i) in zip(p_objs, reg_idxs):
+        reg = spec.create_region(s_i, e_i, background_type="linear")
+        coll.add_link(spec, reg)
+        coll.add_link(reg, p_obj)
+
+    return coll, true_params_d
+
+
+def s1r2p1_shirleybg():
+    x, y = get_xy()
+    true_params_d = {}
+
+    y_p, p_objs = s1r2p1(x, true_params_d)
+    y += y_p
+
+    y += add_bg(x, true_params_d, bg_type="shirley")
+    y += add_noise(level=NOISE)
+
+    coll = SpectrumCollection()
+    spec = Spectrum(x=x, y=y)
+    coll.register(spec)
+    reg_idxs = ((0, len(x) // 2), (len(x) // 2, len(x)))
+    for p_obj, (s_i, e_i) in zip(p_objs, reg_idxs):
+        reg = spec.create_region(s_i, e_i, background_type="shirley")
+        coll.add_link(spec, reg)
+        coll.add_link(reg, p_obj)
 
     return coll, true_params_d
 
