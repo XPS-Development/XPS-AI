@@ -83,20 +83,18 @@ def create_peak(
     return y_peak, peak_obj
 
 
-def gen_peak(x, pertube=0.2):
+def gen_params(x):
     amp = random.uniform(100, 2000)
-    cen = x[100] + random.uniform(-5, 5)
+    cen = x[SPECTRUM_LEN // 2] + random.uniform(-5, 5)
     sig = random.uniform(0.5, 3)
     frac = random.uniform(0.1, 0.9)
-
     true_params = {"amp": amp, "cen": cen, "sig": sig, "frac": frac}
-    y_p, p_obj = create_peak(x, true_params, pertube=pertube, ignore_for="frac")
-
-    return y_p, p_obj, true_params
+    return true_params
 
 
-def s1r1p1(x, true_params_d):
-    y_p, p_obj, t_p_1 = gen_peak(x, pertube=0.2)
+def s1r1p1(x, true_params_d: dict):
+    t_p_1 = gen_params(x)
+    y_p, p_obj = create_peak(x, t_p_1, **CREATE_PEAK_PARAMS)
     true_params_d[p_obj.id] = t_p_1
 
     return y_p, p_obj
