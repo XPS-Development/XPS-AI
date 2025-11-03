@@ -34,21 +34,30 @@ def get_xy():
 def add_param_perturb(
     true_params: dict[str, float],
     pertube: float | None = None,
+    low_pertube_for: tuple[str] | str | None = None,
     ignore_for: tuple[str] | str | None = None,
 ) -> dict[str, float]:
+    if ignore_for is None:
+        ignore_for = ()
+    if low_pertube_for is None:
+        low_pertube_for = ()
 
     params = true_params.copy()
 
     if pertube is not None and pertube != 0:
         for k in params:
-            if ignore_for is not None and k in ignore_for:
+            if k in ignore_for:
                 continue
-            params[k] *= random.uniform(1 - pertube, 1 + pertube)
+            elif k in low_pertube_for:
+                params[k] *= random.uniform(1 - pertube / 10, 1 + pertube / 10)
+            else:
+                params[k] *= random.uniform(1 - pertube, 1 + pertube)
     elif pertube == 0:
         for k in params:
-            if ignore_for is not None and k in ignore_for:
+            if k in ignore_for:
                 continue
-            params[k] = 0
+            else:
+                params[k] = 0
 
     return params
 
@@ -57,6 +66,7 @@ def create_peak(
     x: NDArray,
     true_params: dict[str, float],
     pertube: float | None = None,
+    low_pertube_for: tuple[str] | str | None = None,
     ignore_for: tuple[str] | str | None = None,
 ) -> tuple[NDArray, Peak, dict[str, float]]:
     amp = true_params["amp"]
@@ -66,7 +76,7 @@ def create_peak(
 
     y_peak = pvoigt(x, amp, cen, sig, frac)
 
-    params = add_param_perturb(true_params, pertube, ignore_for)
+    params = add_param_perturb(true_params, pertube, low_pertube_for, ignore_for)
 
     peak_obj = Peak(**params)
 
