@@ -38,8 +38,11 @@ class BaseModelProcessor:
     """
 
     def __init__(self, model_path: str, collection: SpectrumCollection, *args, **kwargs) -> None:
-        self.ort_session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
         self.collection = collection
+        self.load_model(model_path)
+
+    def load_model(self, model_path: str):
+        self.ort_session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
 
     def __call__(self, spectra: Sequence[Spectrum]) -> None:
         """
