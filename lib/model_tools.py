@@ -1,4 +1,4 @@
-from typing import Optional, Iterable, Tuple, Sequence
+from typing import Optional, Iterable, Tuple, List, Sequence
 from numpy.typing import NDArray
 
 
@@ -199,6 +199,53 @@ class SegmenterModelProcessor(BaseModelProcessor):
         peak_mask, max_mask = self.predict(y_int)
         return self.parse_results(x, x_int, peak_mask, max_mask, spectrum)
 
+    def create_simple_peaks(self, x, y, positions: NDArray[np.float32]) -> List[Peak]:
+        """
+        Create simple `Peak` objects from provided positions.
+
+        This helper constructs approximate peak objects using only
+        their center positions and corresponding signal heights.
+        It assumes each peak has a fixed width (`sigma=1.0`) and
+        mixing fraction (`frac=1.0`), corresponding to a simple
+        Gaussian shape.
+
+        For each detected position, the method estimates peak
+        amplitude using an empirical scaling between height and
+        full width at half maximum (FWHM):
+
+            amp = height * FWHM / (0.4697186394 + 0.1669011330 * frac)
+
+        Since `sigma=1`, this gives `FWHM = 2.0`.
+
+        Parameters
+        ----------
+        x : ndarray
+            1D array of x-axis (energy/binding energy) values.
+        y : ndarray
+            1D array of corresponding intensity values.
+        positions : ndarray of int or float
+            Indices of detected peak centers.
+
+        Returns
+        -------
+        List[Peak]
+            A list of `Peak` objects
+
+        Notes
+        -----
+        This simplified peak construction is used in post-processing
+        when only approximate peak locations are known and full
+        parameter fitting is unnecessary. It provides the initial guess for the optimization.
+        """
+        peaks = []
+        for position in positions:
+            cen = x[position]
+            peak_height = y[position]
+            peak_amp = peak_height * 2.0 / (0.4697186394 + 0.1669011330 * 1)
+            peak = Peak(amp=peak_amp, cen=cen, sig=1.0, frac=1.0)
+            peaks.append(peak)
+        return peaks
+
     def parse_results(
         self,
         x: NDArray[np.float32],
@@ -225,9 +272,9 @@ class SegmenterModelProcessor(BaseModelProcessor):
             Extracted regions and their corresponding peaks.
         """
         results = []
-        for f, t, max_positions in self.parse_masks_to_regions(x, x_int, peak_mask, max_mask):
+        for f, t, max_idxs in self.parse_masks_to_regions(x, x_int, peak_mask, max_mask):
             region = spectrum.create_region(f, t, background_type=self.default_background)
-            peaks = [Peak(cen=float(position)) for position in max_positions]
+            peaks = self.create_simple_peaks(region.x, region.y - region.background, max_idxs)
             results.append((region, peaks))
         return results
 
@@ -395,7 +442,7 @@ class SegmenterModelProcessor(BaseModelProcessor):
         max_mask: NDArray[np.bool_],
     ) -> Iterable[Tuple[int, int, NDArray[np.float32]]]:
         """
-        Parse binary masks into start/end index pairs and peak positions.
+        Parse binary masks into start/end index pairs and indices of peak positions.
 
         Parameters
         ----------
@@ -406,8 +453,8 @@ class SegmenterModelProcessor(BaseModelProcessor):
 
         Yields
         ------
-        f_idx, t_idx, max_positions : Tuple[int, int, ndarray]
-            (from_index, to_index, max_positions) for each detected region.
+        f_idx, t_idx, max_position_indices : Tuple[int, int, ndarray]
+            (from_index, to_index, max_position_indices) for each detected region.
         """
         peak_borders = self.find_borders(peak_mask)
         max_idxs = self.prepare_max_mask(max_mask)
@@ -429,4 +476,4 @@ class SegmenterModelProcessor(BaseModelProcessor):
         for f, t in zip(connected_peak_borders[0::2], connected_peak_borders[1::2]):
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
             if local_max_idxs.size > 0:
-                yield f, t, x[local_max_idxs]
+                yield f, t, local_max_idxs
