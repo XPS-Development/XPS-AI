@@ -1,11 +1,3 @@
-"""
-Пока есть зависимость от введённых координат кнопок open xps и 1 региона свёрнутого окна приложения; 
-
-Если в диалоговом окне вместо пути до папки появляется //// - выключить макрос, раскомментировать 146, закомментировать 145 (исправлю в ближайшее время)
-
-Некоторые функции уже не нужны - уберу
-
-"""
 import pyautogui
 import time
 import subprocess
@@ -13,16 +5,17 @@ import pyperclip
 import shutil
 from pathlib import Path
 
-APPLICATION_PATH = "/Program Files (x86)/XPSPEAK/XPSPEAK" 
-FOLDER_PATH = "/Users/User/Desktop/xpsdir"  
-TARGET_PATH = "/Users/User/Desktop/exported_spec"
-ADAPTED_FOLDER_PATH = '\\'+'Users'+'\\'+'User'+'\\'+'Desktop'+'\\'+'xpsdir'
-COORDINATES_BUTTON1 = (74, 320) # координаты кнопки open xps
-COORDINATES_BUTTON2 = (COORDINATES_BUTTON1[0]-35, COORDINATES_BUTTON1[1]-305) # data
-COORDINATES_BUTTON3 = (COORDINATES_BUTTON1[0]-2, COORDINATES_BUTTON1[1]-164) # export spec
-COORDINATES_BUTTON4 = (COORDINATES_BUTTON1[0]+3, COORDINATES_BUTTON1[1]-139) # export param
+APPLICATION_PATH = Path("/Program Files (x86)/XPSPEAK/XPSPEAK")
+FOLDER_PATH = Path("/Users/User/Desktop/xpsdir")  
+TARGET_PATH = Path("/Users/User/Desktop/exported_spec")
+ADAPTED_FOLDER_PATH = Path('/Users/User/Desktop/xpsdir')
 
-REGION_BASE_X = 66 # координаты кнопки 1 в столбце регионов
+COORDINATES_BUTTON1 = (74, 320)
+COORDINATES_BUTTON2 = (COORDINATES_BUTTON1[0]-35, COORDINATES_BUTTON1[1]-305)
+COORDINATES_BUTTON3 = (COORDINATES_BUTTON1[0]-2, COORDINATES_BUTTON1[1]-164) 
+COORDINATES_BUTTON4 = (COORDINATES_BUTTON1[0]+3, COORDINATES_BUTTON1[1]-139) 
+
+REGION_BASE_X = 66 
 REGION_BASE_Y = 397
 REGION_Y_SPACING = 17
 
@@ -32,16 +25,13 @@ file_extensions = ['.par', '.dat']
 NUM_REGIONS = 10
 
 def check_and_create_folders():
-    folder_path = Path(FOLDER_PATH)
-    target_path = Path(TARGET_PATH)
-    
-    if not folder_path.exists():
+    if not FOLDER_PATH.exists():
         print(f"Creating folder: {FOLDER_PATH}")
-        folder_path.mkdir(parents=True)
+        FOLDER_PATH.mkdir(parents=True)
     
-    if not target_path.exists():
+    if not TARGET_PATH.exists():
         print(f"Creating folder: {TARGET_PATH}")
-        target_path.mkdir(parents=True)
+        TARGET_PATH.mkdir(parents=True)
 
 def type_text_safe(text, delay=0.01):
     for char in text:
@@ -98,7 +88,6 @@ def get_region_coordinates(region_number):
     return (x, y)
 
 def check_region_validity(region_coords):
-    """Check if region contains empty data by copying text from specific coordinates"""
     pyperclip.copy('')
     time.sleep(DELAY)
     
@@ -141,8 +130,7 @@ def process_region(files, region_number, skip_files, empty_regions_count):
         pyautogui.click(COORDINATES_BUTTON1)
         time.sleep(DELAY)
         
-        pyautogui.write(ADAPTED_FOLDER_PATH)
-        #type_text_safe(ADAPTED_FOLDER_PATH)
+        pyautogui.write(ADAPTED_FOLDER_PATH.as_posix())
         time.sleep(DELAY)
         pyautogui.press('enter')
         time.sleep(DELAY)
@@ -197,11 +185,10 @@ def process_region(files, region_number, skip_files, empty_regions_count):
     return skip_files, empty_regions_count
 
 def process_files():
-    subprocess.Popen(APPLICATION_PATH)
+    subprocess.Popen(str(APPLICATION_PATH))
     time.sleep(DELAY)
     
-    folder_path = Path(FOLDER_PATH)
-    files = [f.name for f in folder_path.iterdir() if f.is_file() and f.suffix.lower() == '.xps']
+    files = [f.name for f in FOLDER_PATH.iterdir() if f.is_file() and f.suffix.lower() == '.xps']
     
     skip_files = set()
     empty_regions_count = {}  
