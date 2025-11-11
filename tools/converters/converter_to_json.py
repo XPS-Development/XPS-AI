@@ -6,53 +6,45 @@ from pathlib import Path
 from collections import defaultdict
 
 def parse_par_file(par_file_path):
-    """
-    Parses .par file and returns dictionary with peak data
-    """
     peaks_data = {}
     
-    try:
-        with open(par_file_path, 'r', encoding='utf-8', errors='ignore') as file:
-            content = file.read()
+    with open(par_file_path, 'r', encoding='utf-8', errors='ignore') as file:
+        content = file.read()
+
+    table_pattern = r'Peak.*?Position.*?Area.*?FWHM.*?%GL.*?\n(.*?)(?:\n\n|\Z)'
+    match = re.search(table_pattern, content, re.DOTALL | re.IGNORECASE)
     
-        table_pattern = r'Peak.*?Position.*?Area.*?FWHM.*?%GL.*?\n(.*?)(?:\n\n|\Z)'
-        match = re.search(table_pattern, content, re.DOTALL | re.IGNORECASE)
+    if match:
+        table_data = match.group(1).strip()
+        lines = table_data.split('\n')
         
-        if match:
-            table_data = match.group(1).strip()
-            lines = table_data.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line or '---' in line:
+                continue
+        
+            clean_line = re.sub(r'[|\+]', '', line).strip()
+            parts = re.split(r'\s+', clean_line)
             
-            for line in lines:
-                line = line.strip()
-                if not line or '---' in line:
-                    continue
-            
-                clean_line = re.sub(r'[|\+]', '', line).strip()
-                parts = re.split(r'\s+', clean_line)
-                
-                if len(parts) >= 5:
-                    peak_number = int(parts[0])
-                    position = float(parts[1].replace(',', '.'))
-                    area = float(parts[2].replace(',', '.'))
-                    fwhm = float(parts[3].replace(',', '.'))
-                    gl = float(parts[4].replace(',', '.'))
-                        
-                    peaks_data[peak_number] = {
-                            'position': position,
-                            'area': area,
-                            'fwhm': fwhm,
-                            'gl': gl
-                        }
-        else:
-            print("Peak table not found in .par file")
-    
-    except Exception as e:
-        print(f"Error reading .par file {par_file_path}: {e}")
+            if len(parts) >= 5:
+                peak_number = int(parts[0])
+                position = float(parts[1].replace(',', '.'))
+                area = float(parts[2].replace(',', '.'))
+                fwhm = float(parts[3].replace(',', '.'))
+                gl = float(parts[4].replace(',', '.'))
+                    
+                peaks_data[peak_number] = {
+                        'position': position,
+                        'area': area,
+                        'fwhm': fwhm,
+                        'gl': gl
+                    }
+    else:
+        print("Peak table not found in .par file")
     
     return peaks_data
 
 def parse_dat_file(dat_file_path):
-
     data_lines = []
     with open(dat_file_path, 'r', encoding='utf-8', errors='ignore') as file:
         lines = file.readlines()
@@ -74,11 +66,8 @@ def parse_dat_file(dat_file_path):
             numbers = re.findall(r'[-]?\d+\.?\d*', clean_line)
             
             if numbers:
-                try:
-                    numeric_values = [float(num) for num in numbers]
-                    data_lines.append(numeric_values)
-                except ValueError:
-                    continue
+                numeric_values = [float(num) for num in numbers]
+                data_lines.append(numeric_values)
     
     if data_lines:
         max_cols = max(len(row) for row in data_lines)
@@ -95,16 +84,11 @@ def parse_dat_file(dat_file_path):
         return None
 
 def process_file_pair(folder_path, base_filename):
-    """
-    Processes .par and .dat file pair with the same name
-    """
-    folder_path = Path(folder_path)
     par_file = folder_path / f"{base_filename}.par"
     dat_file = folder_path / f"{base_filename}.dat"
     
     if not par_file.exists() or not dat_file.exists():
         return None
-
 
     peaks_data = parse_par_file(par_file)
     if not peaks_data:
@@ -116,7 +100,6 @@ def process_file_pair(folder_path, base_filename):
     if dat_df is None or dat_df.empty:
         return None
     
-  
     be_values = dat_df.iloc[:, 0].tolist()
     if len(be_values) >= 2:
         start_be = be_values[0]
@@ -127,13 +110,10 @@ def process_file_pair(folder_path, base_filename):
         step_be = 0
         num_points = len(be_values)
     
-   
     raw_intensity = dat_df.iloc[:, 1].tolist()
     
-  
     peak_intensities = {}
     
- 
     sorted_peak_nums = sorted(peaks_data.keys())
     
     for i, peak_num in enumerate(sorted_peak_nums):
@@ -144,7 +124,6 @@ def process_file_pair(folder_path, base_filename):
         else:
             peak_intensities[peak_num] = [0.0] * num_points
     
-
     result_dict = {
         'BE': {
             'start': start_be,
@@ -155,7 +134,6 @@ def process_file_pair(folder_path, base_filename):
         'peaks': {}
     }
     
-
     for peak_num in sorted_peak_nums:
         peak_data = peaks_data[peak_num]
     
@@ -167,14 +145,12 @@ def process_file_pair(folder_path, base_filename):
     return result_dict
 
 def process_folder(folder_path, output_folder=None):
-    folder_path = Path(folder_path)
     all_results = {}
     
     par_files = [f for f in folder_path.iterdir() if f.suffix == '.par']
     
     if output_folder:
-        output_path = Path(output_folder)
-        output_path.mkdir(exist_ok=True)
+        output_folder.mkdir(exist_ok=True)
     
     for par_file in par_files:
         base_filename = par_file.stem
@@ -185,7 +161,7 @@ def process_folder(folder_path, output_folder=None):
             
             json_filename = f"{base_filename}_results.json"
             if output_folder:
-                json_path = Path(output_folder) / json_filename
+                json_path = output_folder / json_filename
             else:
                 json_path = Path(json_filename)
                 
@@ -214,17 +190,15 @@ def save_single_result_to_json(result, output_path, filename):
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(json_ready_data, f, indent=2, ensure_ascii=False)
 
-def merge_json_files(json_dir: str, output_dir: str = None):
-    json_path = Path(json_dir)
+def merge_json_files(json_dir, output_dir=None):
     if output_dir:
-        output_path = Path(output_dir)
-        output_path.mkdir(exist_ok=True, parents=True)
+        output_dir.mkdir(exist_ok=True, parents=True)
     else:
-        output_path = json_path
+        output_dir = json_dir
     
     file_groups = defaultdict(list)
     
-    for json_file in json_path.glob('*_results.json'):
+    for json_file in json_dir.glob('*_results.json'):
         base_name = re.sub(r'_\d+_results\.json$', '', json_file.name)
         base_name = re.sub(r'_results\.json$', '', base_name)
         base_name = re.sub(r'_\d+$', '', base_name)
@@ -256,20 +230,16 @@ def merge_json_files(json_dir: str, output_dir: str = None):
             'total_peaks': sum(len(data['peaks']) for data in merged_data.values())
         }
         
-        output_file = output_path / f"{base_name}_merged_results.json"
+        output_file = output_dir / f"{base_name}_merged_results.json"
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
         merged_files.append(output_file)
     
- 
-    delete_non_merged_files(json_path, merged_files)
+    delete_non_merged_files(json_dir, merged_files)
     
     return merged_files
 
-def delete_non_merged_files(json_dir: Path, merged_files: list):
-    """
-    Deletes all non-merged JSON files
-    """
+def delete_non_merged_files(json_dir, merged_files):
     files_to_keep = {file.name for file in merged_files}
     
     for json_file in json_dir.glob('*_results.json'):
@@ -277,8 +247,8 @@ def delete_non_merged_files(json_dir: Path, merged_files: list):
             json_file.unlink()
 
 if __name__ == "__main__":
-    folder_path = Path("C:\\Users\\User\\Desktop\\exported_spec")
-    output_folder = Path("C:\\Users\\User\\Desktop\\Json_spec")
+    folder_path = Path(r"C:\Users\User\Desktop\exported_spec")
+    output_folder = Path(r"C:\Users\User\Desktop\Json_spec")
         
     if folder_path.exists():
         results = process_folder(folder_path, output_folder=output_folder)
@@ -287,6 +257,6 @@ if __name__ == "__main__":
             merged_files = merge_json_files(output_folder, output_folder)
             print("Done")
         else:
-            print("Done")
+            print("No results found")
     else:
-        print("Done")
+        print("Input folder does not exist")
