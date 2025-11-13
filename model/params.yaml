@@ -1,6 +1,6 @@
 seed: 42
-data_path: model/train/data/dataset
-real_data_path: model/train/data/val_dataset 
+train_data: model/train/data/dataset
+val_data: model/train/data/val_dataset 
 synth_data:
   labeling:
     peak_area: 3
@@ -88,4 +88,4 @@ train:
   batch_size: 64
   learning_rate: 0.0005
   train_test_split: 0.8
-  real_json_dir: 'C:/Users/User/Desktop/Json_spec'
+
