@@ -18,19 +18,17 @@ from model.train.metrics import IoU, Accuracy, Precision, Recall, DiceFocalLoss,
 from model.models.model_deeper import XPSModel
 from model.train.trainer import Trainer
 from tools import Analyzer, Spectrum
-from model.train.dataset_val import generate_dataset
 
 
 def load_params():
     yaml_loader = YAML(typ='safe', pure=True)
-    params = yaml_loader.load(Path('XPS-AI/model/params.yaml'))
+    params = yaml_loader.load(Path('/model/params.yaml'))  
 
     seed = params['seed']
-    path_to_data = params['data_path']
-    path_to_real_data = params['real_data_path']  
-    json_dir = params['train']['real_json_dir']
+    train_data = params['train_data']
+    val_data = params['val_data']
 
-    return seed, path_to_data, path_to_real_data, json_dir, params['train'], params['synth_data']
+    return seed, train_data, val_data, params['train'], params['synth_data']
 
 
 def fix_seed(seed):
