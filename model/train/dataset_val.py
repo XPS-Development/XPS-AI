@@ -60,7 +60,7 @@ def create_mask(x, from_x, to_x) -> np.ndarray:
     zeros[(x > from_x) & (x < to_x)] = 1
     return zeros
 
-def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
+def process_spectrum(spectrum_data, json_filename, spectrum_name, width_peak, width_max, print_data):
     start_x = spectrum_data['BE']['start']
     step_x = spectrum_data['BE']['step']
     x_num = spectrum_data['BE']['num_points']
@@ -69,12 +69,12 @@ def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
     y = np.array(spectrum_data['raw_intensity'], dtype=np.float32)
     
     if np.any(y < 0):
-        if config['print_data']:
+        if print_data:
             negative_count = np.sum(y < 0)
             print(f"Fixing {negative_count} negative points in '{spectrum_name}' (file: {json_filename})")
         y_fixed = fix_negative_intensities(y)
         if y_fixed is None:
-            if config['print_data']:
+            if print_data:
                 print(f"Skipping '{spectrum_name}' (file: {json_filename}) - too many negative points (>=5)")
             return None, None, None, None
         y = y_fixed
@@ -98,13 +98,13 @@ def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
         peak_intensities = peak_info['intensity']
 
         if negative_intensities(peak_intensities):
-            if config['print_data']:
+            if print_data:
                 print(f"Peak {peak_num} in '{spectrum_name}' (file: {json_filename}) with negative intensity")
             continue
 
         if len(peak_intensities) > 0:
-            peak_mask += create_mask(x, position - config['width_peak'] * fwhm, position + config['width_peak'] * fwhm)
-            max_mask += create_mask(x, position - config['width_max'], position + config['width_max'])
+            peak_mask += create_mask(x, position - width_peak * fwhm, position + width_peak * fwhm)
+            max_mask += create_mask(x, position - width_max, position + width_max)
             valid_peaks_count += 1
     
     peak_mask[peak_mask > 0] = 1
@@ -115,15 +115,9 @@ def process_spectrum(spectrum_data, json_filename, spectrum_name, config):
 def generate_dataset(
         json_dir,
         output_dir,
-        width_peak = 1.1,
-        width_max = 0.15,
-        print_data = False):
-    
-    config = {
-    'width_peak': width_peak,
-    'width_max': width_max,
-    'print_data': print_data
-    }
+        width_peak=1.1,
+        width_max=0.15,
+        print_data=False):
     
     json_dir = Path(json_dir)
     output_dir = Path(output_dir)
@@ -141,16 +135,13 @@ def generate_dataset(
     
     for json_file in json_files:
         json_filename = json_file.name
-        if config['print_data']:
+        if print_data:
             print(f"{json_filename}")
         
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
-        spectra = list(data['spectra'].values())
-        spectrum_names = list(data['spectra'].keys())
-            
-        for spectrum_data, spectrum_name in zip(spectra, spectrum_names):
+        for spectrum_name, spectrum_data in data['spectra'].items():
             total_spectra += 1
             
             y_raw = np.array(spectrum_data['raw_intensity'], dtype=np.float32)
@@ -159,7 +150,7 @@ def generate_dataset(
                 fixed_negative_intensity_count += 1
                 total_negative_points += negative_points
             
-            result = process_spectrum(spectrum_data, json_filename, spectrum_name, config)
+            result = process_spectrum(spectrum_data, json_filename, spectrum_name, width_peak, width_max, print_data)
             
             if result[0] is None:
                 skipped_too_many_negatives += 1
@@ -186,7 +177,7 @@ def generate_dataset(
                 spectra_with_peaks += 1
             file_counter += 1
     
-    if config['print_data']:
+    if print_data:
         print(f"Total spectra processed: {total_spectra}")
         print(f"Spectra with negative intensities: {fixed_negative_intensity_count}")
         print(f"Total negative points found: {total_negative_points}")
