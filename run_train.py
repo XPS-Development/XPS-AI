@@ -44,20 +44,15 @@ def seed_worker(worker_id):
     np.random.seed(worker_seed)
     random.seed(worker_seed)
 
-def process_real_data(json_dir, output_dir):
-    output_path = Path(output_dir)
-    csv_files = list(output_path.glob('*.csv'))
-    
-    if len(csv_files) == 0:
-        print("Processing val XPS data...")
-        generate_dataset(
-            json_dir=json_dir, 
-            output_dir=output_dir,
-            print_data=False 
-        )
-        print("Real XPS data processing completed!")
+def has_real_val_data(val_data_dir):
+    val_path = Path(val_data_dir)
+    if val_path.exists() and any(val_path.glob('*.csv')):
+        csv_files = list(val_path.glob('*.csv'))
+        print(f"Found real validation data: {len(csv_files)} files")
+        return True
     else:
-        print(f"Validation dataset already exists with {len(csv_files)} files")
+        print(f"No real validation data found in {val_data_dir}, using synthetic data for validation")
+        return False
 
 @torch.no_grad()
 def test_model(test_dir, model, save_dir):
@@ -93,30 +88,25 @@ def save_train_log_png(path: Path):
 
 
 def main():
-
-    rv_flag = True
-    seed, path_to_data, path_to_real_data, json_dir, train_params, synth_params = load_params()
+    seed, train_data, val_data, train_params, synth_params = load_params()
     gen = fix_seed(seed)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Device: {device}')
 
-    if rv_flag:
-        process_real_data(json_dir, path_to_real_data)
-        print('Generating synthetic data for training...')
-        data_generator = SynthGenerator(synth_params, seed)
-        data_generator.gen_dataset(path_to_data)
-        train_data = XPSDataset(path_to_data)
-        print(f'Synthetic training dataset size: {len(train_data)}')
-        val_data = XPSDataset(path_to_real_data)
-    else:
-        print('Generating data...')
-        data_generator = SynthGenerator(synth_params, seed)
-        data_generator.gen_dataset(path_to_data)
-        dataset = XPSDataset(path_to_data)
-        print(f'Dataset size: {len(dataset)}')
+    print('Generating synthetic data for training...')
+    data_generator = SynthGenerator(synth_params, seed)
+    data_generator.gen_dataset(train_data)
+    dataset = XPSDataset(train_data)
+    print(f'Synthetic training dataset size: {len(train_data)}')
 
+    has_real_val = has_real_val_data(val_data)
+    
+    if has_real_val:
+        val_data = XPSDataset(val_data)
+        print(f'Using real validation data: {len(val_data)} samples')
+    else:
         split = train_params['train_test_split']
-        train_data, val_data = random_split(dataset, (split, 1-split), gen)  
+        train_data, val_data = random_split(dataset, (split, 1-split), gen) 
 
     train_dl = DataLoader(train_data, batch_size=train_params['batch_size'], shuffle=True, generator=gen)
     val_dl = DataLoader(val_data, batch_size=train_params['batch_size'], shuffle=False)
