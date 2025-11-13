@@ -223,8 +223,8 @@ def view_labeled_data(output_dir, file_index):
     plt.show()
 
 def main():
-    json_dir = 'C:/Users/User/Desktop/Json_spec'
-    output_dir = 'C:/Users/User/Desktop/RealXPSDataset'
+    json_dir = '/Users/User/Desktop/Json_spec'
+    output_dir = 'model/train/data/val_dataset'
     
     results = generate_dataset(
         json_dir, 
