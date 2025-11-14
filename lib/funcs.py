@@ -44,7 +44,7 @@ def lorentz(x: NDArray, center: float, sigma: float) -> NDArray:
     NDArray
         Lorentzian function evaluated at x.
     """
-    return 1 / (np.pi * sigma * (1 + ((x - center) / sigma) ** 2))
+    return 1 / np.pi * sigma / ((x - center) ** 2 + sigma**2)
 
 
 def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: float) -> NDArray:
@@ -66,7 +66,7 @@ def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: 
 
     Returns
     -------
-    NDArray
+    pvoigt : NDArray
         Pseudo-Voigt function evaluated at x.
     """
     sigma_g = sigma / np.sqrt(2 * np.log(2))  # convert to Gaussian sigma for same FWHM
