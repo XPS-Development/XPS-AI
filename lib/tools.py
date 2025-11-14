@@ -50,14 +50,14 @@ def denorm_with_coefs(value: float, norm_coefs: Tuple[float, float]) -> float:
 
     Parameters
     ----------
-    value : float
+    value : float | NDArray
         The value to denormalize.
     norm_coefs : Tuple[float, float]
         The normalization coefficients. (min, max)
 
     Returns
     -------
-    float
+    float | NDArray
         The denormalized value.
     """
     return value * (norm_coefs[1] - norm_coefs[0]) + norm_coefs[0]
