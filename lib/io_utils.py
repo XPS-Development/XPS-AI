@@ -96,7 +96,7 @@ class RawReader:
             if self.y_type == "cps":
                 y /= block.signal_collection_time * block.num_scans  # turn counts to counts-per-second
 
-            spectrum = Spectrum(x, y, name=name, file=file_name, group=group)
+            spectrum = Spectrum(x, y, name=name, file=str(path.resolve()), group=group)
             self.add_to_collection(spectrum)
 
     def read_specs(self, path: Path):
@@ -212,7 +212,7 @@ class RawReader:
             else:
                 raise ValueError(f"Unknown file format: {path.name}")
 
-            spectrum = Spectrum(x, y, name=name, file=path.name)
+            spectrum = Spectrum(x, y, name=name, file=str(path.resolve()))
             self.add_to_collection(spectrum)
 
     def read_files(self, files: List[Path]) -> None:
@@ -247,3 +247,10 @@ class RawReader:
                 self.read_specs(file)
             else:
                 raise ValueError(f"Unknown file extension: {file.name}")
+
+
+class SpectrumCollectionSerializer:
+    def __init__(self, collection: SpectrumCollection):
+        self.spectra = {}
+        self.regions = {}
+        self.peaks = {}
