@@ -5,7 +5,7 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 from lib.spectra import SpectrumCollection
-from lib.read import RawReader
+from lib.io_utils import RawReader
 
 
 @pytest.mark.parametrize("x_type", ["BE", "KE"])
