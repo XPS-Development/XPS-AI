@@ -40,22 +40,22 @@ def set_source() -> None:
     pyautogui.write(str(SOURCE_DIR))
     time.sleep(DELAY)
     pyautogui.press('enter')
-    time.sleep(0.3)
+    time.sleep(DELAY)
 
 def set_target() -> None:
     pyautogui.write(str(OUTPUT_DIR))
     time.sleep(DELAY)
     pyautogui.press('enter')
-    time.sleep(0.3)
+    time.sleep(DELAY)
 
 def save_file(name, num) -> None:
     base_name = Path(name).stem
     file_name = f"{base_name}_{num}"
     
     pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.1)
+    time.sleep(DELAY)
     pyautogui.press('delete')
-    time.sleep(0.1)
+    time.sleep(DELAY)
     
     pyautogui.write(file_name)
     time.sleep(DELAY)
@@ -80,24 +80,24 @@ def open_file(name) -> bool:
     open_button.Click()
     time.sleep(DELAY)
     
-    time.sleep(0.3)
+    time.sleep(DELAY)
     
     pyautogui.hotkey('ctrl', 'a')
-    time.sleep(0.1)
+    time.sleep(DELAY)
     pyautogui.press('delete')
-    time.sleep(0.1)
+    time.sleep(DELAY)
     
     set_source()
     
     pyautogui.write(name)
     time.sleep(DELAY)
     pyautogui.press('enter')
-    time.sleep(1)
+    time.sleep(DELAY * 10)
     
     return True
 
 def check_peak(num) -> bool:
-    time.sleep(0.3)
+    time.sleep(DELAY * 3)
     
     all_windows = auto.GetRootControl().GetChildren()
  
@@ -121,12 +121,8 @@ def click_peak_button(main_window, num) -> bool:
         # rect.right + 30
     ]
     
-    for x in positions:
-        pyautogui.click(x, y)
-        time.sleep(0.1)
-        
-        if check_peak(num):
-            return True
+    pyautogui.click(x, y)
+    time.sleep(DELAY * 3)
     
     return False
 
@@ -147,7 +143,7 @@ def get_active(main_window, name) -> list:
         if is_active(main_window, num):
             active.append(num)
         
-        time.sleep(0.1)
+        time.sleep(DELAY)
     
     print(f"Active regions {name}: {active}")
     return active
