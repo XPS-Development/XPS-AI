@@ -109,38 +109,58 @@ def check_peak(num) -> bool:
     
     return False
 
-def click_peak_button(main_window, num) -> bool:
+def optimal_offset(main_window) -> int:
+    files = [f.name for f in SOURCE_DIR.iterdir() if f.is_file() and f.suffix.lower() == '.xps']
+    calib_file = files[0]
+    open_file(calib_file)
+    
+    for offset in range(5, 51, 5):
+        for num in range(1, 11):
+            button = main_window.ButtonControl(Name=str(num))
+            rect = button.BoundingRectangle
+            y = rect.top + (rect.height() // 2)
+            x = rect.right + offset
+            
+            button.Click()
+            time.sleep(DELAY)
+            
+            pyautogui.click(x, y)
+            time.sleep(DELAY * 3)
+            
+            if check_peak(num):
+                close_dialogs()
+                return offset
+    
+    close_dialogs()
+    return
+
+def click_peak_button(main_window, num, peak_offset) -> bool:
     button = main_window.ButtonControl(Name=str(num))
     rect = button.BoundingRectangle
     
     y = rect.top + (rect.height() // 2)
-    
-    positions = [
-        rect.right + 20,
-        # rect.right + 25,
-        # rect.right + 30
-    ]
+    x = rect.right + peak_offset
     
     pyautogui.click(x, y)
     time.sleep(DELAY * 3)
     
-    return False
+    return check_peak(num)
 
-def is_active(main_window, num) -> bool:
+def is_active(main_window, num, peak_offset) -> bool:
     button = main_window.ButtonControl(Name=str(num))
     button.Click()
     time.sleep(DELAY)
     
-    if click_peak_button(main_window, num):
+    if click_peak_button(main_window, num, peak_offset):
         return True
     else:
         return False
 
-def get_active(main_window, name) -> list:
+def get_active(main_window, name, peak_offset) -> list:
     active = []
     
     for num in range(1, 11):
-        if is_active(main_window, num):
+        if is_active(main_window, num, peak_offset):
             active.append(num)
         
         time.sleep(DELAY)
@@ -175,16 +195,17 @@ def process_region(num, name) -> bool:
 
 def main() -> None:
     subprocess.Popen(str(APP_PATH))
-    time.sleep(3)
+    time.sleep(DELAY * 30)
+    
+    main_window = auto.WindowControl(searchDepth=1, Name="XPS Peak Processing")
+    
+    peak_offset = optimal_offset(main_window)
     
     files = [f.name for f in SOURCE_DIR.iterdir() if f.is_file() and f.suffix.lower() == '.xps']
     
     for file in files:
-        if not open_file(file):
-            continue
-        
-        main_window = auto.WindowControl(searchDepth=1, Name="XPS Peak Processing")
-        active = get_active(main_window, file)
+        open_file(file)
+        active = get_active(main_window, file, peak_offset)
         
         for num in active:
             button = main_window.ButtonControl(Name=str(num))
