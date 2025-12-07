@@ -22,7 +22,7 @@ from tools import Analyzer, Spectrum
 
 def load_params():
     yaml_loader = YAML(typ='safe', pure=True)
-    params = yaml_loader.load(Path('XPS-AI/model/params.yaml'))  
+    params = yaml_loader.load(Path('model/params.yaml'))  
 
     seed = params['seed']
     train_data = params['train_data']
