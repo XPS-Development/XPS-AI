@@ -22,7 +22,7 @@ from tools import Analyzer, Spectrum
 
 def load_params():
     yaml_loader = YAML(typ='safe', pure=True)
-    params = yaml_loader.load(Path('model/params.yaml'))  
+    params = yaml_loader.load(Path('XPS-AI/model/params.yaml'))  
 
     seed = params['seed']
     train_data = params['train_data']
@@ -97,19 +97,23 @@ def main():
     data_generator = SynthGenerator(synth_params, seed)
     data_generator.gen_dataset(train_data)
     dataset = XPSDataset(train_data)
-    print(f'Synthetic training dataset size: {len(train_data)}')
+    print(f'Synthetic training dataset size: {len(dataset)}')
 
     has_real_val = has_real_val_data(val_data)
     
     if has_real_val:
-        val_data = XPSDataset(val_data)
-        print(f'Using real validation data: {len(val_data)} samples')
+        val_dataset = XPSDataset(val_data)
+        train_dataset = dataset
+        print(f'validation data: {len(val_dataset)} samples')
+        print(f'synthetic training data: {len(train_dataset)} samples')
     else:
         split = train_params['train_test_split']
-        train_data, val_data = random_split(dataset, (split, 1-split), gen) 
+        train_dataset, val_dataset = random_split(dataset, (split, 1-split), generator=gen)
+        print(f'validation data: {len(val_dataset)} samples')
+        print(f'training data: {len(train_dataset)} samples')
 
-    train_dl = DataLoader(train_data, batch_size=train_params['batch_size'], shuffle=True, generator=gen)
-    val_dl = DataLoader(val_data, batch_size=train_params['batch_size'], shuffle=False)
+    train_dl = DataLoader(train_dataset, batch_size=train_params['batch_size'], shuffle=True, generator=gen)
+    val_dl = DataLoader(val_dataset, batch_size=train_params['batch_size'], shuffle=False)
     
     model = XPSModel()
     optimizer = Adam(model.parameters(), lr=train_params['learning_rate'])
