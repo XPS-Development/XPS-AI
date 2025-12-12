@@ -273,12 +273,12 @@ class OptimizationManager:
             Whether to denormalize amplitude values using region coefficients.
         """
         for param_opt_name in parameters:
-            idx, param = param_opt_name.split("_")
-            peak = self.collection.get_peak(idx)
+            id_, param = param_opt_name.split("_")
+            peak = self.collection.get(id_)
             opt_value = parameters[param_opt_name].value
 
             if param == "amp" and from_norm:
-                region = self.collection.get_region(peak.region_id)
+                region = self.collection._get_region(peak.region_id)
                 norm_coefs = region.norm_coefs
                 # denormalize amplitude
                 opt_value = opt_value * (norm_coefs[1] - norm_coefs[0])
@@ -366,7 +366,7 @@ class OptimizationManager:
             - params : list of Parameter
                 Parameters corresponding to peaks.
         """
-        region = self.collection.get_region(region_id)
+        region = self.collection.get(region_id)
 
         params = []
         reg_combination = tuple(region.peaks)
@@ -380,7 +380,7 @@ class OptimizationManager:
             y = region.y - region.background
             norm_coefs = None
 
-        peaks = tuple(self.collection.get_peak(p) for p in reg_combination)
+        peaks = tuple(self.collection.get(p) for p in reg_combination)
         params.extend(self.peaks_to_params(peaks, norm_coefs))
         return x, y, reg_combination, params
 

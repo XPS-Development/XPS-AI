@@ -577,9 +577,9 @@ class SpectrumCollection:
             parent_id = parent.id
 
         if parent_id.startswith("s"):  # parents id must be in collection
-            parent = self.get_spectrum(parent_id)
+            parent = self._get_spectrum(parent_id)
         elif parent_id.startswith("r"):
-            parent = self.get_region(parent_id)
+            parent = self._get_region(parent_id)
 
         if isinstance(parent, Spectrum) and isinstance(child, Region):
             child.spectrum_id = parent_id
@@ -649,22 +649,22 @@ class SpectrumCollection:
             self._remove_peak(obj)
 
     def _remove_peak(self, peak_id: str) -> None:
-        peak = self.get_peak(peak_id)
+        peak = self._get_peak(peak_id)
         parent_region_id = peak.region_id
         peak.region_id = None
 
         if parent_region_id is not None:
-            self.get_region(parent_region_id).remove_peak(peak_id)
+            self._get_region(parent_region_id).remove_peak(peak_id)
 
         self.peaks_index.pop(peak_id)
 
     def _remove_region(self, region_id: str) -> None:
-        region = self.get_region(region_id)
+        region = self._get_region(region_id)
         parent_spectrum_id = region.spectrum_id
         region.spectrum_id = None
 
         if parent_spectrum_id is not None:
-            self.get_spectrum(parent_spectrum_id).remove_region(region_id)
+            self._get_spectrum(parent_spectrum_id).remove_region(region_id)
 
         for peak_id in region.peaks:
             self._remove_peak(peak_id)
@@ -672,36 +672,44 @@ class SpectrumCollection:
         self.regions_index.pop(region_id)
 
     def _remove_spectrum(self, spectrum_id: str) -> None:
-        spectrum = self.get_spectrum(spectrum_id)
+        spectrum = self._get_spectrum(spectrum_id)
 
         for region_id in spectrum.regions:
             self._remove_region(region_id)
 
         self.spectra_index.pop(spectrum_id)
 
-    def get_spectrum(self, id: str) -> Spectrum:
+    def _get_spectrum(self, id_: str) -> Spectrum:
         """
         Retrieve a spectrum by its UUID.
         """
-        if id not in self.spectra_index:
-            raise KeyError(f"Spectrum with ID {id} not found in collection.")
+        if id_ not in self.spectra_index:
+            raise KeyError(f"Spectrum with ID {id_} not found in collection.")
 
-        return self.spectra_index[id]
+        return self.spectra_index[id_]
 
-    def get_region(self, id: str) -> Region:
+    def _get_region(self, id_: str) -> Region:
         """
         Retrieve a region by its UUID.
         """
-        if id not in self.regions_index:
-            raise KeyError(f"Region with ID {id} not found in collection.")
+        if id_ not in self.regions_index:
+            raise KeyError(f"Region with ID {id_} not found in collection.")
 
-        return self.regions_index[id]
+        return self.regions_index[id_]
 
-    def get_peak(self, id: str) -> Peak:
+    def _get_peak(self, id_: str) -> Peak:
         """
         Retrieve a peak by its UUID.
         """
-        if id not in self.peaks_index:
-            raise KeyError(f"Peak with ID {id} not found in collection.")
+        if id_ not in self.peaks_index:
+            raise KeyError(f"Peak with ID {id_} not found in collection.")
 
-        return self.peaks_index[id]
+        return self.peaks_index[id_]
+
+    def get(self, obj_id: str) -> Spectrum | Region | Peak:
+        if obj_id.startswith("s"):
+            return self._get_spectrum(obj_id)
+        elif obj_id.startswith("r"):
+            return self._get_region(obj_id)
+        elif obj_id.startswith("p"):
+            return self._get_peak(obj_id)

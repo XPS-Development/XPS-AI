@@ -30,9 +30,9 @@ def test_register_objects(spectrum_region_peak):
     assert region.id in collection.regions_index
     assert peak.id in collection.peaks_index
 
-    assert collection.get_spectrum(spec.id) is spec
-    assert collection.get_region(region.id) is region
-    assert collection.get_peak(peak.id) is peak
+    assert collection.get(spec.id) is spec
+    assert collection.get(region.id) is region
+    assert collection.get(peak.id) is peak
 
 
 def test_links(spectrum_region_peak):
