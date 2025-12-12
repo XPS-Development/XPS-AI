@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Optional, Dict, List, Tuple
 from uuid import uuid4
 
@@ -273,6 +273,8 @@ class Region:
     y: Optional[NDArray] = None
     norm_coefs: Tuple[float, float] = (0, 1)
 
+    start_idx: Optional[int] = None
+    end_idx: Optional[int] = None
     i_1: Optional[float] = None
     i_2: Optional[float] = None
 
@@ -281,6 +283,12 @@ class Region:
     background_type: str = "shirley"
 
     peaks: List[str] = field(default_factory=list)  # peak IDs
+
+    def __post_init__(self):
+        # replace id from None to default factory if None is set explicitly
+        for f in fields(self):
+            if f.name == "id" and self.id is None:
+                self.id = f.default_factory()
 
     @property
     def background(self) -> NDArray:
@@ -432,7 +440,9 @@ class Spectrum:
         """
         self.regions.remove(region_id)
 
-    def create_region(self, start_idx: int, end_idx: int, background_type: str = "shirley") -> Region:
+    def create_region(
+        self, start_idx: int, end_idx: int, background_type: str = "shirley", region_id: Optional[str] = None
+    ) -> Region:
         """
         Create a region from a subset of the spectrum data and attach it.
 
@@ -444,6 +454,7 @@ class Spectrum:
             End index of the region in the spectrum arrays.
         background_type : str, default="shirley"
             Type of background for the region.
+        region_id : Optional[str], default=None
 
         Returns
         -------
@@ -458,10 +469,13 @@ class Spectrum:
             i_2 = self.y_smoothed[end_idx - 1]
 
         region = Region(
+            id=region_id,
             spectrum_id=self.id,
             x=self.x[start_idx:end_idx],
             y=self.y[start_idx:end_idx],
             norm_coefs=self.norm_coefs,
+            start_idx=start_idx,
+            end_idx=end_idx,
             i_1=i_1,
             i_2=i_2,
             background_type=background_type,
