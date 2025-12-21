@@ -63,9 +63,9 @@ class ParameterNormalizationPolicy(BaseNormalizationPolicy):
         for name, p in parameters.items():
             if name in self.normalization_target_parameters:
                 new_params[name] = p.copy_with(
-                    value=p.value / norm_ctx.scale,
-                    lower=p.lower / norm_ctx.scale,
-                    upper=p.upper / norm_ctx.scale,
+                    value=self._normalize_value(p.value),
+                    lower=self._normalize_value(p.lower),
+                    upper=self._normalize_value(p.upper),
                 )
             else:
                 new_params[name] = p
@@ -80,9 +80,9 @@ class ParameterNormalizationPolicy(BaseNormalizationPolicy):
         for name, p in parameters.items():
             if name in self.normalization_target_parameters:
                 new_params[name] = p.copy_with(
-                    value=p.value * norm_ctx.scale,
-                    lower=p.lower * norm_ctx.scale,
-                    upper=p.upper * norm_ctx.scale,
+                    value=self._denormalize_value(p.value),
+                    lower=self._denormalize_value(p.lower),
+                    upper=self._denormalize_value(p.upper),
                 )
             else:
                 new_params[name] = p

@@ -69,8 +69,6 @@ def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: 
     pvoigt : NDArray
         Pseudo-Voigt function evaluated at x.
     """
-    print(amplitude)
-    print(type(amplitude))
     sigma_g = sigma / np.sqrt(2 * np.log(2))  # convert to Gaussian sigma for same FWHM
     return amplitude * ((1 - fraction) * gauss(x, center, sigma_g) + fraction * lorentz(x, center, sigma))
 
