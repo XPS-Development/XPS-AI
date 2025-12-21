@@ -4,9 +4,10 @@ from typing import Protocol, TypeVar
 
 import numpy as np
 
-from .normalization import BaseNormalizationPolicy
+from .normalization import ParameterNormalizationPolicy, NormalizationContext
+from .runtime import RuntimeParameter
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 from numpy.typing import NDArray
 
 T = TypeVar("T", bound=np.floating)
@@ -22,7 +23,7 @@ class ParameterSpec:
     expr: Optional[str] = None
 
 
-class ParametricModel(BaseNormalizationPolicy, ABC):
+class ParametricModel(ParameterNormalizationPolicy, ABC):
     name: str
     parameter_schema: Tuple[ParameterSpec, ...]
     independent_vars: Tuple[str, ...]
@@ -40,9 +41,20 @@ class ParametricModelLike(Protocol[T]):
     name: str
     parameter_schema: Tuple[str, ...]
     independent_vars: Tuple[str, ...]
+    normalization_target_parameters = Tuple[str, ...]
+    use_offset: bool = True
+    use_scale: bool = True
 
     @staticmethod
     def evaluate(x: NDArray[T], y: Optional[NDArray[T]], **kwargs: float) -> NDArray[T]: ...
+
+    def normalize(
+        self, parameters: Dict[str, RuntimeParameter], norm_ctx: NormalizationContext
+    ) -> Dict[str, RuntimeParameter]: ...
+
+    def denormalize(
+        self, parameters: Dict[str, RuntimeParameter], norm_ctx: NormalizationContext
+    ) -> Dict[str, RuntimeParameter]: ...
 
 
 class BasePeakModel(ParametricModel):
