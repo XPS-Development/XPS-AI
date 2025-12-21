@@ -229,7 +229,6 @@ class SpectrumService(DomainService):
         self,
         x: NDArray,
         y: NDArray,
-        *,
         spectrum_id: Optional[str] = None,
     ) -> str:
         """
