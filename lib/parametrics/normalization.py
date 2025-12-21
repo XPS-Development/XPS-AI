@@ -41,18 +41,18 @@ class ParameterNormalizationPolicy(BaseNormalizationPolicy):
     use_offset = True
     use_scale = True
 
-    def _normalize_value(self, val: float) -> float:
+    def _normalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         if self.use_offset:
-            val -= val
+            val -= norm_ctx.offset
         if self.use_scale:
-            val /= val
+            val /= norm_ctx.scale
         return val
 
-    def _denormalize_value(self, val: float) -> float:
+    def _denormalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         if self.use_scale:
-            val *= val
+            val *= norm_ctx.scale
         if self.use_offset:
-            val += val
+            val += norm_ctx.offset
         return val
 
     def normalize(
@@ -63,9 +63,9 @@ class ParameterNormalizationPolicy(BaseNormalizationPolicy):
         for name, p in parameters.items():
             if name in self.normalization_target_parameters:
                 new_params[name] = p.copy_with(
-                    value=self._normalize_value(p.value),
-                    lower=self._normalize_value(p.lower),
-                    upper=self._normalize_value(p.upper),
+                    value=self._normalize_value(p.value, norm_ctx),
+                    lower=self._normalize_value(p.lower, norm_ctx),
+                    upper=self._normalize_value(p.upper, norm_ctx),
                 )
             else:
                 new_params[name] = p
@@ -80,9 +80,9 @@ class ParameterNormalizationPolicy(BaseNormalizationPolicy):
         for name, p in parameters.items():
             if name in self.normalization_target_parameters:
                 new_params[name] = p.copy_with(
-                    value=self._denormalize_value(p.value),
-                    lower=self._denormalize_value(p.lower),
-                    upper=self._denormalize_value(p.upper),
+                    value=self._denormalize_value(p.value, norm_ctx),
+                    lower=self._denormalize_value(p.lower, norm_ctx),
+                    upper=self._denormalize_value(p.upper, norm_ctx),
                 )
             else:
                 new_params[name] = p
