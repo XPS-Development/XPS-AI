@@ -293,7 +293,9 @@ class DataQueryService(DomainService):
     without modifying domain state.
     """
 
-    def get_norm_ctx(self, spectrum_id: str) -> NormalizationContext:
+    def get_norm_ctx(
+        self, *, spectrum_id: Optional[str] = None, region_id: Optional[str] = None
+    ) -> NormalizationContext:
         """
         Retrieve the normalization context of a spectrum.
 
@@ -307,8 +309,16 @@ class DataQueryService(DomainService):
         NormalizationContext
             Normalization parameters derived from spectrum data.
         """
-        spectrum = self._get(spectrum_id)
-        return spectrum.norm_ctx
+        if spectrum_id is None and region_id is None:
+            raise ValueError("spectrum_id or region_id should be provided")
+        elif spectrum_id is not None and region_id is not None:
+            raise ValueError("Only one of spectrum_id or region_id should be provided")
+        elif spectrum_id is not None:
+            spectrum = self._get(spectrum_id)
+            return spectrum.norm_ctx
+        elif region_id is not None:
+            region = self._get_typed(region_id, Region)
+            return self._get_typed(region.parent_id, Spectrum).norm_ctx
 
     def get_spectrum_data(self, spectrum_id: str, normalized: bool = False) -> tuple[NDArray, NDArray]:
         """
