@@ -120,7 +120,7 @@ class MatplotlibViewer:
         *,
         ax: Optional[Axes] = None,
         show_raw: bool = True,
-        region_alpha: float = 0.15,
+        region_span_alpha: float = 0.15,
         plot_models: bool = True,
     ):
         ax = self._get_ax(ax)
@@ -133,14 +133,16 @@ class MatplotlibViewer:
         regions = self._query.get_regions(spectrum_id)
         for region in regions:
             x, _ = self.pltdata.region_xy(region.id_)
-            ax.axvspan(x[0], x[-1], alpha=region_alpha)
+            ax.axvspan(x[0], x[-1], alpha=region_span_alpha)
 
             # plot region components on top
             self.plot_region(region.id_, ax=ax, show_raw=False, plot_model=plot_models)
 
         return ax
 
-    def plot_region(self, region_id: str, *, ax: Axes, show_raw: bool, plot_model: bool = True):
+    def plot_region(
+        self, region_id: str, *, ax: Optional[Axes] = None, show_raw: bool = True, plot_model: bool = True
+    ):
         ax = self._get_ax(ax)
 
         bundle = self.pltdata.region_plot_bundle(region_id)

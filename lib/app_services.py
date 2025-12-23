@@ -27,12 +27,12 @@ class PlotDataService:
     def _get_region_xy(self, region_id: str) -> tuple[NDArray, NDArray]:
         return self._data.get_region_data(region_id, normalized=self.normalized)
 
-    def _get_norm_ctx_for_region(self, region_id: str) -> NormalizationContext | None:
-        if not self.normalized:
-            return None
-        region = self._query.get(region_id)
-        spectrum = self._query.get(region.parent_id)
-        return spectrum.norm_ctx
+    # def _get_norm_ctx_for_region(self, region_id: str) -> NormalizationContext | None:
+    #     if not self.normalized:
+    #         return None
+    #     region = self._query.get(region_id)
+    #     spectrum = self._query.get(region.parent_id)
+    #     return spectrum.norm_ctx
 
     def _get_parameters(
         self, component: Component, norm_ctx: NormalizationContext | None
@@ -44,7 +44,11 @@ class PlotDataService:
 
     def _component_y(self, component: Component) -> NDArray:
         x, y = self._get_region_xy(component.parent_id)
-        norm_ctx = self._get_norm_ctx_for_region(component.parent_id)
+
+        if not self.normalized:
+            norm_ctx = None
+        else:
+            norm_ctx = self._data.get_norm_ctx(region_id=component.parent_id)
 
         params = self._get_parameters(component, norm_ctx)
 
