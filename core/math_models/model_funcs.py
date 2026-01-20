@@ -1,8 +1,8 @@
-from typing import Sequence, List
-
 import numpy as np
-from numpy.typing import NDArray
 from scipy.integrate import trapezoid
+
+from typing import Sequence, List
+from numpy.typing import NDArray
 
 
 def gauss(x: NDArray, center: float, sigma: float) -> NDArray:

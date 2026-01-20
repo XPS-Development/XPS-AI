@@ -1,14 +1,8 @@
 import numpy as np
 import pytest
 
-from lib.domain import (
-    Spectrum,
-    Region,
-    Peak,
-    Background,
-    SpectrumCollection,
-)
-from lib.parametrics import PseudoVoigtPeakModel, ConstantBackgroundModel
+from core import Spectrum, Region, Peak, Background, SpectrumCollection
+from core.math_models import PseudoVoigtPeakModel, ConstantBackgroundModel
 
 
 def test_collection_add_and_get():

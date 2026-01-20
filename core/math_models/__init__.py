@@ -1,6 +1,5 @@
 from .normalization import NormalizationContext
 from .base_models import ParameterSpec, ParametricModelLike, BasePeakModel, BaseBackgroundModel
-from .runtime import RuntimeParameter
 
 from typing import Dict
 

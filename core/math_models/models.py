@@ -1,13 +1,12 @@
 import numpy as np
-from .base_models import ParameterSpec, BasePeakModel, BaseBackgroundModel
 
-from .normalization import ParameterNormalizationPolicy
+from .base_models import ParameterSpec, BasePeakModel, BaseBackgroundModel
 from .model_funcs import pvoigt, linear_background, static_shirley_background
 
 from numpy.typing import NDArray
 
 
-class PseudoVoigtPeakModel(BasePeakModel, ParameterNormalizationPolicy):
+class PseudoVoigtPeakModel(BasePeakModel):
     name = "pseudo-voigt"
     parameter_schema = (
         ParameterSpec(name="amp", default=1, lower=0),
@@ -15,7 +14,6 @@ class PseudoVoigtPeakModel(BasePeakModel, ParameterNormalizationPolicy):
         ParameterSpec(name="sig", default=1, lower=0),
         ParameterSpec(name="frac", default=1, lower=0, upper=1),
     )
-    independent_vars = ("x", "y")
     normalization_target_parameters = ("amp",)
     use_scale = True
     use_offset = False
@@ -25,11 +23,10 @@ class PseudoVoigtPeakModel(BasePeakModel, ParameterNormalizationPolicy):
         return pvoigt(x, amp, cen, sig, frac)
 
 
-class ConstantBackgroundModel(BaseBackgroundModel, ParameterNormalizationPolicy):
+class ConstantBackgroundModel(BaseBackgroundModel):
     name = "constant"
     parameter_schema = (ParameterSpec("const", 0.0),)
     is_active = False
-    independent_vars = ("x", "y")
     normalization_target_parameters = ("const",)
     use_scale = False
     use_offset = True
@@ -39,13 +36,12 @@ class ConstantBackgroundModel(BaseBackgroundModel, ParameterNormalizationPolicy)
         return np.full_like(x, fill_value=const)
 
 
-class LinearBackgroundModel(BaseBackgroundModel, ParameterNormalizationPolicy):
+class LinearBackgroundModel(BaseBackgroundModel):
     name = "linear"
     parameter_schema = (
         ParameterSpec("i1", 0.0),
         ParameterSpec("i2", 0.0),
     )
-    independent_vars = ("x", "y")
     is_active = False
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
@@ -56,14 +52,13 @@ class LinearBackgroundModel(BaseBackgroundModel, ParameterNormalizationPolicy):
         return linear_background(x, i1=i1, i2=i2)
 
 
-class ShirleyBackgroundModel(BaseBackgroundModel, ParameterNormalizationPolicy):
+class ShirleyBackgroundModel(BaseBackgroundModel):
     name = "shirley"
     parameter_schema = (
         ParameterSpec("i1", 0.0),
         ParameterSpec("i2", 0.0),
     )
     is_active = False
-    independent_vars = ("x",)
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
     use_offset = True

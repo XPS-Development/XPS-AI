@@ -1,21 +1,186 @@
 from uuid import uuid4
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 
 import numpy as np
 
-from .parametrics import (
-    NormalizationContext,
-    BasePeakModel,
-    BaseBackgroundModel,
-    ParametricModelLike,
-    RuntimeParameter,
-)
+from .math_models import NormalizationContext, BasePeakModel, BaseBackgroundModel, ParametricModelLike
 
-from typing import Protocol, Dict, Any, Optional, TypeVar
+from typing import Protocol, Dict, Any, Optional
 from numpy.typing import NDArray
 
 
-class DomainObject(Protocol):
+@dataclass
+class RuntimeParameter:
+    """
+    Mutable value object representing a single adjustable model parameter
+    at runtime.
+
+    ``RuntimeParameter`` stores the current numerical value of a parameter
+    together with its optimization metadata: bounds, variation flag, and
+    an optional dependency expression.
+
+    This class is intentionally *model-agnostic* and *context-agnostic*.
+    It does not know:
+    - to which model it belongs;
+    - how it should be normalized or denormalized;
+    - how it is mapped to an optimizer backend (e.g. lmfit).
+
+    These responsibilities are handled by higher-level components
+    (models, normalization policies, optimization pipeline).
+
+    Parameters
+    ----------
+    name : str
+        Parameter name as defined by the owning model schema
+        (e.g. ``"amp"``, ``"cen"``, ``"sig"``).
+        Must be unique within a single model component.
+    value : float
+        Initial parameter value. The value is clipped to the interval
+        ``[lower, upper]`` during initialization.
+    lower : float, default=-np.inf
+        Lower bound for the parameter value.
+    upper : float, default=np.inf
+        Upper bound for the parameter value.
+    vary : bool, default=True
+        Flag indicating whether this parameter is allowed to vary during
+        optimization.
+    expr : str or None, default=None
+        Optional dependency expression referencing other parameters
+        (typically resolved later by the optimization layer).
+
+    Notes
+    -----
+    - ``RuntimeParameter`` is **mutable**: its value and bounds may change
+      during interactive editing or optimization.
+    - Use :meth:`set` to update attributes safely and preserve invariants.
+    - Use :meth:`copy_with` to create modified copies without mutating
+      the original object (required for normalization pipelines).
+    """
+
+    name: str
+    value: float
+    lower: float = -np.inf
+    upper: float = np.inf
+    vary: bool = True
+    expr: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.lower > self.upper:
+            self.lower = -np.inf
+            self.upper = np.inf
+        self.value = self._clip(self.value)
+
+    def _clip(self, value: float) -> float:
+        """Clip value to the inclusive interval [lower, upper]."""
+        return min(max(value, self.lower), self.upper)
+
+    def _set_bound(self, lower: Optional[float] = None, upper: Optional[float] = None) -> None:
+        if lower is not None and upper is not None:
+            if lower > upper:
+                raise ValueError
+            self.lower = lower
+            self.upper = upper
+        elif lower is not None:
+            if lower > self.upper:
+                self.lower = self.upper
+            else:
+                self.lower = lower
+        elif upper is not None:
+            if upper < self.lower:
+                self.upper = self.lower
+            else:
+                self.upper = upper
+
+    def set(
+        self,
+        *,
+        value: Optional[float] = None,
+        lower: Optional[float] = None,
+        upper: Optional[float] = None,
+        vary: Optional[bool] = None,
+        expr: Optional[str] = None,
+    ) -> None:
+        """
+        Mutate parameter attributes while preserving invariants.
+
+        All arguments are optional. Bounds are applied first, and the
+        current value is re-clipped if necessary.
+
+        Parameters
+        ----------
+        value : float, optional
+            New parameter value.
+        lower : float, optional
+            New lower bound.
+        upper : float, optional
+            New upper bound.
+        vary : bool, optional
+            New optimization variation flag.
+        expr : str, optional
+            New dependency expression.
+        """
+        self._set_bound(lower=lower, upper=upper)
+
+        if value is not None:
+            self.value = self._clip(float(value))
+        else:
+            # Re-clip existing value if bounds changed
+            self.value = self._clip(self.value)
+
+        if vary is not None:
+            self.vary = bool(vary)
+        if expr is not None:
+            self.expr = expr
+
+    def clone(self, **overrides: str | float | bool) -> "RuntimeParameter":
+        """
+        Create a modified copy of the parameter.
+
+        Returns a new ``RuntimeParameter`` instance with the same attributes
+        as the current one, optionally overridden by provided keyword arguments.
+
+        Parameters
+        ----------
+        **overrides
+            Parameter attributes to override in the cloned instance.
+            Typical keys include ``value``, ``lower``, ``upper``, ``vary``,
+            and ``expr``.
+
+        Returns
+        -------
+        RuntimeParameter
+            A new parameter instance with updated attributes.
+        """
+        params = asdict(self)
+        params.update(**overrides)
+        return RuntimeParameter(**params)
+
+    def copy_to(self, dst: "RuntimeParameter") -> None:
+        """
+        Copy parameter configuration to another parameter instance.
+
+        Updates the destination parameter in-place by copying the current
+        parameter's numerical value, bounds, variation flag, and expression.
+
+        Parameters
+        ----------
+        dst : RuntimeParameter
+            Destination parameter instance to be updated.
+        """
+        params = asdict(self)
+        params.pop("name")
+        dst.set(**params)
+
+    def __repr__(self) -> str:
+        return (
+            f"<RuntimeParameter {self.name}: "
+            f"value={self.value}, "
+            f"lower={self.lower}, upper={self.upper}, "
+            f"vary={self.vary}, expr={self.expr}>"
+        )
+
+
+class CoreObject(Protocol):
     id_: str
     parent_id: Optional[str]
 
@@ -25,24 +190,28 @@ class Component:
     Base class for parametric model components (e.g. peaks, backgrounds).
 
     A ``Component`` represents a *runtime instance* of a parametric model
-    bound to a specific parent domain object (typically a Region). It combines:
+    bound to a specific parent core object (typically a Region). It combines:
 
     - a concrete :class:`ParametricModelLike` (defining mathematical behavior);
     - a set of runtime-adjustable parameters (:class:`RuntimeParameter`);
     - a stable unique identifier;
-    - a parent-child relationship to the domain model.
+    - a parent-child relationship to the core model.
 
     ``Component`` itself is agnostic to the semantics of the model it represents.
     It does not know whether it is a peak, a background, or another parametric
     object. Specializations (e.g. :class:`Peak`, :class:`Background`) define
-    evaluation signatures and domain-specific constraints.
+    core-specific constraints.
+
+    The Component:
+    - is always associated with exactly one Region;
+    - evaluates to a 1D array over the region's x-grid;
 
     Responsibilities
     ----------------
     - Instantiate runtime parameters from the model's parameter schema.
     - Validate provided parameter values against the schema.
     - Provide a uniform interface for parameter access and mutation.
-    - Act as a bridge between domain objects and optimization models.
+    - Act as a bridge between core objects and optimization models.
 
     Explicitly out of scope
     -----------------------
@@ -54,9 +223,8 @@ class Component:
     ----------
     model : ParametricModelLike
         Parametric model providing a parameter schema and an evaluate function.
-        The model provides a parameter schema and an evaluation function.
     parent_id : str
-        Identifier of the parent domain object (e.g. Region ID).
+        Identifier of the parent core object (e.g. Region ID).
         Used for structural integrity and traceability.
     component_id : str, optional
         Explicit identifier of the component. If not provided, a new ID
@@ -82,7 +250,7 @@ class Component:
     model : ParametricModel
         Parametric model instance defining parameter schema and evaluation logic.
     parent_id : str
-        Identifier of the parent domain object.
+        Identifier of the parent core object.
     parameters : dict[str, RuntimeParameter]
         Mapping of parameter names to runtime parameter objects.
     """
@@ -163,20 +331,6 @@ class Component:
             raise KeyError(f"Parameter '{name}' not found in component '{self.id_}'")
         return self.parameters[name]
 
-    def evaluate(self, *args, **kwargs) -> NDArray:
-        """
-        Evaluate the component.
-
-        This method must be implemented by subclasses, as different component
-        types have different evaluation signatures.
-
-        Raises
-        ------
-        NotImplementedError
-            If called on the base class.
-        """
-        raise NotImplementedError
-
     def __repr__(self) -> str:
         params = ", ".join(f"{n}={p.value:.4g}" for n, p in self.parameters.items())
         pid = self.parent_id[:8] if self.parent_id else "None"
@@ -227,31 +381,13 @@ class Peak(Component):
             **param_values,
         )
 
-    def evaluate(self, x: NDArray) -> NDArray:
-        """
-        Evaluate the peak model on the given x-grid.
-
-        Parameters
-        ----------
-        x : NDArray
-            X-axis values for evaluation.
-
-        Returns
-        -------
-        NDArray
-            Peak contribution evaluated at ``x``.
-        """
-        kwargs = {name: param.value for name, param in self.parameters.items()}
-        return self.model.evaluate(x, y=None, **kwargs)
-
 
 class Background(Component):
     """
     Background component bound to a spectral region.
 
     ``Background`` represents a parametric background model associated with
-    a region. Unlike peaks, background models may depend not only on the
-    x-axis but also on the observed intensity y.
+    a region.
 
     Typical use cases include:
     - static backgrounds (linear, Shirley);
@@ -288,33 +424,14 @@ class Background(Component):
             **param_values,
         )
 
-    def evaluate(self, x: NDArray, y: NDArray | None = None) -> NDArray:
-        """
-        Evaluate the background model. Some background models may depend on y.
-
-        Parameters
-        ----------
-        x : NDArray
-            X-axis values.
-        y : NDArray, optional
-            Y-axis values, used by background models that depend on intensity.
-
-        Returns
-        -------
-        NDArray
-            Evaluated background.
-        """
-        kwargs = {name: param.value for name, param in self.parameters.items()}
-        return self.model.evaluate(x, y, **kwargs)
-
 
 @dataclass
 class Region:
     """
-    Region domain object.
+    Region core object.
 
     A ``Region`` represents a contiguous sub-range of a spectrum defined
-    purely by index slicing. It is a *structural* and *semantic* domain entity
+    purely by index slicing. It is a *structural* and *semantic* core entity
     that groups peaks and a background, but does not store numerical data
     such as x/y arrays or normalization context.
 
@@ -369,12 +486,12 @@ class Region:
 @dataclass
 class Spectrum:
     """
-    Spectrum domain object.
+    Spectrum core object.
 
     Represents a single measured spectrum and owns the raw spectral data
     (`x`, `y`) together with a normalization context derived from it.
 
-    A `Spectrum` is the top-level domain entity in the spectral hierarchy:
+    A `Spectrum` is the top-level core entity in the spectral hierarchy:
     regions and peaks are always created *from* a spectrum and are
     indirectly associated with it via `spectrum_id` / `parent_id`.
 
@@ -414,7 +531,7 @@ class Spectrum:
         Unique identifier of the spectrum.
     parent_id : None
         Always ``None`` for Spectrum.
-        Present for consistency with other domain objects.
+        Present for consistency with other core objects.
     norm_ctx : NormalizationContext
         Normalization context derived from the spectrum's y-data.
         Used by regions, peaks, and optimization routines.
@@ -446,169 +563,3 @@ class Spectrum:
             raise ValueError("x and y must be 1D arrays")
         if len(self.x) != len(self.y):
             raise ValueError("x and y must have the same length")
-
-
-T = TypeVar("T")
-
-
-class SpectrumCollection:
-    """
-    Collection and lifecycle manager for spectral domain objects.
-
-    `SpectrumCollection` is a lightweight registry that stores and indexes
-    all domain objects participating in the spectral model:
-    - Spectrum
-    - Region
-    - Peak
-    - Background
-
-    The collection is responsible for:
-    - Object registration and lookup by ID
-    - Maintaining parent–child relationships via `parent_id`
-    - Cascading removal of hierarchical objects
-
-    It is intentionally *not* responsible for:
-    - Validation of scientific correctness
-    - Business logic (copy/paste, fitting, optimization)
-    - Object creation policies
-
-    Design principles
-    -----------------
-    - Single source of truth: all objects are stored in a single index.
-    - Relationships are implicit and resolved via `parent_id`.
-    - No reliance on ID prefixes or explicit type dispatch.
-    - Minimal assumptions about object internals.
-
-    Object hierarchy assumptions
-    -----------------------------
-    The collection assumes the following containment hierarchy:
-
-        Spectrum
-          └── Region
-                └── Peak / Background / other components
-
-    These rules are not enforced structurally, but are relied upon
-    for correct cascading deletion.
-
-    Notes
-    -----
-    - All objects must expose:
-        - `id_ : str`
-        - `parent_id : Optional[str]`
-    - IDs must be globally unique within the collection.
-    - Objects are assumed to be immutable with respect to identity
-      (`id_` and `parent_id` should not change after registration).
-
-    Attributes
-    ----------
-    objects_index : dict[str, Spectrum | Region | Peak]
-        Global mapping from object ID to domain object instance.
-    """
-
-    def __init__(self):
-        self.objects_index: Dict[str, DomainObject] = {}
-
-    def add(self, obj: DomainObject) -> None:
-        """
-        Register an object in the collection.
-
-        This method adds the object to the internal index.
-        It does NOT automatically add parents or children.
-
-        Parameters
-        ----------
-        obj : Spectrum or Region or Peak
-            Domain object to register.
-
-        Raises
-        ------
-        ValueError
-            If the object does not have a valid `id_`.
-        KeyError
-            If an object with the same ID already exists.
-        """
-        if obj.id_ is None:
-            raise ValueError("Object must have an id_")
-
-        if obj.id_ in self.objects_index:
-            raise KeyError(f"Object with id '{obj.id_}' already exists")
-
-        self.objects_index[obj.id_] = obj
-
-    def remove(self, obj: DomainObject | str) -> None:
-        """
-        Remove an object from the collection.
-
-        Removal is recursive:
-        - If a Spectrum is removed, all its Regions and Peaks are removed.
-        - If a Region is removed, all its Peaks (and Backgrounds) are removed.
-        - If a Peak is removed, only the peak itself is removed.
-
-        Parameters
-        ----------
-        obj : Spectrum or Region or Peak or Background or str
-            Object instance or its ID.
-
-        Raises
-        ------
-        KeyError
-            If the object ID is not present in the collection.
-        """
-        if isinstance(obj, str):
-            obj_id = obj
-        else:
-            obj_id = obj.id_
-
-        obj = self.objects_index.pop(obj_id)
-
-        if isinstance(obj, (Spectrum, Region)):
-            children = list(self.get_children(obj_id))
-            for ch in children:
-                self.remove(ch)
-
-    def get(self, obj_id: str) -> DomainObject:
-        """
-        Retrieve an object by its ID.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the requested object.
-
-        Returns
-        -------
-        Spectrum or Region or Peak or Background
-            The corresponding domain object.
-
-        Raises
-        ------
-        KeyError
-            If no object with this ID exists in the collection.
-        """
-        return self.objects_index[obj_id]
-
-    def get_typed(self, obj_id: str, tp: type[T]) -> T:
-        obj = self.get(obj_id)
-        if not isinstance(obj, tp):
-            raise TypeError(f"{obj_id} is not {tp.__name__}")
-        return obj
-
-    def get_children(self, obj_id: str) -> tuple[DomainObject, ...]:
-        """
-        Retrieve direct children of a given object.
-
-        Children are defined as objects whose `parent_id`
-        matches the given `obj_id`.
-
-        Parameters
-        ----------
-        obj_id : str
-            Parent object ID.
-
-        Returns
-        -------
-        tuple of Region or Peak or Background
-            Direct children of the given object.
-            The order is not guaranteed.
-        """
-        return tuple(ch for ch in self.objects_index.values() if ch.parent_id == obj_id)

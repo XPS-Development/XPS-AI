@@ -1,11 +1,6 @@
 import inspect
 
-from lib.parametrics.base_models import (
-    ParametricModel,
-    BasePeakModel,
-    BaseBackgroundModel,
-    ParameterSpec,
-)
+from core.math_models.base_models import ParametricModel, BasePeakModel, BaseBackgroundModel, ParameterSpec
 
 
 def test_parameter_spec_defaults():

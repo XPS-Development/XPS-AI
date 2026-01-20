@@ -7,4 +7,4 @@ __pycache__
 tests.py
 /model/train/data
 /train_log*
-/draft.*
+*.ipynb
