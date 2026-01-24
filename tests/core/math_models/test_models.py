@@ -2,6 +2,7 @@ import numpy as np
 from scipy import stats
 
 from core.math_models.models import PseudoVoigtPeakModel
+from core.math_models.models import ConstantBackgroundModel, LinearBackgroundModel, ShirleyBackgroundModel
 
 
 def test_pseudo_voigt_evaluate_shape():
@@ -12,9 +13,6 @@ def test_pseudo_voigt_evaluate_shape():
 
     assert out.shape == x.shape
     assert np.all(np.isfinite(out))
-
-
-from core.math_models.models import ConstantBackgroundModel, LinearBackgroundModel, ShirleyBackgroundModel
 
 
 def test_constant_background():
