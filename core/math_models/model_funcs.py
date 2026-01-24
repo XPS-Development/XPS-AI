@@ -1,8 +1,8 @@
-from typing import Sequence, List
-
 import numpy as np
-from numpy.typing import NDArray
 from scipy.integrate import trapezoid
+
+from typing import Sequence, List
+from numpy.typing import NDArray
 
 
 def gauss(x: NDArray, center: float, sigma: float) -> NDArray:
@@ -44,7 +44,7 @@ def lorentz(x: NDArray, center: float, sigma: float) -> NDArray:
     NDArray
         Lorentzian function evaluated at x.
     """
-    return 1 / (np.pi * sigma * (1 + ((x - center) / sigma) ** 2))
+    return 1 / np.pi * sigma / ((x - center) ** 2 + sigma**2)
 
 
 def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: float) -> NDArray:
@@ -66,7 +66,7 @@ def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: 
 
     Returns
     -------
-    NDArray
+    pvoigt : NDArray
         Pseudo-Voigt function evaluated at x.
     """
     sigma_g = sigma / np.sqrt(2 * np.log(2))  # convert to Gaussian sigma for same FWHM
@@ -131,7 +131,7 @@ def ndpvoigt(
     return y_list
 
 
-def static_shirley_background(x: NDArray, y: NDArray, i_1: float, i_2: float, iters: int = 8) -> NDArray:
+def static_shirley_background(x: NDArray, y: NDArray, i1: float, i2: float, iters: int = 8) -> NDArray:
     """
     Calculate iterative Shirley background.
 
@@ -141,9 +141,9 @@ def static_shirley_background(x: NDArray, y: NDArray, i_1: float, i_2: float, it
         X-data points.
     y : NDArray
         Y-data points corresponding to x.
-    i_1 : float
+    i1 : float
         Starting intensity (baseline).
-    i_2 : float
+    i2 : float
         Ending intensity (baseline).
     iters : int, default=8
         Number of iterations.
@@ -155,14 +155,14 @@ def static_shirley_background(x: NDArray, y: NDArray, i_1: float, i_2: float, it
     """
     background = np.zeros_like(x, dtype=np.float32)
     for _ in range(iters):
-        y_adj = y - i_1 - background
-        k = (i_2 - i_1) / trapezoid(y_adj, x)
+        y_adj = y - i1 - background
+        k = (i2 - i1) / trapezoid(y_adj, x)
         shirley_to_i = lambda i: k * trapezoid(y_adj[: i + 1], x[: i + 1])
         background = np.array([shirley_to_i(i) for i in range(len(x))])
-    return background + i_1
+    return background + i1
 
 
-def linear_background(x: NDArray, i_1: float, i_2: float) -> NDArray:
+def linear_background(x: NDArray, i1: float, i2: float) -> NDArray:
     """
     Calculate a linear background between two intensity points.
 
@@ -170,9 +170,9 @@ def linear_background(x: NDArray, i_1: float, i_2: float) -> NDArray:
     ----------
     x : NDArray
         Array of x-values.
-    i_1 : float
+    i1 : float
         Intensity at the start of x (x[0]).
-    i_2 : float
+    i2 : float
         Intensity at the end of x (x[-1]).
 
     Returns
@@ -180,4 +180,4 @@ def linear_background(x: NDArray, i_1: float, i_2: float) -> NDArray:
     NDArray
         Linear background evaluated at each point in x.
     """
-    return i_1 + (i_2 - i_1) * (x - x[0]) / (x[-1] - x[0])
+    return i1 + (i2 - i1) * (x - x[0]) / (x[-1] - x[0])
