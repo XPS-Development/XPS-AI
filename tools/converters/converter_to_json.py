@@ -208,9 +208,6 @@ def merge_json_files(json_dir, output_dir=None):
     merged_files = []
     
     for base_name, files in file_groups.items():
-        if len(files) <= 1:
-            continue
-        
         merged_data = {}
         
         for file_path in files:

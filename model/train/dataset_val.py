@@ -223,15 +223,15 @@ def view_labeled_data(output_dir, file_index):
     plt.show()
 
 def main():
-    json_dir = '/Users/User/Desktop/Json_spec'
+    json_dir = '/Users/User/Desktop/Json_reserva'
     output_dir = 'model/train/data/val_dataset'
     
-    results = generate_dataset(
-        json_dir, 
-        output_dir,
-        print_data=True
-    )
-    view_labeled_data(output_dir, 0)
+    # results = generate_dataset(
+    #     json_dir, 
+    #     output_dir,
+    #     print_data=True
+    # )
+    view_labeled_data(output_dir, 10)
     
     return results
 

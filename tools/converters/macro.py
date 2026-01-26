@@ -60,10 +60,12 @@ def save_file(name, num) -> None:
     pyautogui.write(file_name)
     time.sleep(DELAY)
     pyautogui.press('enter')
+    pyautogui.press('enter')
     time.sleep(DELAY)
     
     pyautogui.press('enter')
-    time.sleep(DELAY)
+    pyautogui.press('enter')
+    time.sleep(DELAY*10)
 
 def close_dialogs():
     for window in auto.GetRootControl().GetChildren():
@@ -92,7 +94,8 @@ def open_file(name) -> bool:
     pyautogui.write(name)
     time.sleep(DELAY)
     pyautogui.press('enter')
-    time.sleep(DELAY * 10)
+    pyautogui.press('enter')
+    time.sleep(DELAY)
     
     return True
 
