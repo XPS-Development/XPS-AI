@@ -71,7 +71,7 @@ class SpectrumCollection:
 
         Parameters
         ----------
-        obj : Spectrum or Region or Peak
+        obj : Spectrum or Region or Peak or Background
             core object to register.
 
         Raises
