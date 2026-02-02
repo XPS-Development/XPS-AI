@@ -35,7 +35,7 @@ def simple_collection(empty_collection, simple_gauss_spectrum) -> SpectrumCollec
 
     s = Spectrum(x, y, id_="s1")
     r = Region(slice(20, len(x) + 1 - 20), parent_id=s.id_, id_="r1")
-    p = Peak(model=PseudoVoigtPeakModel, region_id=r.id_, component_id="p1", amp=1, cen=0, sig=1, frac=1)
+    p = Peak(model=PseudoVoigtPeakModel(), region_id=r.id_, component_id="p1", amp=1, cen=0, sig=1, frac=1)
     bg = Background(model=ConstantBackgroundModel, region_id=r.id_, component_id="b1", const=1)
 
     collection.add(s)
