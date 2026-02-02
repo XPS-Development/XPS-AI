@@ -10,6 +10,7 @@ from services.core import (
     DataQueryService,
     ComponentService,
 )
+from services.dto import DTOService
 
 
 @pytest.fixture()
@@ -86,3 +87,8 @@ def data_query_service(simple_collection):
 @pytest.fixture
 def component_service(simple_collection):
     return ComponentService(simple_collection)
+
+
+@pytest.fixture
+def dto_service(simple_collection):
+    return DTOService(simple_collection)
