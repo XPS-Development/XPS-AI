@@ -4,16 +4,17 @@ from .base_models import ParameterSpec, ParametricModelLike, BasePeakModel, Base
 from typing import Dict
 
 
+# NOTE: all core objects have the same ParametricModel instance
 class ModelRegistry:
     _registry: Dict[str, type[ParametricModelLike]] = {}
 
     @classmethod
     def register(cls, model_cls: type[ParametricModelLike]):
-        cls._registry[model_cls.name] = model_cls
+        cls._registry[model_cls.name] = model_cls()
 
     @classmethod
     def get(cls, name: str) -> ParametricModelLike:
-        return cls._registry[name]()
+        return cls._registry[name]
 
 
 from .models import (
