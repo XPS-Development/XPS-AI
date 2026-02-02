@@ -58,6 +58,12 @@ def region_id(simple_collection):
 
 
 @pytest.fixture
+def peak_id(simple_collection):
+    peak_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
+    return peak_id
+
+
+@pytest.fixture
 def query_service(simple_collection):
     return CollectionQueryService(simple_collection)
 
