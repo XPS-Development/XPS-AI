@@ -3,6 +3,16 @@ from scipy import stats
 
 from core.math_models.models import PseudoVoigtPeakModel
 from core.math_models.models import ConstantBackgroundModel, LinearBackgroundModel, ShirleyBackgroundModel
+from core.math_models.normalization import NormalizationContext
+
+
+def run_normalization(model, parameters: dict, ctx: NormalizationContext):
+    new_parameters = {}
+    for p, v in parameters.items():
+        if p in model.normalization_target_parameters:
+            v = model.normalize_value(v, ctx)
+        new_parameters.update({p: v})
+    return new_parameters
 
 
 def test_pseudo_voigt_evaluate_shape():
@@ -13,6 +23,27 @@ def test_pseudo_voigt_evaluate_shape():
 
     assert out.shape == x.shape
     assert np.all(np.isfinite(out))
+
+
+def test_pseudo_voigt_evaluate_shape_normalization():
+    model = PseudoVoigtPeakModel()
+    init_parameters = dict(amp=2.0, cen=0.0, sig=1.0, frac=0.5)
+
+    x = np.linspace(-10, 10, 200)
+    y = np.zeros_like(x)
+    # background
+    y += 3
+
+    y += model.evaluate(x, y, **init_parameters)
+
+    ctx = NormalizationContext.from_array(y)
+
+    norm_parameters = run_normalization(model, init_parameters, ctx)
+
+    norm_y = (y - ctx.offset) / ctx.scale
+    test_norm_y = model.evaluate(x, y, **norm_parameters)
+    assert norm_y.shape == test_norm_y.shape
+    assert np.allclose(norm_y, test_norm_y, atol=1e-2)
 
 
 def test_constant_background():
