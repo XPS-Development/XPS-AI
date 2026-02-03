@@ -2,10 +2,9 @@ import pytest
 import numpy as np
 
 from services.dto import ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
-from core import Peak, Background
 
 
-def test_get_component_returns_component_dto(dto_service, region_id, peak_id):
+def test_get_component_returns_component_dto(dto_service, region_id, peak_id, background_id):
     dto = dto_service.get_component(peak_id)
 
     assert isinstance(dto, ComponentDTO)
@@ -13,6 +12,13 @@ def test_get_component_returns_component_dto(dto_service, region_id, peak_id):
     assert dto.parent_id == region_id
     assert dto.normalized is False
     assert dto.kind == "peak"
+
+    dto = dto_service.get_component(background_id)
+    assert isinstance(dto, ComponentDTO)
+    assert dto.id_ == background_id
+    assert dto.parent_id == region_id
+    assert dto.normalized is False
+    assert dto.kind == "background"
 
 
 def test_get_component_parameters_are_parameter_dtos(dto_service, peak_id):

@@ -36,8 +36,9 @@ def simple_collection(empty_collection, simple_gauss_spectrum) -> SpectrumCollec
 
     s = Spectrum(x, y, id_="s1")
     r = Region(slice(20, len(x) + 1 - 20), parent_id=s.id_, id_="r1")
-    p = Peak(model=PseudoVoigtPeakModel(), region_id=r.id_, component_id="p1", amp=1, cen=0, sig=1, frac=1)
-    bg = Background(model=ConstantBackgroundModel, region_id=r.id_, component_id="b1", const=1)
+    # create pure gauss
+    p = Peak(model=PseudoVoigtPeakModel(), region_id=r.id_, component_id="p1", amp=1, cen=0, sig=1, frac=0)
+    bg = Background(model=ConstantBackgroundModel(), region_id=r.id_, component_id="b1", const=1)
 
     collection.add(s)
     collection.add(r)
@@ -54,14 +55,17 @@ def spectrum_id(simple_collection):
 
 @pytest.fixture
 def region_id(simple_collection):
-    region_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Region))
-    return region_id
+    return next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Region))
 
 
 @pytest.fixture
 def peak_id(simple_collection):
-    peak_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
-    return peak_id
+    return next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
+
+
+@pytest.fixture
+def background_id(simple_collection):
+    return next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Background))
 
 
 @pytest.fixture

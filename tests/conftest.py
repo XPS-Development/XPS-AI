@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from core.math_models.model_funcs import gauss
+from core.math_models.model_funcs import pvoigt
 
 RNG = np.random.default_rng(seed=42)
 
@@ -25,8 +25,9 @@ def simple_gauss(x_axis: np.ndarray) -> np.ndarray:
     amp = 1
     cen = 0
     sig = 1
+    frac = 0
 
-    y = amp * gauss(x_axis, cen, sig)
+    y = pvoigt(x_axis, amp, cen, sig, frac)
 
     return y
 
