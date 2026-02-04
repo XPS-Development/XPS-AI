@@ -11,6 +11,7 @@ from services.core import (
     ComponentService,
 )
 from services.dto import DTOService
+from services.evaluation import EvaluationService
 
 
 @pytest.fixture()
@@ -96,3 +97,8 @@ def component_service(simple_collection):
 @pytest.fixture
 def dto_service(simple_collection):
     return DTOService(simple_collection)
+
+
+@pytest.fixture
+def evaluation_service():
+    return EvaluationService()
