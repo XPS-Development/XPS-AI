@@ -63,7 +63,7 @@ class BasePeakModel(ParametricModel):
 
 
 class BaseBackgroundModel(ParametricModel):
-    is_active: bool
+    static: bool
 
     @staticmethod
     @abstractmethod
