@@ -288,8 +288,12 @@ class DTOService:
         RegionDTO
             Immutable region data projection.
         """
-
+        # DataQueryService return views of the original arrays
+        # set arr.flags.writeable = False
+        # to prevent modifying
         x, y = self.data_srv.get_region_data(region_id, normalized=normalize)
+        x.flags.writeable = False
+        y.flags.writeable = False
         parent_id = self.query_srv.get_parent(region_id)
 
         return RegionDTO(
@@ -345,6 +349,8 @@ class DTOService:
         """
 
         x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalize)
+        x.flags.writeable = False
+        y.flags.writeable = False
         parent_id = self.query_srv.get_parent(spectrum_id)
 
         return SpectrumDTO(

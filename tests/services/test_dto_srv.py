@@ -123,6 +123,26 @@ def test_get_spectrum_returns_spectrum_dto(dto_service, spectrum_id):
     assert dto.parent_id is None
 
 
+def test_region_spectrum_array_immutable(dto_service, region_id, spectrum_id):
+    dto = dto_service.get_region(region_id)
+    with pytest.raises(Exception):
+        x, y = dto.x, dto.y
+        y += 1
+
+    # copies are mutable
+    y = y.copy()
+    y += 1
+
+    dto = dto_service.get_spectrum(spectrum_id)
+    with pytest.raises(Exception):
+        x, y = dto.x, dto.y
+        y += 1
+
+    # copies are mutable
+    y = y.copy()
+    y += 1
+
+
 def test_get_spectrum_normalized(dto_service, spectrum_id):
     raw = dto_service.get_spectrum(spectrum_id, normalize=False)
     norm = dto_service.get_spectrum(spectrum_id, normalize=True)
