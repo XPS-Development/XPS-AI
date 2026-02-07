@@ -5,7 +5,9 @@ from core.math_models import (
     BasePeakModel,
     ParametricModelLike,
 )
-from core import SpectrumCollection, Spectrum, Region, Peak, Background, Component, RuntimeParameter
+
+from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter
+from .collection import CoreCollection
 
 from typing import Optional, TypeVar
 from numpy.typing import NDArray
@@ -24,7 +26,7 @@ class BaseCoreService:
     This class is not intended to be used directly.
     """
 
-    def __init__(self, collection: SpectrumCollection):
+    def __init__(self, collection: CoreCollection):
         """
         Initialize the service with a spectrum collection.
 

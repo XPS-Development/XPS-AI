@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
 
-from services.dto import (
-    ComponentDTO,
-    RegionDTO,
-)
+from app.dto import ComponentDTO, RegionDTO
+from app.evaluation import EvaluationService
+
+
+@pytest.fixture
+def srv():
+    return EvaluationService()
 
 
 @pytest.fixture
@@ -23,12 +26,12 @@ def simple_spectrum_bundle(dto_service):
 
 
 def test_component_y(
-    evaluation_service,
+    srv,
     simple_component_dto,
     x_axis,
     simple_gauss,
 ):
-    srv = evaluation_service
+    srv = srv
 
     y = srv.component_y(simple_component_dto, x_axis, simple_gauss)
 
@@ -36,12 +39,12 @@ def test_component_y(
 
 
 def test_component_result_wraps_correctly(
-    evaluation_service,
+    srv,
     simple_component_dto,
     x_axis,
     simple_gauss,
 ):
-    srv = evaluation_service
+    srv = srv
 
     res = srv.component_result(simple_component_dto, x_axis, simple_gauss)
 
@@ -52,12 +55,12 @@ def test_component_result_wraps_correctly(
 
 
 def test_region_bundle(
-    evaluation_service,
+    srv,
     simple_region_bundle,
     x_axis,
     simple_gauss,
 ):
-    srv = evaluation_service
+    srv = srv
 
     res = srv.region_bundle(*simple_region_bundle)
     rs = slice(20, len(x_axis) + 1 - 20)
@@ -69,10 +72,10 @@ def test_region_bundle(
 
 
 def test_spectrum_bundle(
-    evaluation_service,
+    srv,
     simple_spectrum_bundle,
 ):
-    srv = evaluation_service
+    srv = srv
 
     result = srv.spectrum_bundle(*simple_spectrum_bundle)
 

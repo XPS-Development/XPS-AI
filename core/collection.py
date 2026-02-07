@@ -1,16 +1,16 @@
 from typing import Dict, TypeVar
 
-from .core_objects import CoreObject, Spectrum, Region
+from .objects import CoreObject, Spectrum, Region
 
 T = TypeVar("T")
 
 
-class SpectrumCollection:
+class CoreCollection:
     """
-    Collection and lifecycle manager for spectral core objects.
+    Collection and lifecycle manager for core objects.
 
-    `SpectrumCollection` is a lightweight registry that stores and indexes
-    all core objects participating in the spectral model:
+    `CoreCollection` is a lightweight registry that stores and indexes
+    all core objects participating in the model:
     - Spectrum
     - Region
     - Peak

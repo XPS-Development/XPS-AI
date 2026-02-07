@@ -1,9 +1,8 @@
 from dataclasses import dataclass, asdict
 
-from core import SpectrumCollection
+from core.collection import CoreCollection
+from core.services import CollectionQueryService, DataQueryService, ComponentService
 from core.math_models import BaseBackgroundModel, ParametricModelLike, NormalizationContext
-
-from .core import CollectionQueryService, DataQueryService, ComponentService
 
 from typing import Protocol, Literal
 from core.math_models.base_models import NormalizationLikeFn
@@ -107,7 +106,7 @@ class DTOService:
     and UI layers.
     """
 
-    def __init__(self, collection: SpectrumCollection):
+    def __init__(self, collection: CoreCollection):
         """
         Initialize DTO service with access to core domain services.
 
@@ -234,43 +233,43 @@ class DTOService:
             kind="background" if isinstance(model, BaseBackgroundModel) else "peak",
         )
 
-    def apply_component(self, component_dto: ComponentDTO, *, values_only: bool = True):
-        """
-        Apply a component DTO back to the mutable domain component.
+    # def apply_component(self, component_dto: ComponentDTO, *, values_only: bool = True):
+    #     """
+    #     Apply a component DTO back to the mutable domain component.
 
-        Parameters
-        ----------
-        component_dto : ComponentDTO
-            DTO containing parameter values to apply.
-        values_only : bool, optional
-            If True, only parameter values are updated, preserving
-            bounds and metadata.
-        """
+    #     Parameters
+    #     ----------
+    #     component_dto : ComponentDTO
+    #         DTO containing parameter values to apply.
+    #     values_only : bool, optional
+    #         If True, only parameter values are updated, preserving
+    #         bounds and metadata.
+    #     """
 
-        component_id = component_dto.id_
-        parent_id = self.query_srv.get_parent(component_id)
-        norm_ctx = self.data_srv.get_norm_ctx(region_id=parent_id)
-        model = component_dto.model
-        raw_params = self._params_to_raw(component_dto.parameters)
+    #     component_id = component_dto.id_
+    #     parent_id = self.query_srv.get_parent(component_id)
+    #     norm_ctx = self.data_srv.get_norm_ctx(region_id=parent_id)
+    #     model = component_dto.model
+    #     raw_params = self._params_to_raw(component_dto.parameters)
 
-        if component_dto.normalized:
-            # from norm values to raw
-            raw_params = self._transform(
-                raw_params,
-                model.normalization_target_parameters,
-                model.denormalize_value,  # from norm parameters to raw
-                norm_ctx,
-            )
+    #     if component_dto.normalized:
+    #         # from norm values to raw
+    #         raw_params = self._transform(
+    #             raw_params,
+    #             model.normalization_target_parameters,
+    #             model.denormalize_value,  # from norm parameters to raw
+    #             norm_ctx,
+    #         )
 
-        # safe values-only update
-        if values_only:
-            values_dict = {k: v["value"] for k, v in raw_params.items()}
-            self.comp_srv.set_values(component_id, values_dict)
-            return
+    #     # safe values-only update
+    #     if values_only:
+    #         values_dict = {k: v["value"] for k, v in raw_params.items()}
+    #         self.comp_srv.set_values(component_id, values_dict)
+    #         return
 
-        # otherwise full component update
-        for param, pdict in raw_params.items():
-            self.comp_srv.set_parameter(component_id, param, **pdict)
+    #     # otherwise full component update
+    #     for param, pdict in raw_params.items():
+    #         self.comp_srv.set_parameter(component_id, param, **pdict)
 
     def get_region(self, region_id: str, *, normalize: bool = False) -> RegionDTO:
         """

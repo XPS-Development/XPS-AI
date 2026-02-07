@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from core.core_objects import RuntimeParameter, Component, Peak, Background, Region, Spectrum
+from core.objects import RuntimeParameter, Component, Peak, Background, Region, Spectrum
 from core.math_models import PseudoVoigtPeakModel, ConstantBackgroundModel, LinearBackgroundModel
 
 

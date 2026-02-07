@@ -6,7 +6,7 @@ from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
 
 
-from core import SpectrumCollection
+from core.collection import CoreCollection
 from .dto import DTOService, RegionDTO, ComponentDTO, ParameterDTO
 from .evaluation import EvaluationService
 
@@ -19,6 +19,96 @@ _COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 @dataclass(frozen=True)
 class OptimizationContext(RegionDTO):
     components: Tuple[ComponentDTO]
+
+
+class OptimizationPlanner:
+    """
+    Responsible for grouping optimization contexts into independent
+    optimization tasks based on parameter dependencies.
+    """
+
+    def _build_dependency_graph(
+        self,
+        contexts: Tuple[OptimizationContext, ...],
+    ) -> Dict[str, set[str]]:
+        graph: Dict[str, set[str]] = {}
+
+        # collect all components
+        components = [cmp for ctx in contexts for cmp in ctx.components]
+
+        for cmp in components:
+            graph.setdefault(cmp.id_, set())
+
+        for cmp in components:
+            for p in cmp.parameters.values():
+                if not p.expr:
+                    continue
+
+                tokens = _COMPONENT_REF_RE.findall(p.expr)
+                for token in tokens:
+                    if token == cmp.id_:
+                        continue
+                    if token in graph:
+                        graph[cmp.id_].add(token)
+                        graph[token].add(cmp.id_)
+
+        return graph
+
+    @staticmethod
+    def _connected_components(
+        graph: Dict[str, set[str]],
+    ) -> List[set[str]]:
+        visited = set()
+        groups: List[set[str]] = []
+
+        for node in graph:
+            if node in visited:
+                continue
+
+            stack = [node]
+            group = set()
+
+            while stack:
+                cur = stack.pop()
+                if cur in visited:
+                    continue
+
+                visited.add(cur)
+                group.add(cur)
+                stack.extend(graph[cur] - visited)
+
+            groups.append(group)
+
+        return groups
+
+    @staticmethod
+    def _group_contexts(
+        contexts: Tuple[OptimizationContext, ...],
+        component_groups: List[set[str]],
+    ) -> List[Tuple[OptimizationContext, ...]]:
+
+        grouped: List[List[OptimizationContext]] = [[] for _ in component_groups]
+
+        for ctx in contexts:
+            ctx_cmp_ids = {cmp.id_ for cmp in ctx.components}
+
+            for i, grp in enumerate(component_groups):
+                if ctx_cmp_ids & grp:
+                    grouped[i].append(ctx)
+                    break
+
+        return [tuple(g) for g in grouped if g]
+
+    def get_groups(
+        self,
+        contexts: Tuple[OptimizationContext, ...],
+    ) -> List[Tuple[OptimizationContext, ...]]:
+        """
+        Split contexts into independent optimization groups.
+        """
+        graph = self._build_dependency_graph(contexts)
+        component_groups = self._connected_components(graph)
+        return self._group_contexts(contexts, component_groups)
 
 
 class LmfitOptimizer:
@@ -135,27 +225,16 @@ class LmfitOptimizer:
         result = minimize(self.residual, params, args=(contexts,), **kwargs, nan_policy="omit")
         return self._result_to_dtos(result)
 
-    @staticmethod
-    def update_components_from_params(
-        params: Parameters,
-        contexts: List[OptimizationContext],
-    ) -> None:
-        for ctx in contexts:
-            for cmp in ctx.components:
-                for pname, rp in cmp.parameters.items():
-                    full_name = f"{cmp.id_}_{pname}"
-                    if full_name in params:
-                        rp.set(value=params[full_name].value)
-
 
 class OptimizationService:
     """
     Pipeline for multi-region optimization using lmfit.
     """
 
-    def __init__(self, collection: SpectrumCollection):
+    def __init__(self, collection: CoreCollection):
         self.dto = DTOService(collection)
         self.eval = EvaluationService()
+        self.planner = OptimizationPlanner()
         self.optimizer = LmfitOptimizer()
 
     def _build_context(self, region_id: str, normalize: bool = True) -> OptimizationContext:
@@ -182,5 +261,6 @@ class OptimizationService:
 
     def optimize_regions(self, *region_ids: str, **kwargs):
         contexts = self.build_contexts(region_ids)
-        new_components = self.optimizer.optimize(contexts, **kwargs)
-        self.apply(new_components)
+        for ctx_group in self.planner.get_groups(contexts):
+            optimized_components = self.optimizer.optimize(ctx_group, **kwargs)
+            self.apply(optimized_components)
