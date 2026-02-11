@@ -89,19 +89,24 @@ class CoreCollection:
 
         self.objects_index[obj.id_] = obj
 
-    def remove(self, obj: CoreObject | str) -> None:
+    def remove(self, obj: CoreObject | str) -> list[CoreObject]:
         """
-        Remove an object from the collection.
+        Remove an object from the collection and return the removed objects.
 
         Removal is recursive:
         - If a Spectrum is removed, all its Regions and Peaks are removed.
         - If a Region is removed, all its Peaks (and Backgrounds) are removed.
-        - If a Peak is removed, only the peak itself is removed.
+        - If a Peak or Background is removed, only the object itself is removed.
 
         Parameters
         ----------
         obj : Spectrum or Region or Peak or Background or str
             Object instance or its ID.
+
+        Returns
+        -------
+        list[CoreObject]
+            The removed objects.
 
         Raises
         ------
@@ -114,11 +119,14 @@ class CoreCollection:
             obj_id = obj.id_
 
         obj = self.objects_index.pop(obj_id)
+        removed_objects: list[CoreObject] = [obj]
 
         if isinstance(obj, (Spectrum, Region)):
             children = list(self.get_children(obj_id))
             for ch in children:
-                self.remove(ch)
+                removed_objects.extend(self.remove(ch))
+
+        return removed_objects
 
     def get(self, obj_id: str) -> CoreObject:
         """
