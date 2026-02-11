@@ -50,11 +50,10 @@ def test_replace_data_updates_arrays_and_norm_ctx(simple_gauss_spectrum, srv):
     assert spectrum.norm_ctx.offset == pytest.approx(new_y.min())
 
 
-def test_remove_spectrum_removes_object(simple_gauss_spectrum, srv):
-    x, y = simple_gauss_spectrum
+def test_remove_spectrum_removes_object(srv, spectrum_id):
+    removed_objects = srv.detach(spectrum_id)
 
-    sid = srv.create_spectrum(x, y)
-    srv.remove_spectrum(sid)
-
-    with pytest.raises(KeyError):
-        srv.collection.get(sid)
+    assert len(removed_objects) == 4  # spectrum, region, peak, background
+    assert isinstance(removed_objects[0], Spectrum)
+    assert removed_objects[0].id_ == spectrum_id
+    assert spectrum_id not in srv.collection.objects_index

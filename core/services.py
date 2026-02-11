@@ -6,7 +6,7 @@ from core.math_models import (
     ParametricModelLike,
 )
 
-from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter
+from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter, CoreObject
 from .collection import CoreCollection
 
 from typing import Optional, TypeVar
@@ -82,6 +82,33 @@ class BaseCoreService:
             If the object is not an instance of the requested type.
         """
         return self.collection.get_typed(obj_id, tp)
+
+    def attach(self, obj: CoreObject) -> None:
+        """
+        Attach an object to the collection.
+
+        Parameters
+        ----------
+        obj : CoreObject
+            The object to attach.
+        """
+        self.collection.add(obj)
+
+    def detach(self, obj: CoreObject | str) -> list[CoreObject]:
+        """
+        Detach an object from the collection and return the detached objects.
+
+        Parameters
+        ----------
+        obj : CoreObject or str
+            The object to detach.
+
+        Returns
+        -------
+        list[CoreObject]
+            The detached objects.
+        """
+        return self.collection.remove(obj)
 
 
 class CollectionQueryService(BaseCoreService):
@@ -160,7 +187,7 @@ class CollectionQueryService(BaseCoreService):
         """
         return tuple(obj.id_ for obj in self.collection.get_children(region_id) if isinstance(obj, Peak))
 
-    def get_background(self, region_id: str) -> str:
+    def get_background(self, region_id: str) -> Optional[str]:
         """
         Retrieve the unique background component of a region.
 
@@ -171,7 +198,7 @@ class CollectionQueryService(BaseCoreService):
 
         Returns
         -------
-        str
+        Optional[str]
             The background identifier of the region.
 
         Raises
@@ -181,12 +208,10 @@ class CollectionQueryService(BaseCoreService):
         """
         bgs = [obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)]
 
-        if not bgs:
-            raise RuntimeError(f"Region {region_id} has no Background")
         if len(bgs) > 1:
             raise RuntimeError(f"Region {region_id} has multiple Backgrounds")
 
-        return bgs[0].id_
+        return bgs[0].id_ if bgs else None
 
     def get_all_peaks(self) -> tuple[str, ...]:
         """
@@ -253,7 +278,7 @@ class SpectrumService(BaseCoreService):
             ID of the newly created spectrum.
         """
         spectrum = Spectrum(x=x, y=y, id_=spectrum_id)
-        self.collection.add(spectrum)
+        self.attach(spectrum)
         return spectrum.id_
 
     def replace_data(self, spectrum_id: str, x: NDArray, y: NDArray) -> None:
@@ -276,17 +301,6 @@ class SpectrumService(BaseCoreService):
         spectrum.x = x
         spectrum.y = y
         spectrum.norm_ctx = NormalizationContext.from_array(y)
-
-    def remove_spectrum(self, spectrum_id: str):
-        """
-        Remove a spectrum and all its dependent objects.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the spectrum to remove.
-        """
-        self.collection.remove(spectrum_id)
 
 
 class RegionService(BaseCoreService):
@@ -337,20 +351,9 @@ class RegionService(BaseCoreService):
             parent_id=spectrum_id,
             id_=region_id,
         )
-        self.collection.add(region)
+        self.attach(region)
 
         return region.id_
-
-    def remove_region(self, region_id: str) -> None:
-        """
-        Remove a region and all its components.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        """
-        self.collection.remove(region_id)
 
     def update_slice(self, region_id: str, start: int, stop: int) -> None:
         """
@@ -376,6 +379,22 @@ class RegionService(BaseCoreService):
             raise ValueError("Invalid region slice")
 
         region.slice_ = slice(start, stop)
+
+    def get_slice(self, region_id: str) -> slice:
+        """
+        Retrieve the index slice of an existing region.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+
+        Returns
+        -------
+        slice
+            Index slice of the region.
+        """
+        return self._get_typed(region_id, Region).slice_
 
 
 class DataQueryService(BaseCoreService):
@@ -564,7 +583,7 @@ class ComponentService(BaseCoreService):
         if not isinstance(peak, Peak):
             raise ValueError(f"Model {model_name} is not a peak model")
 
-        self.collection.add(peak)
+        self.attach(peak)
 
         return peak.id_
 
@@ -621,22 +640,11 @@ class ComponentService(BaseCoreService):
 
         if len(backgrounds) == 1:
             old_bg = backgrounds[0]
-            self.collection.remove(old_bg.id_)
+            self.detach(old_bg.id_)
 
-        self.collection.add(new_bg)
+        self.attach(new_bg)
 
         return new_bg.id_
-
-    def remove_component(self, component_id: str):
-        """
-        Remove a component from the collection.
-
-        Parameters
-        ----------
-        component_id : str
-            Identifier of the component.
-        """
-        self.collection.remove(component_id)
 
     def get_parameter(self, component_id: str, param: str) -> RuntimeParameter:
         """

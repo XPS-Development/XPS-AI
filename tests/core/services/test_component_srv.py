@@ -71,11 +71,13 @@ def test_replace_background_fails_if_multiple_backgrounds(srv, region_id):
         srv.replace_background(region_id, "linear")
 
 
-def test_remove_component(srv, region_id):
+def test_detach(srv, region_id):
     peak_id = srv.create_peak(region_id, "pseudo-voigt")
 
-    srv.remove_component(peak_id)
+    peak = srv.detach(peak_id)[0]
 
+    assert isinstance(peak, Peak)
+    assert peak.id_ == peak_id
     assert peak_id not in srv.collection.objects_index
 
 

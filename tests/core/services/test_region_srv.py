@@ -53,7 +53,11 @@ def test_update_slice_invalid(srv):
 def test_remove_region(srv):
     region = next(obj for obj in srv.collection.objects_index.values() if isinstance(obj, Region))
 
-    srv.remove_region(region.id_)
+    removed_objects = srv.detach(region.id_)
+
+    assert len(removed_objects) == 3  # region, peak, background
+    assert isinstance(removed_objects[0], Region)
+    assert removed_objects[0].id_ == region.id_
 
     with pytest.raises(KeyError):
         srv.collection.get(region.id_)

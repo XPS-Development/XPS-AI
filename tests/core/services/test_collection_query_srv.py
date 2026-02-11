@@ -68,17 +68,6 @@ def test_get_background(srv):
     assert isinstance(bg_id, str)
 
 
-def test_get_background_missing(srv, simple_collection, background_id):
-    # удаляем background вручную
-    simple_collection.remove(background_id)
-
-    spectrum_id = srv.get_all_spectra()[0]
-    region_id = srv.get_regions(spectrum_id)[0]
-
-    with pytest.raises(RuntimeError, match="has no Background"):
-        srv.get_background(region_id)
-
-
 def test_get_background_multiple(simple_collection):
 
     region_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Region))
