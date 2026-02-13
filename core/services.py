@@ -344,6 +344,7 @@ class RegionService(BaseCoreService):
             return False
         if start >= stop:
             return False
+        return True
 
     def create_region(self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None) -> str:
         """
@@ -367,10 +368,8 @@ class RegionService(BaseCoreService):
 
         Raises
         ------
-        IndexError
-            If indices are outside spectrum bounds.
         ValueError
-            If start >= stop.
+            If indices are outside spectrum bounds or start >= stop.
         """
         if not self._check_slice(spectrum_id, start, stop):
             raise ValueError("Invalid region slice")
@@ -394,13 +393,11 @@ class RegionService(BaseCoreService):
         Raises
         ------
         ValueError
-            If the slice definition is invalid.
+            If indices are outside spectrum bounds or start >= stop.
         """
         region = self._get_typed(region_id, Region)
-
-        if start < 0 or stop <= start:
+        if not self._check_slice(region.parent_id, start, stop):
             raise ValueError("Invalid region slice")
-
         region.slice_ = slice(start, stop)
 
     def get_slice(self, region_id: str) -> slice:
