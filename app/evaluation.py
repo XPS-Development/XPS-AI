@@ -4,7 +4,7 @@ import numpy as np
 from core.math_models.base_models import EvaluationLikeFn
 from .dto import BaseDTO, ComponentDTO, RegionDTO, SpectrumDTO
 
-from typing import Literal, Tuple, Optional
+from typing import Literal
 from numpy.typing import NDArray
 
 
@@ -16,15 +16,15 @@ class ComponentEvaluationResult(BaseDTO):
 
 @dataclass(frozen=True)
 class RegionEvaluationResult(RegionDTO):
-    peaks: Tuple[ComponentEvaluationResult, ...]
-    background: Optional[ComponentEvaluationResult]
+    peaks: tuple[ComponentEvaluationResult, ...]
+    background: ComponentEvaluationResult | None
     model: NDArray
     residuals: NDArray
 
 
 @dataclass(frozen=True)
 class SpectrumEvaluationResult(SpectrumDTO):
-    regions: Tuple[RegionEvaluationResult, ...]
+    regions: tuple[RegionEvaluationResult, ...]
 
 
 class EvaluationService:
@@ -36,13 +36,26 @@ class EvaluationService:
     """
 
     def get_eval_fn(self, component: ComponentDTO) -> EvaluationLikeFn:
+        """
+        Return the evaluation function for a component's model.
+
+        Parameters
+        ----------
+        component : ComponentDTO
+            Component DTO containing the model.
+
+        Returns
+        -------
+        EvaluationLikeFn
+            Model evaluation function.
+        """
         return component.model.evaluate
 
     def component_y(
         self,
         component: ComponentDTO,
         x: NDArray,
-        y: Optional[NDArray] = None,
+        y: NDArray | None = None,
     ) -> NDArray:
         """
         Evaluate a single component model.
@@ -69,7 +82,7 @@ class EvaluationService:
         self,
         component: ComponentDTO,
         x: NDArray,
-        y: Optional[NDArray] = None,
+        y: NDArray | None = None,
     ) -> ComponentEvaluationResult:
         """
         Evaluate component and wrap result into DTO.
@@ -112,17 +125,19 @@ class EvaluationService:
             Region numerical data.
         components : tuple[ComponentDTO, ...]
             Associated component DTOs.
+        include_background : bool, optional
+            If True, include background component in the model and residuals.
 
         Returns
         -------
         RegionEvaluationResult
-            DTO containing evaluated regions.
+            DTO containing evaluated region.
         """
         x = region.x
         y = region.y
 
         peak_results: list[ComponentEvaluationResult] = []
-        background_result: Optional[ComponentEvaluationResult] = None
+        background_result: ComponentEvaluationResult | None = None
 
         for c in components:
             res = self.component_result(c, x, y)
@@ -168,8 +183,10 @@ class EvaluationService:
         ----------
         spectrum : SpectrumDTO
             Spectrum numerical data.
-        regions : tuple
-            Tuples of (RegionDTO, ComponentDTOs).
+        regions : tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]
+            Tuples of (RegionDTO, component DTOs) for each region.
+        include_background : bool, optional
+            If True, include background components in the model and residuals.
 
         Returns
         -------

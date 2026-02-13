@@ -112,7 +112,7 @@ class DTOService:
 
         Parameters
         ----------
-        collection : SpectrumCollection
+        collection : CoreCollection
             Active spectrum collection used as the data source.
         """
         self.query_srv = CollectionQueryService(collection)
@@ -125,13 +125,13 @@ class DTOService:
         targets: tuple[str, ...],
         fn: NormalizationLikeFn,
         norm_ctx: NormalizationContext,
-    ) -> dict[str, dict[str, float | str]]:
+    ) -> dict[str, dict[str, float | str | bool]]:
         """
         Apply a normalization or denormalization transform to raw parameters.
 
         Parameters
         ----------
-        params : dict[str, dict[str, float | str]]
+        params : dict[str, dict[str, float | str | bool]]
             Raw parameter dictionaries keyed by parameter name.
         targets : tuple[str, ...]
             Names of parameters subject to transformation.
@@ -142,7 +142,7 @@ class DTOService:
 
         Returns
         -------
-        dict[str, dict[str, float | str]]
+        dict[str, dict[str, float | str | bool]]
             Transformed raw parameter dictionaries.
         """
         for name, pdict in params.items():
@@ -153,7 +153,7 @@ class DTOService:
         return params
 
     @staticmethod
-    def _params_to_raw(params: dict[str, ParameterLike]) -> dict[str, float | str | bool]:
+    def _params_to_raw(params: dict[str, ParameterLike]) -> dict[str, dict[str, float | str | bool]]:
         """
         Convert parameter-like objects into raw dictionary representations.
 
@@ -164,7 +164,7 @@ class DTOService:
 
         Returns
         -------
-        dict[str, dict[str, float | str]]
+        dict[str, dict[str, float | str | bool]]
             Raw serializable parameter dictionaries.
         """
 
@@ -177,7 +177,7 @@ class DTOService:
 
         Parameters
         ----------
-        params : dict[str, dict[str, float | str]]
+        params : dict[str, dict[str, float | str | bool]]
             Raw parameter dictionaries.
 
         Returns
@@ -232,44 +232,6 @@ class DTOService:
             model=model,
             kind="background" if isinstance(model, BaseBackgroundModel) else "peak",
         )
-
-    # def apply_component(self, component_dto: ComponentDTO, *, values_only: bool = True):
-    #     """
-    #     Apply a component DTO back to the mutable domain component.
-
-    #     Parameters
-    #     ----------
-    #     component_dto : ComponentDTO
-    #         DTO containing parameter values to apply.
-    #     values_only : bool, optional
-    #         If True, only parameter values are updated, preserving
-    #         bounds and metadata.
-    #     """
-
-    #     component_id = component_dto.id_
-    #     parent_id = self.query_srv.get_parent(component_id)
-    #     norm_ctx = self.data_srv.get_norm_ctx(region_id=parent_id)
-    #     model = component_dto.model
-    #     raw_params = self._params_to_raw(component_dto.parameters)
-
-    #     if component_dto.normalized:
-    #         # from norm values to raw
-    #         raw_params = self._transform(
-    #             raw_params,
-    #             model.normalization_target_parameters,
-    #             model.denormalize_value,  # from norm parameters to raw
-    #             norm_ctx,
-    #         )
-
-    #     # safe values-only update
-    #     if values_only:
-    #         values_dict = {k: v["value"] for k, v in raw_params.items()}
-    #         self.comp_srv.set_values(component_id, values_dict)
-    #         return
-
-    #     # otherwise full component update
-    #     for param, pdict in raw_params.items():
-    #         self.comp_srv.set_parameter(component_id, param, **pdict)
 
     def get_region(self, region_id: str, *, normalize: bool = False) -> RegionDTO:
         """
@@ -385,5 +347,7 @@ class DTOService:
         """
 
         spectrum_dto = self.get_spectrum(spectrum_id, normalize=normalize)
-        reg_reprs = tuple(self.get_region_repr(rid) for rid in self.query_srv.get_regions(spectrum_id))
+        reg_reprs = tuple(
+            self.get_region_repr(rid, normalize=normalize) for rid in self.query_srv.get_regions(spectrum_id)
+        )
         return spectrum_dto, reg_reprs
