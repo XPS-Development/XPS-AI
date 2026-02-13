@@ -8,15 +8,17 @@ into Command objects by CommandRegistry for execution and undo/redo.
 
 from dataclasses import dataclass
 
-from typing import Literal, Union
+from typing import Literal, Union, Optional
+from numpy.typing import NDArray
+import numpy as np
 
 
-# Type alias for any change; mapper and executor accept BaseChange.
+# Type alias for parameter field names; maps to RuntimeParameter attributes.
 ParameterField = Literal["name", "value", "lower", "upper", "vary", "expr"]
 
 
 @dataclass(frozen=True)
-class ParameterChange:
+class UpdateParameter:
     """
     Change to a single attribute of a component's runtime parameter.
 
@@ -30,20 +32,6 @@ class ParameterChange:
 
 
 @dataclass(frozen=True)
-class SetParameterValue:
-    """
-    Change that sets only the value of a component parameter.
-
-    Convenience change for the common case; equivalent to
-    ParameterChange(..., parameter_field="value", new_value=...).
-    """
-
-    component_id: str
-    name: str
-    new_value: float
-
-
-@dataclass(frozen=True)
 class UpdateRegionSlice:
     """Change to update the index slice of an existing region."""
 
@@ -53,20 +41,136 @@ class UpdateRegionSlice:
 
 
 @dataclass(frozen=True)
-class RemoveComponent:
+class RemoveObject:
     """
-    Change to remove a component from the collection.
+    Change to remove an object from the collection.
 
-    Undo requires a snapshot of the component (built by CommandRegistry from context).
+    Maps to CollectionQueryService.detach() via RemoveObjectCommand.
+    """
+
+    obj_id: str
+
+
+@dataclass(frozen=True)
+class UpdateMultipleParameterValues:
+    """
+    Change to update values of multiple parameters at once.
+
+    Maps to ComponentService.set_values().
+    Convenience change for batch parameter updates.
     """
 
     component_id: str
+    parameters: dict[str, float]
+
+
+@dataclass(frozen=True)
+class CreateSpectrum:
+    """
+    Change to create a new spectrum.
+
+    Maps to SpectrumService.create_spectrum().
+    """
+
+    x: NDArray[np.floating]
+    y: NDArray[np.floating]
+    spectrum_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CreateRegion:
+    """
+    Change to create a new region bound to a spectrum.
+
+    Maps to RegionService.create_region().
+    """
+
+    spectrum_id: str
+    start: int
+    stop: int
+    region_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CreatePeak:
+    """
+    Change to create a new peak component.
+
+    Maps to ComponentService.create_peak().
+    """
+
+    region_id: str
+    model_name: str
+    parameters: Optional[dict[str, float]] = None
+    peak_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CreateBackground:
+    """
+    Change to create or replace a background component.
+
+    Maps to ComponentService.replace_background().
+    If a background already exists, it will be replaced.
+    """
+
+    region_id: str
+    model_name: str
+    parameters: Optional[dict[str, float]] = None
+    background_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ReplacePeakModel:
+    """
+    Change to replace a peak's model and update its parameters accordingly.
+
+    This effectively removes the old peak and creates a new one with
+    the new model. The old peak's ID is preserved if possible.
+    Maps to ComponentService.remove_component() + ComponentService.create_peak().
+    """
+
+    peak_id: str
+    new_model_name: str
+    parameters: Optional[dict[str, float]] = None
+
+
+@dataclass(frozen=True)
+class ReplaceBackgroundModel:
+    """
+    Change to replace a background's model and update its parameters accordingly.
+
+    Identifies the background by region. Maps to ComponentService.replace_background().
+    """
+
+    region_id: str
+    new_model_name: str
+    parameters: Optional[dict[str, float]] = None
+    background_id: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CompositeChange:
+    """
+    Change that groups multiple changes for batch execution.
+
+    Handled specially by CommandRegistry to build a CompositeCommand.
+    """
+
+    changes: list["BaseChange"]
 
 
 # Union type for typed dispatch in CommandRegistry and CommandExecutor.
 BaseChange = Union[
-    ParameterChange,
-    SetParameterValue,
+    UpdateParameter,
     UpdateRegionSlice,
-    RemoveComponent,
+    RemoveObject,
+    CreateSpectrum,
+    CreateRegion,
+    CreatePeak,
+    CreateBackground,
+    ReplacePeakModel,
+    ReplaceBackgroundModel,
+    UpdateMultipleParameterValues,
+    CompositeChange,
 ]
