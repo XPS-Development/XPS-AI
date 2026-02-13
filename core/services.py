@@ -121,6 +121,12 @@ class CollectionQueryService(BaseCoreService):
     core instances.
     """
 
+    def check_object_exists(self, obj_id: str) -> bool:
+        """
+        Check if an object exists in the collection.
+        """
+        return obj_id in self.collection.objects_index
+
     def get_parent(self, obj_id: str) -> str:
         """
         Retrieve the first parent ID of core object.
@@ -254,7 +260,8 @@ class SpectrumService(BaseCoreService):
     This includes creation, data replacement, and removal of spectra.
     """
 
-    def _create_spectrum_obj(self, x: NDArray, y: NDArray, spectrum_id: Optional[str] = None) -> Spectrum:
+    @staticmethod
+    def _create_spectrum_obj(x: NDArray, y: NDArray, spectrum_id: Optional[str] = None) -> Spectrum:
         """
         Create a new spectrum object.
         """
@@ -316,20 +323,27 @@ class RegionService(BaseCoreService):
     Regions define index-based subranges of spectra.
     """
 
+    @staticmethod
     def _create_region_obj(
-        self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None
+        spectrum_id: str,
+        start: int,
+        stop: int,
+        region_id: Optional[str] = None,
     ) -> Region:
         """
         Create a new region object.
         """
-        spectrum = self._get_typed(spectrum_id, Spectrum)
-
-        if start < 0 or stop > len(spectrum.x):
-            raise IndexError("Region indices out of spectrum bounds")
-        if start >= stop:
-            raise ValueError("start_idx must be < end_idx")
-
         return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
+
+    def _check_slice(self, spectrum_id: str, start: int, stop: int) -> bool:
+        """
+        Check if a slice is valid.
+        """
+        spectrum = self._get_typed(spectrum_id, Spectrum)
+        if start < 0 or stop > len(spectrum.x):
+            return False
+        if start >= stop:
+            return False
 
     def create_region(self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None) -> str:
         """
@@ -358,6 +372,8 @@ class RegionService(BaseCoreService):
         ValueError
             If start >= stop.
         """
+        if not self._check_slice(spectrum_id, start, stop):
+            raise ValueError("Invalid region slice")
         region = self._create_region_obj(spectrum_id, start, stop, region_id)
         self.attach(region)
         return region.id_
