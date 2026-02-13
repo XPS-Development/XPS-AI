@@ -34,7 +34,7 @@ def test_create_peak_with_explicit_id(srv, region_id):
 
 
 def test_create_peak_rejects_background_model(srv, region_id):
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         srv.create_peak(
             region_id=region_id,
             model_name="linear",  # background model

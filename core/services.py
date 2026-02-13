@@ -254,6 +254,12 @@ class SpectrumService(BaseCoreService):
     This includes creation, data replacement, and removal of spectra.
     """
 
+    def _create_spectrum_obj(self, x: NDArray, y: NDArray, spectrum_id: Optional[str] = None) -> Spectrum:
+        """
+        Create a new spectrum object.
+        """
+        return Spectrum(x=x, y=y, id_=spectrum_id)
+
     def create_spectrum(
         self,
         x: NDArray,
@@ -277,7 +283,7 @@ class SpectrumService(BaseCoreService):
         str
             ID of the newly created spectrum.
         """
-        spectrum = Spectrum(x=x, y=y, id_=spectrum_id)
+        spectrum = self._create_spectrum_obj(x, y, spectrum_id)
         self.attach(spectrum)
         return spectrum.id_
 
@@ -310,6 +316,21 @@ class RegionService(BaseCoreService):
     Regions define index-based subranges of spectra.
     """
 
+    def _create_region_obj(
+        self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None
+    ) -> Region:
+        """
+        Create a new region object.
+        """
+        spectrum = self._get_typed(spectrum_id, Spectrum)
+
+        if start < 0 or stop > len(spectrum.x):
+            raise IndexError("Region indices out of spectrum bounds")
+        if start >= stop:
+            raise ValueError("start_idx must be < end_idx")
+
+        return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
+
     def create_region(self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None) -> str:
         """
         Create and register a region bound to a spectrum.
@@ -337,22 +358,8 @@ class RegionService(BaseCoreService):
         ValueError
             If start >= stop.
         """
-        spectrum = self._get_typed(spectrum_id, Spectrum)
-
-        if start < 0 or stop > len(spectrum.x):
-            raise IndexError("Region indices out of spectrum bounds")
-        if start >= stop:
-            raise ValueError("start_idx must be < end_idx")
-
-        region_slice = slice(start, stop)
-
-        region = Region(
-            slice_=region_slice,
-            parent_id=spectrum_id,
-            id_=region_id,
-        )
+        region = self._create_region_obj(spectrum_id, start, stop, region_id)
         self.attach(region)
-
         return region.id_
 
     def update_slice(self, region_id: str, start: int, stop: int) -> None:
@@ -505,6 +512,7 @@ class ComponentService(BaseCoreService):
         model_name: str,
         parameters: Optional[dict[str, float]] = None,
         component_id: Optional[str] = None,
+        expected_type: type[Peak] | type[Background] = Component,
     ) -> Peak | Background:
         """
         Instantiate a component using a registered parametric model.
@@ -550,6 +558,9 @@ class ComponentService(BaseCoreService):
         else:
             raise TypeError(f"Unsupported model type: {type(model)}")
 
+        if not isinstance(obj, expected_type):
+            raise TypeError(f"Model {model_name} is not a {expected_type.__name__} model")
+
         return obj
 
     def create_peak(
@@ -578,13 +589,8 @@ class ComponentService(BaseCoreService):
         str
             ID of the created peak.
         """
-        peak = self._create_component_obj(region_id, model_name, parameters, peak_id)
-
-        if not isinstance(peak, Peak):
-            raise ValueError(f"Model {model_name} is not a peak model")
-
+        peak = self._create_component_obj(region_id, model_name, parameters, peak_id, expected_type=Peak)
         self.attach(peak)
-
         return peak.id_
 
     def replace_background(
@@ -633,10 +639,8 @@ class ComponentService(BaseCoreService):
             model_name=model_name,
             parameters=parameters,
             component_id=background_id,
+            expected_type=Background,
         )
-
-        if not isinstance(new_bg, Background):
-            raise ValueError(f"Model {model_name} is not a background model")
 
         if len(backgrounds) == 1:
             old_bg = backgrounds[0]
