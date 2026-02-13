@@ -26,7 +26,7 @@ def test_create_region(srv, spectrum_id):
     ],
 )
 def test_create_region_out_of_bounds(srv, spectrum_id, start, stop):
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError):
         srv.create_region(spectrum_id, start, stop)
 
 
