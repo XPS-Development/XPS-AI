@@ -306,7 +306,7 @@ class CreateObjectCommand(Command):
 class CreateSpectrumCommand(CreateObjectCommand):
     """Command that creates a spectrum."""
 
-    create_obj_fn = SpectrumService._create_spectrum_obj
+    create_obj_fn = staticmethod(SpectrumService._create_spectrum_obj)
 
     @classmethod
     def from_change(cls, change: CreateSpectrum, ctx: ApplicationContext) -> "CreateSpectrumCommand":
@@ -331,7 +331,7 @@ class CreateSpectrumCommand(CreateObjectCommand):
 class CreateRegionCommand(CreateObjectCommand):
     """Command that creates a region; stores ID for undo."""
 
-    create_obj_fn = RegionService._create_region_obj
+    create_obj_fn = staticmethod(RegionService._create_region_obj)
 
     @classmethod
     def from_change(cls, change: CreateRegion, ctx: ApplicationContext) -> "CreateRegionCommand":
@@ -363,7 +363,7 @@ class CreateRegionCommand(CreateObjectCommand):
 class CreatePeakCommand(CreateObjectCommand):
     """Command that creates a peak; stores ID for undo."""
 
-    create_obj_fn = ComponentService._create_component_obj
+    create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
     def from_change(cls, change: CreatePeak, ctx: ApplicationContext) -> "CreatePeakCommand":
@@ -390,7 +390,7 @@ class CreatePeakCommand(CreateObjectCommand):
 class CreateBackgroundCommand(CreateObjectCommand):
     """Command that creates or replaces a background; stores old background for undo."""
 
-    create_obj_fn = ComponentService._create_component_obj
+    create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
     def from_change(cls, change: CreateBackground, ctx: ApplicationContext) -> "CreateBackgroundCommand":
@@ -416,6 +416,11 @@ class CreateBackgroundCommand(CreateObjectCommand):
 
 class CompositeCommand(Command):
     """Command that executes multiple commands as a batch."""
+
+    @classmethod
+    def from_change(cls, change: BaseChange, ctx: ApplicationContext) -> "CompositeCommand":
+        """Not used; CompositeCommand is built from CompositeChange by the registry."""
+        raise NotImplementedError("CompositeCommand is built from CompositeChange by CommandRegistry")
 
     def __init__(self, *, commands: list[Command]) -> None:
         """
