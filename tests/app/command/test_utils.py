@@ -9,6 +9,7 @@ from core.services import (
     RegionService,
     DataQueryService,
     ComponentService,
+    MetadataService,
 )
 
 
@@ -19,13 +20,14 @@ def test_application_context_from_collection_returns_context(empty_collection):
 
 
 def test_application_context_exposes_all_attributes(empty_collection):
-    """Context exposes collection, spectrum, region, data, component attributes."""
+    """Context exposes collection, spectrum, region, data, component, metadata attributes."""
     ctx = ApplicationContext.from_collection(empty_collection)
     assert isinstance(ctx.collection, CollectionQueryService)
     assert isinstance(ctx.spectrum, SpectrumService)
     assert isinstance(ctx.region, RegionService)
     assert isinstance(ctx.data, DataQueryService)
     assert isinstance(ctx.component, ComponentService)
+    assert isinstance(ctx.metadata, MetadataService)
 
 
 def test_application_context_services_share_collection(empty_collection):
@@ -36,3 +38,4 @@ def test_application_context_services_share_collection(empty_collection):
     assert ctx.region.collection is empty_collection
     assert ctx.data.collection is empty_collection
     assert ctx.component.collection is empty_collection
+    assert ctx.metadata.collection is empty_collection

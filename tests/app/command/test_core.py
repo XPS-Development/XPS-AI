@@ -163,11 +163,16 @@ def test_command_registry_build_composite_returns_composite_command(app_context,
 
 def test_create_default_registry_has_all_mappings():
     """create_default_registry returns registry with all default mappings."""
+    from app.command.changes import SetSpectrumMetadata, SetRegionMetadata, SetPeakMetadata
+
     registry = create_default_registry()
     assert UpdateParameter in registry._registry
     assert UpdateRegionSlice in registry._registry
     assert RemoveObject in registry._registry
     assert UpdateMultipleParameterValues in registry._registry
+    assert SetSpectrumMetadata in registry._registry
+    assert SetRegionMetadata in registry._registry
+    assert SetPeakMetadata in registry._registry
 
 
 def test_command_executor_execute_applies_and_pushes(app_context, peak_id):

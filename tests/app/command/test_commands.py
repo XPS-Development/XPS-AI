@@ -3,6 +3,8 @@
 import pytest
 import numpy as np
 
+from core.metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
+
 from app.command.changes import (
     UpdateParameter,
     UpdateRegionSlice,
@@ -14,6 +16,9 @@ from app.command.changes import (
     CreateBackground,
     ReplacePeakModel,
     ReplaceBackgroundModel,
+    SetSpectrumMetadata,
+    SetRegionMetadata,
+    SetPeakMetadata,
 )
 from app.command.commands import (
     UpdateParameterCommand,
@@ -27,6 +32,9 @@ from app.command.commands import (
     CompositeCommand,
     ReplacePeakModelCommand,
     ReplaceBackgroundModelCommand,
+    SetSpectrumMetadataCommand,
+    SetRegionMetadataCommand,
+    SetPeakMetadataCommand,
 )
 
 
@@ -277,6 +285,101 @@ def test_replace_background_model_command_roundtrip(app_context, region_id):
     assert bg_id is not None
     params = app_context.component.get_parameters(bg_id)
     assert params["const"].value == 1.0
+
+
+def test_set_spectrum_metadata_command_from_change_captures_old(app_context, spectrum_id):
+    """from_change captures old spectrum metadata."""
+    metadata = SpectrumMetadata(name="Sample", group="Group1", file="data.vms")
+    change = SetSpectrumMetadata(spectrum_id=spectrum_id, metadata=metadata)
+    cmd = SetSpectrumMetadataCommand.from_change(change, app_context)
+    assert cmd.metadata == metadata
+    assert cmd._old_metadata == SpectrumMetadata(name="", group="", file="")
+
+
+def test_set_spectrum_metadata_command_apply_undo_roundtrip(app_context, spectrum_id):
+    """apply sets metadata; undo restores old metadata."""
+    metadata = SpectrumMetadata(name="Sample A", group="Group 1", file="/path/file.vms")
+    change = SetSpectrumMetadata(spectrum_id=spectrum_id, metadata=metadata)
+    cmd = SetSpectrumMetadataCommand.from_change(change, app_context)
+    cmd.apply(app_context)
+    assert app_context.metadata.get_spectrum_metadata(spectrum_id) == metadata
+
+    cmd.undo(app_context)
+    assert app_context.metadata.get_spectrum_metadata(spectrum_id) == SpectrumMetadata(
+        name="", group="", file=""
+    )
+
+
+def test_set_spectrum_metadata_command_undo_without_apply_raises(app_context, spectrum_id):
+    """undo without apply raises RuntimeError."""
+    metadata = SpectrumMetadata(name="x", group="y", file="z")
+    cmd = SetSpectrumMetadataCommand(
+        obj_id=spectrum_id, metadata=metadata, old_metadata=None
+    )
+    with pytest.raises(RuntimeError, match="Command was not applied"):
+        cmd.undo(app_context)
+
+
+def test_set_region_metadata_command_apply_undo_roundtrip(app_context, region_id):
+    """apply sets region metadata; undo restores old metadata."""
+    metadata = RegionMetadata()
+    change = SetRegionMetadata(region_id=region_id, metadata=metadata)
+    cmd = SetRegionMetadataCommand.from_change(change, app_context)
+    cmd.apply(app_context)
+    assert app_context.metadata.get_region_metadata(region_id) == metadata
+
+    cmd.undo(app_context)
+    assert app_context.metadata.get_region_metadata(region_id) == RegionMetadata()
+
+
+def test_set_peak_metadata_command_from_change_captures_old(app_context, peak_id):
+    """from_change captures old peak metadata."""
+    metadata = PeakMetadata(element_type="Fe 2p")
+    change = SetPeakMetadata(peak_id=peak_id, metadata=metadata)
+    cmd = SetPeakMetadataCommand.from_change(change, app_context)
+    assert cmd.metadata == metadata
+    assert cmd._old_metadata == PeakMetadata(element_type="")
+
+
+def test_set_peak_metadata_command_apply_undo_roundtrip(app_context, peak_id):
+    """apply sets peak metadata; undo restores old metadata."""
+    metadata = PeakMetadata(element_type="C 1s")
+    change = SetPeakMetadata(peak_id=peak_id, metadata=metadata)
+    cmd = SetPeakMetadataCommand.from_change(change, app_context)
+    cmd.apply(app_context)
+    assert app_context.metadata.get_peak_metadata(peak_id) == metadata
+
+    cmd.undo(app_context)
+    assert app_context.metadata.get_peak_metadata(peak_id) == PeakMetadata(element_type="")
+
+
+def test_set_peak_metadata_command_undo_without_apply_raises(app_context, peak_id):
+    """undo without apply raises RuntimeError."""
+    metadata = PeakMetadata(element_type="Fe")
+    cmd = SetPeakMetadataCommand(obj_id=peak_id, metadata=metadata, old_metadata=None)
+    with pytest.raises(RuntimeError, match="Command was not applied"):
+        cmd.undo(app_context)
+
+
+def test_metadata_command_execute_via_executor(app_context, spectrum_id):
+    """CommandExecutor executes SetSpectrumMetadata and supports undo/redo."""
+    from app.command.core import CommandExecutor, UndoRedoStack
+
+    stack = UndoRedoStack()
+    executor = CommandExecutor(app_context, stack)
+    metadata = SpectrumMetadata(name="Sample", group="Group", file="file.vms")
+    change = SetSpectrumMetadata(spectrum_id=spectrum_id, metadata=metadata)
+
+    executor.execute(change)
+    assert app_context.metadata.get_spectrum_metadata(spectrum_id) == metadata
+
+    executor.undo()
+    assert app_context.metadata.get_spectrum_metadata(spectrum_id) == SpectrumMetadata(
+        name="", group="", file=""
+    )
+
+    executor.redo()
+    assert app_context.metadata.get_spectrum_metadata(spectrum_id) == metadata
 
 
 def test_replace_background_model_command_no_existing_background(x_axis, simple_gauss, noise):
