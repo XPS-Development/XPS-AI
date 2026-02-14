@@ -3,26 +3,11 @@ from dataclasses import dataclass, asdict
 from core.collection import CoreCollection
 from core.services import CollectionQueryService, DataQueryService, ComponentService
 from core.math_models import BaseBackgroundModel, ParametricModelLike, NormalizationContext
+from core.types import ParameterLike
 
-from typing import Protocol, Literal
+from typing import Literal
 from core.math_models.base_models import NormalizationLikeFn
 from numpy.typing import NDArray
-
-
-class ParameterLike(Protocol):
-    """
-    Protocol describing a parameter-like object.
-
-    Defines the minimal attribute set required for parameter
-    normalization, denormalization, and DTO construction.
-    """
-
-    name: str
-    value: float
-    lower: float
-    upper: float
-    vary: bool
-    expr: str | None
 
 
 @dataclass(frozen=True)
