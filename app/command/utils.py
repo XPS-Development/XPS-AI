@@ -5,6 +5,7 @@ from core.services import (
     RegionService,
     DataQueryService,
     ComponentService,
+    MetadataService,
 )
 from core.collection import CoreCollection
 
@@ -18,6 +19,7 @@ class ApplicationContext:
     region: RegionService
     data: DataQueryService
     component: ComponentService
+    metadata: MetadataService
 
     @classmethod
     def from_collection(cls, collection: CoreCollection) -> "ApplicationContext":
@@ -28,4 +30,5 @@ class ApplicationContext:
             region=RegionService(collection),
             data=DataQueryService(collection),
             component=ComponentService(collection),
+            metadata=MetadataService(collection),
         )

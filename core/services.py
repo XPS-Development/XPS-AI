@@ -8,6 +8,7 @@ from core.math_models import (
 
 from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter, CoreObject
 from .collection import CoreCollection
+from .metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
 
 from typing import Optional, TypeVar
 from numpy.typing import NDArray
@@ -734,40 +735,324 @@ class ComponentService(BaseCoreService):
         component = self._get_typed(component_id, Component)
         return component.model
 
-    # def copy_parameters(
-    #     self,
-    #     src_cmp_id: str,
-    #     dst_cmp_id: str,
-    # ) -> None:
-    #     """
-    #     Copy parameter values from one component to another.
 
-    #     Components must share the same model.
+class MetadataService(BaseCoreService):
+    """
+    Service for storing and retrieving metadata for core objects.
 
-    #     Parameters
-    #     ----------
-    #     src_cmp_id : str
-    #         Source component ID.
-    #     dst_cmp_id : str
-    #         Destination component ID.
+    Metadata is stored separately from core objects in dicts keyed by object IDs.
+    All methods validate that the object exists in the collection before
+    reading or writing metadata.
 
-    #     Raises
-    #     ------
-    #     ValueError
-    #         If component models do not match.
-    #     KeyError
-    #         If a destination parameter is missing.
-    #     """
-    #     src = self._get_typed(src_cmp_id, Component)
-    #     dst = self._get_typed(dst_cmp_id, Component)
+    Metadata schemas are strongly typed per object type:
+    - Spectrum: name, group, file
+    - Region: (empty, extensible later)
+    - Peak: element_type
+    """
 
-    #     if src.model.name != dst.model.name:
-    #         raise ValueError(
-    #             f"Cannot copy parameters: source model '{src.model.name}' "
-    #             f"does not match destination model '{dst.model.name}'"
-    #         )
+    _DEFAULT_SPECTRUM = SpectrumMetadata(name="", group="", file="")
+    _DEFAULT_REGION = RegionMetadata()
+    _DEFAULT_PEAK = PeakMetadata(element_type="")
 
-    #     for name, src_par in src.parameters.items():
-    #         if name not in dst.parameters:
-    #             raise KeyError(f"No parameter {name} in component {dst.id_}")
-    #         src_par.copy_with(dst.parameters[name])
+    def __init__(self, collection: CoreCollection):
+        super().__init__(collection)
+        self._spectra_metadata: dict[str, SpectrumMetadata] = {}
+        self._regions_metadata: dict[str, RegionMetadata] = {}
+        self._peaks_metadata: dict[str, PeakMetadata] = {}
+
+    def get_spectrum_metadata(self, spectrum_id: str) -> SpectrumMetadata:
+        """
+        Retrieve metadata for a spectrum.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+
+        Returns
+        -------
+        SpectrumMetadata
+            Stored metadata or default if none exists.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum with this ID exists in the collection.
+        """
+        self._get_typed(spectrum_id, Spectrum)
+        return self._spectra_metadata.get(spectrum_id, self._DEFAULT_SPECTRUM)
+
+    def set_spectrum_metadata(self, spectrum_id: str, metadata: SpectrumMetadata) -> None:
+        """
+        Store metadata for a spectrum.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+        metadata : SpectrumMetadata
+            Metadata to store.
+
+        Raises
+        ------
+        KeyError
+            If no spectrum with this ID exists in the collection.
+        """
+        self._get_typed(spectrum_id, Spectrum)
+        self._spectra_metadata[spectrum_id] = metadata
+
+    def get_region_metadata(self, region_id: str) -> RegionMetadata:
+        """
+        Retrieve metadata for a region.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+
+        Returns
+        -------
+        RegionMetadata
+            Stored metadata or default if none exists.
+
+        Raises
+        ------
+        KeyError
+            If no region with this ID exists in the collection.
+        """
+        self._get_typed(region_id, Region)
+        return self._regions_metadata.get(region_id, self._DEFAULT_REGION)
+
+    def set_region_metadata(self, region_id: str, metadata: RegionMetadata) -> None:
+        """
+        Store metadata for a region.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+        metadata : RegionMetadata
+            Metadata to store.
+
+        Raises
+        ------
+        KeyError
+            If no region with this ID exists in the collection.
+        """
+        self._get_typed(region_id, Region)
+        self._regions_metadata[region_id] = metadata
+
+    def get_peak_metadata(self, peak_id: str) -> PeakMetadata:
+        """
+        Retrieve metadata for a peak.
+
+        Parameters
+        ----------
+        peak_id : str
+            Identifier of the peak.
+
+        Returns
+        -------
+        PeakMetadata
+            Stored metadata or default if none exists.
+
+        Raises
+        ------
+        KeyError
+            If no peak with this ID exists in the collection.
+        """
+        self._get_typed(peak_id, Peak)
+        return self._peaks_metadata.get(peak_id, self._DEFAULT_PEAK)
+
+    def set_peak_metadata(self, peak_id: str, metadata: PeakMetadata) -> None:
+        """
+        Store metadata for a peak.
+
+        Parameters
+        ----------
+        peak_id : str
+            Identifier of the peak.
+        metadata : PeakMetadata
+            Metadata to store.
+
+        Raises
+        ------
+        KeyError
+            If no peak with this ID exists in the collection.
+        """
+        self._get_typed(peak_id, Peak)
+        self._peaks_metadata[peak_id] = metadata
+
+    def _get_spectrum_ids(self) -> tuple[str, ...]:
+        """Return all spectrum IDs in the collection."""
+        return tuple(
+            obj.id_
+            for obj in self.collection.objects_index.values()
+            if isinstance(obj, Spectrum)
+        )
+
+    def _get_region_ids(self) -> tuple[str, ...]:
+        """Return all region IDs in the collection."""
+        return tuple(
+            obj.id_
+            for obj in self.collection.objects_index.values()
+            if isinstance(obj, Region)
+        )
+
+    def _get_peak_ids(self) -> tuple[str, ...]:
+        """Return all peak IDs in the collection."""
+        return tuple(
+            obj.id_
+            for obj in self.collection.objects_index.values()
+            if isinstance(obj, Peak)
+        )
+
+    def find_spectra_by_metadata_exact(self, metadata: SpectrumMetadata) -> tuple[str, ...]:
+        """
+        Return spectrum IDs whose metadata exactly matches the given metadata.
+
+        Parameters
+        ----------
+        metadata : SpectrumMetadata
+            Metadata to match exactly (name, group, file).
+
+        Returns
+        -------
+        tuple[str, ...]
+            Spectrum IDs with matching metadata.
+        """
+        return tuple(
+            sid
+            for sid in self._get_spectrum_ids()
+            if self.get_spectrum_metadata(sid) == metadata
+        )
+
+    def find_spectra_by_metadata_similar(
+        self, metadata: SpectrumMetadata
+    ) -> tuple[str, ...]:
+        """
+        Return spectrum IDs whose metadata contains the filter as substrings.
+
+        Non-empty filter fields are matched case-insensitively as substrings.
+        Empty filter fields are ignored (no filter on that field).
+
+        Parameters
+        ----------
+        metadata : SpectrumMetadata
+            Filter: non-empty fields must appear as substrings in stored metadata.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Spectrum IDs with similar metadata.
+        """
+        return tuple(
+            sid
+            for sid in self._get_spectrum_ids()
+            if self._spectrum_metadata_similar(
+                self.get_spectrum_metadata(sid), metadata
+            )
+        )
+
+    def _spectrum_metadata_similar(
+        self, stored: SpectrumMetadata, filter_: SpectrumMetadata
+    ) -> bool:
+        if filter_.name and filter_.name.lower() not in stored.name.lower():
+            return False
+        if filter_.group and filter_.group.lower() not in stored.group.lower():
+            return False
+        if filter_.file and filter_.file.lower() not in stored.file.lower():
+            return False
+        return True
+
+    def find_regions_by_metadata_exact(self, metadata: RegionMetadata) -> tuple[str, ...]:
+        """
+        Return region IDs whose metadata exactly matches the given metadata.
+
+        Parameters
+        ----------
+        metadata : RegionMetadata
+            Metadata to match exactly.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Region IDs with matching metadata.
+        """
+        return tuple(
+            rid
+            for rid in self._get_region_ids()
+            if self.get_region_metadata(rid) == metadata
+        )
+
+    def find_regions_by_metadata_similar(
+        self, metadata: RegionMetadata
+    ) -> tuple[str, ...]:
+        """
+        Return region IDs whose metadata matches the filter.
+
+        RegionMetadata has no fields; returns all region IDs.
+
+        Parameters
+        ----------
+        metadata : RegionMetadata
+            Filter (ignored for empty RegionMetadata).
+
+        Returns
+        -------
+        tuple[str, ...]
+            Region IDs.
+        """
+        return self._get_region_ids()
+
+    def find_peaks_by_metadata_exact(self, metadata: PeakMetadata) -> tuple[str, ...]:
+        """
+        Return peak IDs whose metadata exactly matches the given metadata.
+
+        Parameters
+        ----------
+        metadata : PeakMetadata
+            Metadata to match exactly (element_type).
+
+        Returns
+        -------
+        tuple[str, ...]
+            Peak IDs with matching metadata.
+        """
+        return tuple(
+            pid
+            for pid in self._get_peak_ids()
+            if self.get_peak_metadata(pid) == metadata
+        )
+
+    def find_peaks_by_metadata_similar(self, metadata: PeakMetadata) -> tuple[str, ...]:
+        """
+        Return peak IDs whose metadata contains the filter as substring.
+
+        Non-empty element_type is matched case-insensitively as substring.
+        Empty element_type matches all peaks.
+
+        Parameters
+        ----------
+        metadata : PeakMetadata
+            Filter: non-empty element_type must appear in stored element_type.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Peak IDs with similar metadata.
+        """
+        return tuple(
+            pid
+            for pid in self._get_peak_ids()
+            if self._peak_metadata_similar(
+                self.get_peak_metadata(pid), metadata
+            )
+        )
+
+    def _peak_metadata_similar(
+        self, stored: PeakMetadata, filter_: PeakMetadata
+    ) -> bool:
+        if filter_.element_type and filter_.element_type.lower() not in stored.element_type.lower():
+            return False
+        return True

@@ -9,6 +9,7 @@ from dataclasses import asdict
 from abc import ABC, abstractmethod
 
 from core.services import SpectrumService, RegionService, ComponentService
+from core.metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
 from core.objects import Peak, Background, CoreObject
 from .utils import ApplicationContext
 from .changes import (
@@ -23,6 +24,9 @@ from .changes import (
     CreateBackground,
     ReplacePeakModel,
     ReplaceBackgroundModel,
+    SetSpectrumMetadata,
+    SetRegionMetadata,
+    SetPeakMetadata,
 )
 
 from typing import Callable, Any
@@ -232,6 +236,94 @@ class UpdateMultipleParameterValuesCommand(Command):
         if self._old_values is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_values(self.component_id, self._old_values)
+
+
+class SetMetadataCommand(Command):
+    """
+    Base command for setting metadata; stores previous metadata for undo.
+
+    Subclasses set _set_metadata_fn and implement from_change to extract
+    obj_id and metadata from the specific change type.
+    """
+
+    _set_metadata_fn: Callable[
+        [ApplicationContext, str, SpectrumMetadata | RegionMetadata | PeakMetadata], None
+    ]
+
+    def __init__(
+        self,
+        obj_id: str,
+        metadata: SpectrumMetadata | RegionMetadata | PeakMetadata,
+        old_metadata: SpectrumMetadata | RegionMetadata | PeakMetadata | None = None,
+    ) -> None:
+        self.obj_id = obj_id
+        self.metadata = metadata
+        self._old_metadata = old_metadata
+
+    def apply(self, ctx: ApplicationContext) -> None:
+        self._set_metadata_fn(ctx, self.obj_id, self.metadata)
+
+    def undo(self, ctx: ApplicationContext) -> None:
+        if self._old_metadata is None:
+            raise RuntimeError("Command was not applied")
+        self._set_metadata_fn(ctx, self.obj_id, self._old_metadata)
+
+
+class SetSpectrumMetadataCommand(SetMetadataCommand):
+    """Command that sets spectrum metadata."""
+
+    _set_metadata_fn = staticmethod(
+        lambda ctx, obj_id, md: ctx.metadata.set_spectrum_metadata(obj_id, md)
+    )
+
+    @classmethod
+    def from_change(
+        cls, change: SetSpectrumMetadata, ctx: ApplicationContext
+    ) -> "SetSpectrumMetadataCommand":
+        old_metadata = ctx.metadata.get_spectrum_metadata(change.spectrum_id)
+        return cls(
+            obj_id=change.spectrum_id,
+            metadata=change.metadata,
+            old_metadata=old_metadata,
+        )
+
+
+class SetRegionMetadataCommand(SetMetadataCommand):
+    """Command that sets region metadata."""
+
+    _set_metadata_fn = staticmethod(
+        lambda ctx, obj_id, md: ctx.metadata.set_region_metadata(obj_id, md)
+    )
+
+    @classmethod
+    def from_change(
+        cls, change: SetRegionMetadata, ctx: ApplicationContext
+    ) -> "SetRegionMetadataCommand":
+        old_metadata = ctx.metadata.get_region_metadata(change.region_id)
+        return cls(
+            obj_id=change.region_id,
+            metadata=change.metadata,
+            old_metadata=old_metadata,
+        )
+
+
+class SetPeakMetadataCommand(SetMetadataCommand):
+    """Command that sets peak metadata."""
+
+    _set_metadata_fn = staticmethod(
+        lambda ctx, obj_id, md: ctx.metadata.set_peak_metadata(obj_id, md)
+    )
+
+    @classmethod
+    def from_change(
+        cls, change: SetPeakMetadata, ctx: ApplicationContext
+    ) -> "SetPeakMetadataCommand":
+        old_metadata = ctx.metadata.get_peak_metadata(change.peak_id)
+        return cls(
+            obj_id=change.peak_id,
+            metadata=change.metadata,
+            old_metadata=old_metadata,
+        )
 
 
 class RemoveObjectCommand(Command):

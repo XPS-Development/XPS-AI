@@ -17,6 +17,9 @@ from .changes import (
     ReplacePeakModel,
     ReplaceBackgroundModel,
     UpdateMultipleParameterValues,
+    SetSpectrumMetadata,
+    SetRegionMetadata,
+    SetPeakMetadata,
     CompositeChange,
 )
 from .commands import (
@@ -31,6 +34,9 @@ from .commands import (
     ReplacePeakModelCommand,
     ReplaceBackgroundModelCommand,
     UpdateMultipleParameterValuesCommand,
+    SetSpectrumMetadataCommand,
+    SetRegionMetadataCommand,
+    SetPeakMetadataCommand,
     CompositeCommand,
 )
 from .utils import ApplicationContext
@@ -199,6 +205,9 @@ def create_default_registry() -> CommandRegistry:
     registry.register(ReplacePeakModel, ReplacePeakModelCommand)
     registry.register(ReplaceBackgroundModel, ReplaceBackgroundModelCommand)
     registry.register(UpdateMultipleParameterValues, UpdateMultipleParameterValuesCommand)
+    registry.register(SetSpectrumMetadata, SetSpectrumMetadataCommand)
+    registry.register(SetRegionMetadata, SetRegionMetadataCommand)
+    registry.register(SetPeakMetadata, SetPeakMetadataCommand)
     # CompositeChange is handled specially in build() method
     return registry
 
