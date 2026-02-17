@@ -144,6 +144,22 @@ class CollectionQueryService(BaseCoreService):
         """
         return self._get(obj_id).parent_id
 
+    def get_subtree(self, obj_id: str) -> tuple[str, ...]:
+        """
+        Return the object and all descendants without removing.
+
+        Parameters
+        ----------
+        obj_id : str
+            Root object ID.
+
+        Returns
+        -------
+        tuple[str, ...]
+            The object and all its descendants IDs.
+        """
+        return tuple(obj.id_ for obj in self.collection.get_subtree(obj_id))
+
     def get_regions(self, spectrum_id: str) -> tuple[str, ...]:
         """
         Retrieve all region identifiers belonging to a spectrum.

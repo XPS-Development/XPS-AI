@@ -195,3 +195,25 @@ class CoreCollection:
             The order is not guaranteed.
         """
         return tuple(ch for ch in self.objects_index.values() if ch.parent_id == obj_id)
+
+    def get_subtree(self, obj_id: str) -> tuple[CoreObject, ...]:
+        """
+        Return the object and all descendants without removing.
+
+        Same set of objects that would be returned by remove(obj_id).
+
+        Parameters
+        ----------
+        obj_id : str
+            Root object ID.
+
+        Returns
+        -------
+        tuple[CoreObject, ...]
+            The object and all its descendants.
+        """
+        obj = self.objects_index[obj_id]
+        result: list[CoreObject] = [obj]
+        for ch in self.get_children(obj_id):
+            result.extend(self.get_subtree(ch.id_))
+        return tuple(result)

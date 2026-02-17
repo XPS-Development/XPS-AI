@@ -5,7 +5,7 @@ import numpy as np
 
 from .math_models import NormalizationContext, BasePeakModel, BaseBackgroundModel, ParametricModelLike
 
-from typing import Protocol, Dict, Any, Optional
+from typing import Protocol, Dict, Any, Optional, runtime_checkable
 from numpy.typing import NDArray
 
 
@@ -180,6 +180,7 @@ class RuntimeParameter:
         )
 
 
+@runtime_checkable
 class CoreObject(Protocol):
     id_: str
     parent_id: Optional[str]

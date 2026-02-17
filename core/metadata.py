@@ -54,3 +54,18 @@ class PeakMetadata:
     """
 
     element_type: str
+
+
+@dataclass(frozen=True)
+class BackgroundMetadata:
+    """
+    Metadata for a background.
+
+    Empty placeholder for future extension.
+    Backgrounds currently have no metadata fields.
+    """
+
+    pass
+
+
+Metadata = SpectrumMetadata | RegionMetadata | PeakMetadata | BackgroundMetadata

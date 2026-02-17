@@ -54,6 +54,25 @@ class RemoveObject:
 
 
 @dataclass(frozen=True)
+class RemoveMetadata:
+    """Change to remove metadata for an object by ID."""
+
+    obj_id: str
+
+
+@dataclass(frozen=True)
+class FullRemoveObject:
+    """
+    Change to remove an object and its metadata from both collection and metadata store.
+
+    Cascades to children: removes metadata for all descendants with metadata, then removes
+    the object subtree from the collection.
+    """
+
+    obj_id: str
+
+
+@dataclass(frozen=True)
 class UpdateMultipleParameterValues:
     """
     Change to update values of multiple parameters at once.
@@ -203,6 +222,8 @@ BaseChange = Union[
     UpdateParameter,
     UpdateRegionSlice,
     RemoveObject,
+    RemoveMetadata,
+    FullRemoveObject,
     CreateSpectrum,
     CreateRegion,
     CreatePeak,
