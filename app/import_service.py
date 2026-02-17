@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tools.import_spectrum import parse_spectrum_file
 
-from .command.changes import CompositeChange, CreateSpectrum, SetSpectrumMetadata
+from .command.changes import CompositeChange, CreateSpectrum, SetMetadata
 
 
 def import_spectra(path: str | Path) -> CompositeChange:
@@ -25,7 +25,7 @@ def import_spectra(path: str | Path) -> CompositeChange:
     Returns
     -------
     CompositeChange
-        Change containing CreateSpectrum and SetSpectrumMetadata for each spectrum.
+        Change containing CreateSpectrum and SetMetadata for each spectrum.
     """
     parsed = parse_spectrum_file(path)
     changes = []
@@ -33,6 +33,6 @@ def import_spectra(path: str | Path) -> CompositeChange:
     for i, ps in enumerate(parsed):
         sid = f"s{uuid4().hex}"
         changes.append(CreateSpectrum(x=ps.x, y=ps.y, spectrum_id=sid))
-        changes.append(SetSpectrumMetadata(spectrum_id=sid, metadata=ps.metadata))
+        changes.append(SetMetadata(obj_id=sid, metadata=ps.metadata))
 
     return CompositeChange(changes=changes)

@@ -10,6 +10,8 @@ from .changes import (
     UpdateParameter,
     UpdateRegionSlice,
     RemoveObject,
+    RemoveMetadata,
+    FullRemoveObject,
     CreateSpectrum,
     CreateRegion,
     CreatePeak,
@@ -17,9 +19,7 @@ from .changes import (
     ReplacePeakModel,
     ReplaceBackgroundModel,
     UpdateMultipleParameterValues,
-    SetSpectrumMetadata,
-    SetRegionMetadata,
-    SetPeakMetadata,
+    SetMetadata,
     CompositeChange,
 )
 from .commands import (
@@ -27,6 +27,8 @@ from .commands import (
     UpdateParameterCommand,
     UpdateRegionSliceCommand,
     RemoveObjectCommand,
+    RemoveMetadataCommand,
+    FullRemoveObjectCommand,
     CreateSpectrumCommand,
     CreateRegionCommand,
     CreatePeakCommand,
@@ -34,9 +36,7 @@ from .commands import (
     ReplacePeakModelCommand,
     ReplaceBackgroundModelCommand,
     UpdateMultipleParameterValuesCommand,
-    SetSpectrumMetadataCommand,
-    SetRegionMetadataCommand,
-    SetPeakMetadataCommand,
+    SetMetadataCommand,
     CompositeCommand,
 )
 from .utils import ApplicationContext
@@ -198,6 +198,8 @@ def create_default_registry() -> CommandRegistry:
     registry.register(UpdateParameter, UpdateParameterCommand)
     registry.register(UpdateRegionSlice, UpdateRegionSliceCommand)
     registry.register(RemoveObject, RemoveObjectCommand)
+    registry.register(RemoveMetadata, RemoveMetadataCommand)
+    registry.register(FullRemoveObject, FullRemoveObjectCommand)
     registry.register(CreateSpectrum, CreateSpectrumCommand)
     registry.register(CreateRegion, CreateRegionCommand)
     registry.register(CreatePeak, CreatePeakCommand)
@@ -205,10 +207,7 @@ def create_default_registry() -> CommandRegistry:
     registry.register(ReplacePeakModel, ReplacePeakModelCommand)
     registry.register(ReplaceBackgroundModel, ReplaceBackgroundModelCommand)
     registry.register(UpdateMultipleParameterValues, UpdateMultipleParameterValuesCommand)
-    registry.register(SetSpectrumMetadata, SetSpectrumMetadataCommand)
-    registry.register(SetRegionMetadata, SetRegionMetadataCommand)
-    registry.register(SetPeakMetadata, SetPeakMetadataCommand)
-    # CompositeChange is handled specially in build() method
+    registry.register(SetMetadata, SetMetadataCommand)
     return registry
 
 

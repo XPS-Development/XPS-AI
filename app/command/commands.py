@@ -9,7 +9,7 @@ from dataclasses import asdict
 from abc import ABC, abstractmethod
 
 from core.services import SpectrumService, RegionService, ComponentService
-from core.metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
+from core.metadata import Metadata
 from core.objects import Peak, Background, CoreObject
 from .utils import ApplicationContext
 from .changes import (
@@ -18,15 +18,15 @@ from .changes import (
     UpdateRegionSlice,
     UpdateMultipleParameterValues,
     RemoveObject,
+    RemoveMetadata,
+    FullRemoveObject,
     CreateSpectrum,
     CreateRegion,
     CreatePeak,
     CreateBackground,
     ReplacePeakModel,
     ReplaceBackgroundModel,
-    SetSpectrumMetadata,
-    SetRegionMetadata,
-    SetPeakMetadata,
+    SetMetadata,
 )
 
 from typing import Callable, Any
@@ -242,91 +242,109 @@ class SetMetadataCommand(Command):
     """
     Base command for setting metadata; stores previous metadata for undo.
 
-    Subclasses set _set_metadata_fn and implement from_change to extract
-    obj_id and metadata from the specific change type.
+    Subclasses implement from_change to extract obj_id and metadata from
+    the specific change type. Uses unified MetadataService.get_metadata/set_metadata.
     """
-
-    _set_metadata_fn: Callable[
-        [ApplicationContext, str, SpectrumMetadata | RegionMetadata | PeakMetadata], None
-    ]
 
     def __init__(
         self,
         obj_id: str,
-        metadata: SpectrumMetadata | RegionMetadata | PeakMetadata,
-        old_metadata: SpectrumMetadata | RegionMetadata | PeakMetadata | None = None,
+        metadata: Metadata,
+        old_metadata: Metadata | None,
     ) -> None:
         self.obj_id = obj_id
         self.metadata = metadata
         self._old_metadata = old_metadata
 
+    @classmethod
+    def from_change(cls, change: SetMetadata, ctx: ApplicationContext) -> "SetMetadataCommand":
+        """
+        Create a SetMetadataCommand from a change.
+
+        Parameters
+        ----------
+        change : SetMetadata
+            The change to convert to a command.
+        ctx : ApplicationContext
+            Application context for reading current state.
+
+        Returns
+        -------
+        SetMetadataCommand
+            Command instance.
+        """
+        # NOTE: object may not exist in collection yet
+        old_metadata = ctx.metadata.get_metadata(change.obj_id)
+        return cls(
+            obj_id=change.obj_id,
+            metadata=change.metadata,
+            old_metadata=old_metadata,
+        )
+
     def apply(self, ctx: ApplicationContext) -> None:
-        self._set_metadata_fn(ctx, self.obj_id, self.metadata)
+        ctx.metadata.set_metadata(self.obj_id, self.metadata)
 
     def undo(self, ctx: ApplicationContext) -> None:
         if self._old_metadata is None:
-            raise RuntimeError("Command was not applied")
-        self._set_metadata_fn(ctx, self.obj_id, self._old_metadata)
-
-
-class SetSpectrumMetadataCommand(SetMetadataCommand):
-    """Command that sets spectrum metadata."""
-
-    _set_metadata_fn = staticmethod(
-        lambda ctx, obj_id, md: ctx.metadata.set_spectrum_metadata(obj_id, md)
-    )
-
-    @classmethod
-    def from_change(
-        cls, change: SetSpectrumMetadata, ctx: ApplicationContext
-    ) -> "SetSpectrumMetadataCommand":
-        if ctx.collection.check_object_exists(change.spectrum_id):
-            old_metadata = ctx.metadata.get_spectrum_metadata(change.spectrum_id)
+            ctx.metadata.remove_metadata(self.obj_id)
         else:
-            old_metadata = SpectrumMetadata(name="", group="", file="")
-        return cls(
-            obj_id=change.spectrum_id,
-            metadata=change.metadata,
-            old_metadata=old_metadata,
-        )
+            ctx.metadata.set_metadata(self.obj_id, self._old_metadata)
 
 
-class SetRegionMetadataCommand(SetMetadataCommand):
-    """Command that sets region metadata."""
+class RemoveMetadataCommand(Command):
+    """
+    Command that removes metadata for an object by ID.
 
-    _set_metadata_fn = staticmethod(
-        lambda ctx, obj_id, md: ctx.metadata.set_region_metadata(obj_id, md)
-    )
+    Stores old metadata for undo; no-op if object had no metadata.
+    """
 
-    @classmethod
-    def from_change(
-        cls, change: SetRegionMetadata, ctx: ApplicationContext
-    ) -> "SetRegionMetadataCommand":
-        old_metadata = ctx.metadata.get_region_metadata(change.region_id)
-        return cls(
-            obj_id=change.region_id,
-            metadata=change.metadata,
-            old_metadata=old_metadata,
-        )
+    def __init__(
+        self,
+        obj_id: str,
+        old_metadata: Metadata | None = None,
+    ) -> None:
+        """
+        Initialize a remove metadata command.
 
-
-class SetPeakMetadataCommand(SetMetadataCommand):
-    """Command that sets peak metadata."""
-
-    _set_metadata_fn = staticmethod(
-        lambda ctx, obj_id, md: ctx.metadata.set_peak_metadata(obj_id, md)
-    )
+        Parameters
+        ----------
+        obj_id : str
+            ID of the object whose metadata to remove.
+        old_metadata : Metadata | None, optional
+            Stored metadata for undo, or None if none existed.
+        """
+        self.obj_id = obj_id
+        self._old_metadata = old_metadata
+        self._applied = False
 
     @classmethod
-    def from_change(
-        cls, change: SetPeakMetadata, ctx: ApplicationContext
-    ) -> "SetPeakMetadataCommand":
-        old_metadata = ctx.metadata.get_peak_metadata(change.peak_id)
-        return cls(
-            obj_id=change.peak_id,
-            metadata=change.metadata,
-            old_metadata=old_metadata,
-        )
+    def from_change(cls, change: RemoveMetadata, ctx: ApplicationContext) -> "RemoveMetadataCommand":
+        """
+        Create a RemoveMetadataCommand from a change, storing old metadata for undo.
+
+        Parameters
+        ----------
+        change : RemoveMetadata
+            The change to convert to a command.
+        ctx : ApplicationContext
+            Application context for reading current state.
+
+        Returns
+        -------
+        RemoveMetadataCommand
+            Command instance with old metadata stored for undo.
+        """
+        if not ctx.collection.check_object_exists(change.obj_id):
+            raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
+        old_metadata = ctx.metadata.get_metadata(change.obj_id)
+        return cls(obj_id=change.obj_id, old_metadata=old_metadata)
+
+    def apply(self, ctx: ApplicationContext) -> None:
+        ctx.metadata.remove_metadata(self.obj_id)
+
+    def undo(self, ctx: ApplicationContext) -> None:
+        if self._old_metadata is not None:
+            ctx.metadata.set_metadata(self.obj_id, self._old_metadata)
 
 
 class RemoveObjectCommand(Command):
@@ -622,3 +640,39 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
             commands.append(RemoveObjectCommand.from_change(rm_ch, ctx))
         commands.append(CreateBackgroundCommand.from_change(create_ch, ctx))
         return cls(commands=commands)
+
+
+class FullRemoveObjectCommand(CompositeCommand):
+    """
+    Command that removes an object and its metadata from both collection and metadata store.
+
+    Translates FullRemoveObject to RemoveMetadataCommand(s) and RemoveObjectCommand.
+    Cascades: removes metadata for all descendants with metadata, then removes the subtree.
+    """
+
+    @classmethod
+    def from_change(cls, change: FullRemoveObject, ctx: ApplicationContext) -> "FullRemoveObjectCommand":
+        """
+        Create a FullRemoveObjectCommand from a change.
+
+        Parameters
+        ----------
+        change : FullRemoveObject
+            The change to convert to a command.
+        ctx : ApplicationContext
+            Application context for reading current state.
+
+        Returns
+        -------
+        FullRemoveObjectCommand
+            Command instance.
+        """
+        if not ctx.collection.check_object_exists(change.obj_id):
+            raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
+        subtree = ctx.collection.get_subtree(change.obj_id)
+        metadata_commands: list[Command] = []
+        for obj_id in subtree:
+            rm_meta_cmd = RemoveMetadataCommand.from_change(RemoveMetadata(obj_id), ctx)
+            metadata_commands.append(rm_meta_cmd)
+        rm_obj_cmd = RemoveObjectCommand.from_change(RemoveObject(change.obj_id), ctx)
+        return cls(commands=[*metadata_commands, rm_obj_cmd])

@@ -12,7 +12,7 @@ from typing import Literal, Union, Optional
 from numpy.typing import NDArray
 import numpy as np
 
-from core.metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
+from core.metadata import Metadata
 
 
 # Type alias for parameter field names; maps to RuntimeParameter attributes.
@@ -171,39 +171,15 @@ class ReplaceBackgroundModel:
 
 
 @dataclass(frozen=True)
-class SetSpectrumMetadata:
+class SetMetadata:
     """
-    Change to set metadata for a spectrum.
+    Change to set metadata for an object.
 
-    Maps to MetadataService.set_spectrum_metadata().
-    """
-
-    spectrum_id: str
-    metadata: SpectrumMetadata
-
-
-@dataclass(frozen=True)
-class SetRegionMetadata:
-    """
-    Change to set metadata for a region.
-
-    Maps to MetadataService.set_region_metadata().
+    Maps to MetadataService.set_metadata().
     """
 
-    region_id: str
-    metadata: RegionMetadata
-
-
-@dataclass(frozen=True)
-class SetPeakMetadata:
-    """
-    Change to set metadata for a peak.
-
-    Maps to MetadataService.set_peak_metadata().
-    """
-
-    peak_id: str
-    metadata: PeakMetadata
+    obj_id: str
+    metadata: Metadata
 
 
 @dataclass(frozen=True)
@@ -231,8 +207,6 @@ BaseChange = Union[
     ReplacePeakModel,
     ReplaceBackgroundModel,
     UpdateMultipleParameterValues,
-    SetSpectrumMetadata,
-    SetRegionMetadata,
-    SetPeakMetadata,
+    SetMetadata,
     CompositeChange,
 ]
