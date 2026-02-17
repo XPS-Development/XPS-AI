@@ -280,7 +280,10 @@ class SetSpectrumMetadataCommand(SetMetadataCommand):
     def from_change(
         cls, change: SetSpectrumMetadata, ctx: ApplicationContext
     ) -> "SetSpectrumMetadataCommand":
-        old_metadata = ctx.metadata.get_spectrum_metadata(change.spectrum_id)
+        if ctx.collection.check_object_exists(change.spectrum_id):
+            old_metadata = ctx.metadata.get_spectrum_metadata(change.spectrum_id)
+        else:
+            old_metadata = SpectrumMetadata(name="", group="", file="")
         return cls(
             obj_id=change.spectrum_id,
             metadata=change.metadata,
