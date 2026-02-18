@@ -766,11 +766,6 @@ class MetadataService(BaseCoreService):
     - Peak: element_type
     """
 
-    _DEFAULT_SPECTRUM = SpectrumMetadata(name="", group="", file="")
-    _DEFAULT_REGION = RegionMetadata()
-    _DEFAULT_PEAK = PeakMetadata(element_type="")
-    _DEFAULT_BACKGROUND = BackgroundMetadata()
-
     def __init__(self, collection: CoreCollection):
         super().__init__(collection)
         self._metadata: dict[str, Metadata] = {}
@@ -830,7 +825,7 @@ class MetadataService(BaseCoreService):
         self._metadata.pop(obj_id, None)
 
     def find_objects(
-        self, md_field: str, md_value: str, match_exact: bool = False, tp: type[CoreObject] = CoreObject
+        self, md_field: str, md_value: str, match_exact: bool = False, tp: type[Metadata] | None = None
     ) -> tuple[str, ...]:
         """
         Return object IDs whose metadata matches the given metadata field and value.
@@ -843,23 +838,36 @@ class MetadataService(BaseCoreService):
             Metadata value to match.
         match_exact : bool, optional
             If True, match exact value. Otherwise, match substring.
-        tp : type[CoreObject], optional
-            Type of the objects to find.
+        tp : type[Metadata], optional
+            Type of the metadata to filter by (e.g., SpectrumMetadata, PeakMetadata).
+            If None, matches all metadata types.
 
         Returns
         -------
         tuple[str, ...]
             Object IDs with matching metadata.
         """
-        if match_exact:
-            return tuple(
-                obj_id
-                for obj_id, obj_metadata in self._metadata.items()
-                if obj_metadata[md_field] == md_value and isinstance(obj_metadata, tp)
-            )
-        else:
-            return tuple(
-                obj_id
-                for obj_id, obj_metadata in self._metadata.items()
-                if md_value.lower() in obj_metadata[md_field].lower() and isinstance(obj_metadata, tp)
-            )
+        results = []
+        for obj_id, obj_metadata in self._metadata.items():
+            # Filter by metadata type if specified
+            if tp is not None and not isinstance(obj_metadata, tp):
+                continue
+
+            # Get field value using getattr
+            try:
+                field_value = getattr(obj_metadata, md_field)
+            except AttributeError:
+                continue
+
+            # Convert to string for comparison
+            field_value_str = str(field_value)
+
+            # Match based on exact or fuzzy
+            if match_exact:
+                if field_value_str == md_value:
+                    results.append(obj_id)
+            else:
+                if md_value.lower() in field_value_str.lower():
+                    results.append(obj_id)
+
+        return tuple(results)
