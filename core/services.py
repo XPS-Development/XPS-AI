@@ -8,7 +8,7 @@ from core.math_models import (
 
 from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter, CoreObject
 from .collection import CoreCollection
-from .metadata import Metadata, SpectrumMetadata, RegionMetadata, PeakMetadata, BackgroundMetadata
+from .metadata import Metadata
 
 from typing import Optional, TypeVar
 from numpy.typing import NDArray
