@@ -8,7 +8,7 @@ for each spectrum in the file.
 from uuid import uuid4
 from pathlib import Path
 
-from tools.import_spectrum import parse_spectrum_file
+from tools.parsers import parse_spectrum_file
 
 from .command.changes import CompositeChange, CreateSpectrum, SetMetadata
 

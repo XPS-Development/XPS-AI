@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.import_spectrum import parse_spectrum_file
+from tools.parsers import parse_spectrum_file
 
 
 def test_parse_spectrum_file_txt_dispatches_to_casa():
