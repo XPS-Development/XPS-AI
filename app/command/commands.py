@@ -8,10 +8,9 @@ They encapsulate "how" to apply and undo changes against the core data model.
 from dataclasses import asdict
 from abc import ABC, abstractmethod
 
-from core.services import SpectrumService, RegionService, ComponentService
+from core.services import SpectrumService, RegionService, ComponentService, CoreContext
 from core.metadata import Metadata
 from core.objects import Peak, Background, CoreObject
-from .utils import ApplicationContext
 from .changes import (
     BaseChange,
     UpdateParameter,
@@ -37,11 +36,11 @@ class Command(ABC):
 
     @classmethod
     @abstractmethod
-    def from_change(cls, change: BaseChange, ctx: ApplicationContext) -> "Command": ...
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "Command": ...
     @abstractmethod
-    def apply(self, ctx: ApplicationContext) -> None: ...
+    def apply(self, ctx: CoreContext) -> None: ...
     @abstractmethod
-    def undo(self, ctx: ApplicationContext) -> None: ...
+    def undo(self, ctx: CoreContext) -> None: ...
 
 
 class UpdateParameterCommand(Command):
@@ -83,7 +82,7 @@ class UpdateParameterCommand(Command):
     def from_change(
         cls,
         change: UpdateParameter,
-        ctx: ApplicationContext,
+        ctx: CoreContext,
     ) -> "UpdateParameterCommand":
         """
         Create an UpdateParameterCommand from a change, initializing undo state.
@@ -92,7 +91,7 @@ class UpdateParameterCommand(Command):
         ----------
         change : UpdateParameter
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -110,10 +109,10 @@ class UpdateParameterCommand(Command):
             old_value=old_value,
         )
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         ctx.component.set_parameter(self.component_id, self.name, **{self.parameter_field: self.new_value})
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         if self._old_value is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_parameter(self.component_id, self.name, **{self.parameter_field: self._old_value})
@@ -146,7 +145,7 @@ class UpdateRegionSliceCommand(Command):
         self.old_stop = old_stop
 
     @classmethod
-    def from_change(cls, change: UpdateRegionSlice, ctx: ApplicationContext) -> "UpdateRegionSliceCommand":
+    def from_change(cls, change: UpdateRegionSlice, ctx: CoreContext) -> "UpdateRegionSliceCommand":
         """
         Create an UpdateRegionSliceCommand from a change, initializing undo state.
 
@@ -154,7 +153,7 @@ class UpdateRegionSliceCommand(Command):
         ----------
         change : UpdateRegionSlice
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -171,10 +170,10 @@ class UpdateRegionSliceCommand(Command):
             old_stop=old_slice.stop,
         )
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         ctx.region.update_slice(self.region_id, self.new_start, self.new_stop)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         ctx.region.update_slice(self.region_id, self.old_start, self.old_stop)
 
 
@@ -205,7 +204,7 @@ class UpdateMultipleParameterValuesCommand(Command):
 
     @classmethod
     def from_change(
-        cls, change: UpdateMultipleParameterValues, ctx: ApplicationContext
+        cls, change: UpdateMultipleParameterValues, ctx: CoreContext
     ) -> "UpdateMultipleParameterValuesCommand":
         """
         Create an UpdateMultipleParameterValuesCommand from a change, storing old values.
@@ -214,7 +213,7 @@ class UpdateMultipleParameterValuesCommand(Command):
         ----------
         change : UpdateMultipleParameterValues
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -229,10 +228,10 @@ class UpdateMultipleParameterValuesCommand(Command):
                 old_values[param_name] = all_params[param_name].value
         return cls(component_id=change.component_id, parameters=change.parameters, old_values=old_values)
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         ctx.component.set_values(self.component_id, self.parameters)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         if self._old_values is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_values(self.component_id, self._old_values)
@@ -257,7 +256,7 @@ class SetMetadataCommand(Command):
         self._old_metadata = old_metadata
 
     @classmethod
-    def from_change(cls, change: SetMetadata, ctx: ApplicationContext) -> "SetMetadataCommand":
+    def from_change(cls, change: SetMetadata, ctx: CoreContext) -> "SetMetadataCommand":
         """
         Create a SetMetadataCommand from a change.
 
@@ -265,7 +264,7 @@ class SetMetadataCommand(Command):
         ----------
         change : SetMetadata
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -281,10 +280,10 @@ class SetMetadataCommand(Command):
             old_metadata=old_metadata,
         )
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         ctx.metadata.set_metadata(self.obj_id, self.metadata)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         if self._old_metadata is None:
             ctx.metadata.remove_metadata(self.obj_id)
         else:
@@ -318,7 +317,7 @@ class RemoveMetadataCommand(Command):
         self._applied = False
 
     @classmethod
-    def from_change(cls, change: RemoveMetadata, ctx: ApplicationContext) -> "RemoveMetadataCommand":
+    def from_change(cls, change: RemoveMetadata, ctx: CoreContext) -> "RemoveMetadataCommand":
         """
         Create a RemoveMetadataCommand from a change, storing old metadata for undo.
 
@@ -326,7 +325,7 @@ class RemoveMetadataCommand(Command):
         ----------
         change : RemoveMetadata
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -339,10 +338,10 @@ class RemoveMetadataCommand(Command):
         old_metadata = ctx.metadata.get_metadata(change.obj_id)
         return cls(obj_id=change.obj_id, old_metadata=old_metadata)
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         ctx.metadata.remove_metadata(self.obj_id)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         if self._old_metadata is not None:
             ctx.metadata.set_metadata(self.obj_id, self._old_metadata)
 
@@ -367,7 +366,7 @@ class RemoveObjectCommand(Command):
         self.objs: list[CoreObject] | None = None
 
     @classmethod
-    def from_change(cls, change: RemoveObject, ctx: ApplicationContext) -> "RemoveObjectCommand":
+    def from_change(cls, change: RemoveObject, ctx: CoreContext) -> "RemoveObjectCommand":
         """
         Create a RemoveObjectCommand from a change.
         """
@@ -375,11 +374,11 @@ class RemoveObjectCommand(Command):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         return cls(obj_id=change.obj_id)
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         """Remove the object and all its children from the collection."""
         self.objs = ctx.collection.detach(self.obj_id)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         """Restore the object and all its children to the collection."""
         if self.objs is None:
             raise RuntimeError("Command was not applied")
@@ -405,11 +404,11 @@ class CreateObjectCommand(Command):
         """
         self.obj = self.create_obj_fn(**params)
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         """Add the object to the collection."""
         ctx.collection.attach(self.obj)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         """Remove the object from the collection."""
         if not ctx.collection.check_object_exists(self.obj.id_):
             raise RuntimeError("Command was not applied")
@@ -422,7 +421,7 @@ class CreateSpectrumCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(SpectrumService._create_spectrum_obj)
 
     @classmethod
-    def from_change(cls, change: CreateSpectrum, ctx: ApplicationContext) -> "CreateSpectrumCommand":
+    def from_change(cls, change: CreateSpectrum, ctx: CoreContext) -> "CreateSpectrumCommand":
         """
         Create a CreateSpectrumCommand from a change.
 
@@ -430,7 +429,7 @@ class CreateSpectrumCommand(CreateObjectCommand):
         ----------
         change : CreateSpectrum
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context.
 
         Returns
@@ -447,7 +446,7 @@ class CreateRegionCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(RegionService._create_region_obj)
 
     @classmethod
-    def from_change(cls, change: CreateRegion, ctx: ApplicationContext) -> "CreateRegionCommand":
+    def from_change(cls, change: CreateRegion, ctx: CoreContext) -> "CreateRegionCommand":
         """
         Create a CreateRegionCommand from a change.
 
@@ -455,7 +454,7 @@ class CreateRegionCommand(CreateObjectCommand):
         ----------
         change : CreateRegion
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context.
 
         Returns
@@ -479,7 +478,7 @@ class CreatePeakCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
-    def from_change(cls, change: CreatePeak, ctx: ApplicationContext) -> "CreatePeakCommand":
+    def from_change(cls, change: CreatePeak, ctx: CoreContext) -> "CreatePeakCommand":
         """
         Create a CreatePeakCommand from a change.
 
@@ -487,7 +486,7 @@ class CreatePeakCommand(CreateObjectCommand):
         ----------
         change : CreatePeak
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context.
 
         Returns
@@ -506,7 +505,7 @@ class CreateBackgroundCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
-    def from_change(cls, change: CreateBackground, ctx: ApplicationContext) -> "CreateBackgroundCommand":
+    def from_change(cls, change: CreateBackground, ctx: CoreContext) -> "CreateBackgroundCommand":
         """
         Create a CreateBackgroundCommand from a change.
 
@@ -514,7 +513,7 @@ class CreateBackgroundCommand(CreateObjectCommand):
         ----------
         change : CreateBackground
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context.
 
         Returns
@@ -531,7 +530,7 @@ class CompositeCommand(Command):
     """Command that executes multiple commands as a batch."""
 
     @classmethod
-    def from_change(cls, change: BaseChange, ctx: ApplicationContext) -> "CompositeCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CompositeCommand":
         """Not used; CompositeCommand is built from CompositeChange by the registry."""
         raise NotImplementedError("CompositeCommand is built from CompositeChange by CommandRegistry")
 
@@ -546,12 +545,12 @@ class CompositeCommand(Command):
         """
         self.commands = commands
 
-    def apply(self, ctx: ApplicationContext) -> None:
+    def apply(self, ctx: CoreContext) -> None:
         """Apply all commands in order."""
         for cmd in self.commands:
             cmd.apply(ctx)
 
-    def undo(self, ctx: ApplicationContext) -> None:
+    def undo(self, ctx: CoreContext) -> None:
         """Undo all commands in reverse order."""
         for cmd in reversed(self.commands):
             cmd.undo(ctx)
@@ -561,7 +560,7 @@ class ReplacePeakModelCommand(CompositeCommand):
     """Command that replaces a peak's model; stores old peak for undo."""
 
     @staticmethod
-    def _parse_change(change: ReplacePeakModel, ctx: ApplicationContext) -> tuple[RemoveObject, CreatePeak]:
+    def _parse_change(change: ReplacePeakModel, ctx: CoreContext) -> tuple[RemoveObject, CreatePeak]:
         """
         Adapter for ReplacePeakModel change to RemoveObject and CreatePeak.
         """
@@ -575,7 +574,7 @@ class ReplacePeakModelCommand(CompositeCommand):
         return rm_ch, create_ch
 
     @classmethod
-    def from_change(cls, change: ReplacePeakModel, ctx: ApplicationContext) -> "CompositeCommand":
+    def from_change(cls, change: ReplacePeakModel, ctx: CoreContext) -> "CompositeCommand":
         """
         Create a ReplacePeakModelCommand from a change, storing old peak.
 
@@ -583,7 +582,7 @@ class ReplacePeakModelCommand(CompositeCommand):
         ----------
         change : ReplacePeakModel
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -602,7 +601,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
 
     @staticmethod
     def _parse_change(
-        change: ReplaceBackgroundModel, ctx: ApplicationContext
+        change: ReplaceBackgroundModel, ctx: CoreContext
     ) -> tuple[RemoveObject | None, CreateBackground]:
         """
         Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground.
@@ -618,7 +617,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
         return rm_ch, create_ch
 
     @classmethod
-    def from_change(cls, change: ReplaceBackgroundModel, ctx: ApplicationContext) -> "CompositeCommand":
+    def from_change(cls, change: ReplaceBackgroundModel, ctx: CoreContext) -> "CompositeCommand":
         """
         Create a ReplaceBackgroundModelCommand from a change.
 
@@ -626,7 +625,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
         ----------
         change : ReplaceBackgroundModel
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns
@@ -651,7 +650,7 @@ class FullRemoveObjectCommand(CompositeCommand):
     """
 
     @classmethod
-    def from_change(cls, change: FullRemoveObject, ctx: ApplicationContext) -> "FullRemoveObjectCommand":
+    def from_change(cls, change: FullRemoveObject, ctx: CoreContext) -> "FullRemoveObjectCommand":
         """
         Create a FullRemoveObjectCommand from a change.
 
@@ -659,7 +658,7 @@ class FullRemoveObjectCommand(CompositeCommand):
         ----------
         change : FullRemoveObject
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for reading current state.
 
         Returns

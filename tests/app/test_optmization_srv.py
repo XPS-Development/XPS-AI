@@ -5,9 +5,9 @@ from app.optimization import (
     OptimizationService,
     components_to_changes,
 )
+from core.services import CoreContext
 from app.command.changes import UpdateMultipleParameterValues, CompositeChange
 from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
-from app.command.utils import ApplicationContext
 
 from tools.optimization import OptimizedComponent
 
@@ -63,7 +63,7 @@ def test_optimize_regions_changes_apply_via_command_executor(
 
     assert len(change.changes) > 0
 
-    ctx = ApplicationContext.from_collection(simple_collection)
+    ctx = CoreContext.from_collection(simple_collection)
     stack = UndoRedoStack()
     executor = CommandExecutor(ctx, stack, create_default_registry())
 

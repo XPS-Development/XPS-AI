@@ -25,9 +25,9 @@ def test_import_spectra_creates_spectrum_and_metadata_changes():
 
 def test_import_spectra_execute_via_command_executor(empty_collection):
     """import_spectra change can be executed via CommandExecutor."""
-    from app.command.utils import ApplicationContext
+    from core.services import CoreContext
 
-    ctx = ApplicationContext.from_collection(empty_collection)
+    ctx = CoreContext.from_collection(empty_collection)
     stack = UndoRedoStack()
     executor = CommandExecutor(ctx, stack, create_default_registry())
 
@@ -47,9 +47,9 @@ def test_import_spectra_execute_via_command_executor(empty_collection):
 
 def test_import_spectra_undo_removes_spectra(empty_collection):
     """Undo after import removes the created spectra."""
-    from app.command.utils import ApplicationContext
+    from core.services import CoreContext
 
-    ctx = ApplicationContext.from_collection(empty_collection)
+    ctx = CoreContext.from_collection(empty_collection)
     stack = UndoRedoStack()
     executor = CommandExecutor(ctx, stack, create_default_registry())
 
@@ -63,9 +63,9 @@ def test_import_spectra_undo_removes_spectra(empty_collection):
 
 def test_import_spectra_vamas_creates_multiple_spectra(empty_collection):
     """Import from VAMAS file creates one spectrum per block."""
-    from app.command.utils import ApplicationContext
+    from core.services import CoreContext
 
-    ctx = ApplicationContext.from_collection(empty_collection)
+    ctx = CoreContext.from_collection(empty_collection)
     stack = UndoRedoStack()
     executor = CommandExecutor(ctx, stack, create_default_registry())
 

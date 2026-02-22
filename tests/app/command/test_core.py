@@ -118,36 +118,36 @@ def test_undo_redo_stack_new_push_clears_redo():
     assert stack.can_redo is False
 
 
-def test_command_registry_build_returns_correct_command(app_context, peak_id, region_id):
+def test_command_registry_build_returns_correct_command(ctx, peak_id, region_id):
     """build returns the correct Command for each registered Change type."""
     registry = create_default_registry()
 
     up_change = UpdateParameter(peak_id, "cen", "value", 5.0)
-    cmd = registry.build(up_change, app_context)
+    cmd = registry.build(up_change, ctx)
     assert isinstance(cmd, UpdateParameterCommand)
     assert cmd.new_value == 5.0
 
     slice_change = UpdateRegionSlice(region_id, 25, 175)
-    cmd = registry.build(slice_change, app_context)
+    cmd = registry.build(slice_change, ctx)
     assert isinstance(cmd, UpdateRegionSliceCommand)
     assert cmd.new_start == 25
     assert cmd.new_stop == 175
 
     multi_change = UpdateMultipleParameterValues(peak_id, {"cen": 2.0, "amp": 10.0})
-    cmd = registry.build(multi_change, app_context)
+    cmd = registry.build(multi_change, ctx)
     assert isinstance(cmd, UpdateMultipleParameterValuesCommand)
     assert cmd.parameters == {"cen": 2.0, "amp": 10.0}
 
 
-def test_command_registry_build_unregistered_raises(app_context):
+def test_command_registry_build_unregistered_raises(ctx):
     """build with unregistered Change type raises KeyError."""
     registry = CommandRegistry()
     change = UpdateParameter("p1", "cen", "value", 1.0)
     with pytest.raises(KeyError):
-        registry.build(change, app_context)
+        registry.build(change, ctx)
 
 
-def test_command_registry_build_composite_returns_composite_command(app_context, peak_id, region_id):
+def test_command_registry_build_composite_returns_composite_command(ctx, peak_id, region_id):
     """build with CompositeChange returns CompositeCommand with sub-commands."""
     registry = create_default_registry()
     changes = [
@@ -155,7 +155,7 @@ def test_command_registry_build_composite_returns_composite_command(app_context,
         UpdateRegionSlice(region_id, 30, 170),
     ]
     composite_change = CompositeChange(changes=changes)
-    cmd = registry.build(composite_change, app_context)
+    cmd = registry.build(composite_change, ctx)
     assert isinstance(cmd, CompositeCommand)
     assert len(cmd.commands) == 2
     assert isinstance(cmd.commands[0], UpdateParameterCommand)
@@ -172,23 +172,23 @@ def test_create_default_registry_has_all_mappings():
     assert SetMetadata in registry._registry
 
 
-def test_command_executor_execute_applies_and_pushes(app_context, peak_id):
+def test_command_executor_execute_applies_and_pushes(ctx, peak_id):
     """execute builds command, applies it, and pushes to stack."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     change = UpdateParameter(peak_id, "cen", "value", 7.0)
 
     executor.execute(change)
 
     assert stack.can_undo is True
-    param = app_context.component.get_parameter(peak_id, "cen")
+    param = ctx.component.get_parameter(peak_id, "cen")
     assert param.value == 7.0
 
 
-def test_command_executor_undo_pops_undoes_pushes_redo(app_context, peak_id):
+def test_command_executor_undo_pops_undoes_pushes_redo(ctx, peak_id):
     """undo pops command, undoes it, and pushes to redo stack."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     change = UpdateParameter(peak_id, "cen", "value", 9.0)
     executor.execute(change)
     original_value = 0.0
@@ -196,22 +196,22 @@ def test_command_executor_undo_pops_undoes_pushes_redo(app_context, peak_id):
     executor.undo()
 
     assert stack.can_redo is True
-    param = app_context.component.get_parameter(peak_id, "cen")
+    param = ctx.component.get_parameter(peak_id, "cen")
     assert param.value == original_value
 
 
-def test_command_executor_undo_empty_raises(app_context):
+def test_command_executor_undo_empty_raises(ctx):
     """undo raises IndexError when nothing to undo."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     with pytest.raises(IndexError, match="Nothing to undo"):
         executor.undo()
 
 
-def test_command_executor_redo_pops_applies_pushes_undo(app_context, peak_id):
+def test_command_executor_redo_pops_applies_pushes_undo(ctx, peak_id):
     """redo pops from redo, re-applies command, and pushes to undo."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     change = UpdateParameter(peak_id, "cen", "value", 11.0)
     executor.execute(change)
     executor.undo()
@@ -219,26 +219,26 @@ def test_command_executor_redo_pops_applies_pushes_undo(app_context, peak_id):
     executor.redo()
 
     assert stack.can_undo is True
-    param = app_context.component.get_parameter(peak_id, "cen")
+    param = ctx.component.get_parameter(peak_id, "cen")
     assert param.value == 11.0
 
 
-def test_command_executor_redo_empty_raises(app_context):
+def test_command_executor_redo_empty_raises(ctx):
     """redo raises IndexError when nothing to redo."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     with pytest.raises(IndexError, match="Nothing to redo"):
         executor.redo()
 
 
-def test_command_executor_full_cycle_restores_state(app_context, peak_id):
+def test_command_executor_full_cycle_restores_state(ctx, peak_id):
     """execute -> undo -> redo restores state."""
     stack = UndoRedoStack()
-    executor = CommandExecutor(app_context, stack)
+    executor = CommandExecutor(ctx, stack)
     change = UpdateParameter(peak_id, "cen", "value", 13.0)
     executor.execute(change)
     executor.undo()
     executor.redo()
 
-    param = app_context.component.get_parameter(peak_id, "cen")
+    param = ctx.component.get_parameter(peak_id, "cen")
     assert param.value == 13.0

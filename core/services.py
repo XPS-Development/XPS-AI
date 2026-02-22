@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from core.math_models import (
     NormalizationContext,
     ModelRegistry,
@@ -871,3 +872,27 @@ class MetadataService(BaseCoreService):
                     results.append(obj_id)
 
         return tuple(results)
+
+
+@dataclass(frozen=True)
+class CoreContext:
+    """Read and write access to core services."""
+
+    collection: CollectionQueryService
+    spectrum: SpectrumService
+    region: RegionService
+    data: DataQueryService
+    component: ComponentService
+    metadata: MetadataService
+
+    @classmethod
+    def from_collection(cls, collection: CoreCollection) -> "CoreContext":
+        """Build context from a core collection."""
+        return cls(
+            collection=CollectionQueryService(collection),
+            spectrum=SpectrumService(collection),
+            region=RegionService(collection),
+            data=DataQueryService(collection),
+            component=ComponentService(collection),
+            metadata=MetadataService(collection),
+        )

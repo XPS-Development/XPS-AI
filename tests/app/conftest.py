@@ -6,6 +6,7 @@ from core.services import (
     RegionService,
     DataQueryService,
     ComponentService,
+    CoreContext,
 )
 from app.dto import DTOService
 from app.evaluation import EvaluationService
@@ -44,3 +45,9 @@ def dto_service(simple_collection):
 @pytest.fixture
 def evaluation_service():
     return EvaluationService()
+
+
+@pytest.fixture
+def ctx(simple_collection):
+    """Application context built from simple_collection for command execution."""
+    return CoreContext.from_collection(simple_collection)

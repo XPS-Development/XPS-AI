@@ -5,6 +5,7 @@ Command implementations and CommandRegistry live here to avoid circular imports
 with .changes.
 """
 
+from core.services import CoreContext
 from .changes import (
     BaseChange,
     UpdateParameter,
@@ -39,7 +40,6 @@ from .commands import (
     SetMetadataCommand,
     CompositeCommand,
 )
-from .utils import ApplicationContext
 
 
 class UndoRedoStack:
@@ -152,7 +152,7 @@ class CommandRegistry:
         """
         self._registry[change_type] = command_type
 
-    def build(self, change: BaseChange, ctx: ApplicationContext) -> Command:
+    def build(self, change: BaseChange, ctx: CoreContext) -> Command:
         """
         Build a Command from a Change using the registered mapping.
 
@@ -160,7 +160,7 @@ class CommandRegistry:
         ----------
         change : BaseChange
             The change to convert to a command.
-        ctx : ApplicationContext
+        ctx : CoreContext
             Application context for command initialization.
 
         Returns
@@ -218,7 +218,7 @@ class CommandExecutor:
 
     def __init__(
         self,
-        ctx: ApplicationContext,
+        ctx: CoreContext,
         stack: UndoRedoStack,
         registry: CommandRegistry | None = None,
     ) -> None:
