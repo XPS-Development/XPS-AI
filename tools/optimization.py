@@ -46,6 +46,7 @@ class OptimizedComponent:
 
     component_id: str
     parameters: dict[str, float]
+    normalized: bool
 
 
 class OptimizationPlanner:
@@ -221,7 +222,13 @@ class LmfitOptimizer:
             for pname in cmp.parameters:
                 opt_pname = f"{cmp.id_}_{pname}"
                 params[pname] = result.params[opt_pname].value
-            output.append(OptimizedComponent(component_id=cmp.id_, parameters=params))
+            output.append(
+                OptimizedComponent(
+                    component_id=cmp.id_,
+                    parameters=params,
+                    normalized=cmp.normalized,
+                )
+            )
         return tuple(output)
 
     def optimize(

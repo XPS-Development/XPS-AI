@@ -39,6 +39,7 @@ def components_to_changes(
             UpdateMultipleParameterValues(
                 component_id=c.component_id,
                 parameters=c.parameters,
+                normalized=c.normalized,
             )
             for c in components
         ]
