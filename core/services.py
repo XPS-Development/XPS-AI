@@ -785,9 +785,7 @@ class ComponentService(BaseCoreService):
 
         component.set_param(param, **kwargs)
 
-    def set_values(
-        self, component_id: str, parameters: dict[str, str | bool | float], normalized: bool = False
-    ) -> None:
+    def set_values(self, component_id: str, parameters: dict[str, float], normalized: bool = False) -> None:
         """
         Update values of multiple parameters at once.
 
@@ -795,7 +793,7 @@ class ComponentService(BaseCoreService):
         ----------
         component_id : str
             Identifier of the component.
-        parameters : dict[str, str | bool | float]
+        parameters : dict[str, float]
             Mapping of parameter names to new values.
         normalized : bool, default=False
             Whether to update parameter values from normalized values.

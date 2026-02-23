@@ -31,6 +31,7 @@ class UpdateParameter:
     name: str
     parameter_field: ParameterField
     new_value: str | bool | float
+    normalized: bool = False
 
 
 @dataclass(frozen=True)
@@ -82,7 +83,8 @@ class UpdateMultipleParameterValues:
     """
 
     component_id: str
-    parameters: dict[str, float]
+    parameters: dict[str, str | bool | float]
+    normalized: bool = False
 
 
 @dataclass(frozen=True)

@@ -55,6 +55,7 @@ class UpdateParameterCommand(Command):
         parameter_field: str,
         new_value: str | bool | float,
         old_value: str | bool | float | None = None,
+        normalized: bool = False,
     ) -> None:
         """
         Initialize an update parameter command.
@@ -71,12 +72,15 @@ class UpdateParameterCommand(Command):
             New value for the parameter field.
         old_value : str | bool | float | None, optional
             Old value for undo (typically set by from_change).
+        normalized : bool, default=False
+            Whether the new value is normalized.
         """
         self.component_id = component_id
         self.name = name
         self.parameter_field = parameter_field
         self.new_value = new_value
         self._old_value = old_value
+        self.normalized = normalized
 
     @classmethod
     def from_change(
@@ -99,23 +103,34 @@ class UpdateParameterCommand(Command):
         UpdateParameterCommand
             Command instance with old value initialized for undo.
         """
-        param = ctx.component.get_parameter(change.component_id, change.name)
-        old_value = getattr(param, change.parameter_field)
+        param = ctx.component.get_parameter(change.component_id, change.name, change.normalized)
+        old_value = param[change.parameter_field]
         return cls(
             component_id=change.component_id,
             name=change.name,
             parameter_field=change.parameter_field,
             new_value=change.new_value,
             old_value=old_value,
+            normalized=change.normalized,
         )
 
     def apply(self, ctx: CoreContext) -> None:
-        ctx.component.set_parameter(self.component_id, self.name, **{self.parameter_field: self.new_value})
+        ctx.component.set_parameter(
+            self.component_id,
+            self.name,
+            normalized=self.normalized,
+            **{self.parameter_field: self.new_value},
+        )
 
     def undo(self, ctx: CoreContext) -> None:
         if self._old_value is None:
             raise RuntimeError("Command was not applied")
-        ctx.component.set_parameter(self.component_id, self.name, **{self.parameter_field: self._old_value})
+        ctx.component.set_parameter(
+            self.component_id,
+            self.name,
+            normalized=self.normalized,
+            **{self.parameter_field: self._old_value},
+        )
 
 
 class UpdateRegionSliceCommand(Command):
@@ -185,6 +200,7 @@ class UpdateMultipleParameterValuesCommand(Command):
         component_id: str,
         parameters: dict[str, float],
         old_values: dict[str, float] | None = None,
+        normalized: bool = False,
     ) -> None:
         """
         Initialize an update multiple parameter values command.
@@ -197,10 +213,13 @@ class UpdateMultipleParameterValuesCommand(Command):
             New parameter values.
         old_values : dict[str, float] | None, optional
             Old parameter values for undo (typically set by from_change).
+        normalized : bool, default=False
+            Whether the new values are normalized.
         """
         self.component_id = component_id
         self.parameters = parameters
         self._old_values = old_values
+        self.normalized = normalized
 
     @classmethod
     def from_change(
@@ -221,20 +240,22 @@ class UpdateMultipleParameterValuesCommand(Command):
         UpdateMultipleParameterValuesCommand
             Command instance with old values stored for undo.
         """
-        old_values = {}
-        all_params = ctx.component.get_parameters(change.component_id)
-        for param_name in change.parameters:
-            if param_name in all_params:
-                old_values[param_name] = all_params[param_name].value
-        return cls(component_id=change.component_id, parameters=change.parameters, old_values=old_values)
+        all_params = ctx.component.get_parameters(change.component_id, normalized=change.normalized)
+        old_values = {param_name: all_params[param_name]["value"] for param_name in change.parameters.keys()}
+        return cls(
+            component_id=change.component_id,
+            parameters=change.parameters,
+            old_values=old_values,
+            normalized=change.normalized,
+        )
 
     def apply(self, ctx: CoreContext) -> None:
-        ctx.component.set_values(self.component_id, self.parameters)
+        ctx.component.set_values(self.component_id, self.parameters, normalized=self.normalized)
 
     def undo(self, ctx: CoreContext) -> None:
         if self._old_values is None:
             raise RuntimeError("Command was not applied")
-        ctx.component.set_values(self.component_id, self._old_values)
+        ctx.component.set_values(self.component_id, self._old_values, normalized=self.normalized)
 
 
 class SetMetadataCommand(Command):
