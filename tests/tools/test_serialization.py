@@ -3,8 +3,6 @@ Tests for collection serialization and deserialization.
 """
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 import numpy as np
@@ -98,9 +96,7 @@ def test_serialize_deserialize_with_metadata(simple_collection):
     # Deserialize with metadata service
     restored_collection = CoreCollection()
     restored_metadata_service = MetadataService(restored_collection)
-    serializer.deserialize(
-        data, collection=restored_collection, metadata_service=restored_metadata_service
-    )
+    serializer.deserialize(data, collection=restored_collection, metadata_service=restored_metadata_service)
 
     # Verify metadata was restored
     restored_spectrum_metadata = restored_metadata_service.get_metadata(spectrum_id)
@@ -404,9 +400,7 @@ def test_json_serialization_inf_nan_handling():
 
     from core.math_models import PseudoVoigtPeakModel
 
-    peak = Peak(
-        model=PseudoVoigtPeakModel(), region_id="r1", component_id="p1", amp=1, cen=5, sig=1, frac=0
-    )
+    peak = Peak(model=PseudoVoigtPeakModel(), region_id="r1", component_id="p1", amp=1, cen=5, sig=1, frac=0)
     # Set parameter with inf bounds
     param = peak.get_param("amp")
     param.set(lower=-np.inf, upper=np.inf)
@@ -421,9 +415,7 @@ def test_json_serialization_inf_nan_handling():
     restored_collection = serializer.deserialize(data_restored)
 
     # Verify parameter bounds are restored correctly
-    restored_peak = next(
-        obj for obj in restored_collection.objects_index.values() if isinstance(obj, Peak)
-    )
+    restored_peak = next(obj for obj in restored_collection.objects_index.values() if isinstance(obj, Peak))
     amp_param = restored_peak.get_param("amp")
     assert amp_param.lower == -np.inf
     assert amp_param.upper == np.inf

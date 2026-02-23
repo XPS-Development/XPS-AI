@@ -5,8 +5,9 @@ Uses tools.optimization for lmfit-based fitting. Caller provides DTOs;
 service returns BaseChange instances for CommandExecutor.
 """
 
-from .dto import RegionDTO, ComponentDTO
-from .evaluation import EvaluationService
+from tools.dto import RegionDTO, ComponentDTO
+from tools.evaluation import EvaluationService
+
 from .command.changes import UpdateMultipleParameterValues, CompositeChange
 
 from tools.optimization import (

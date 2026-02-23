@@ -5,8 +5,8 @@ Tests for tools.optimization: OptimizationPlanner, LmfitOptimizer, optimize().
 import numpy as np
 import pytest
 
-from app.dto import DTOService, ParameterDTO, ComponentDTO
-from app.evaluation import EvaluationService
+from tools.dto import ParameterDTO, ComponentDTO
+from tools.evaluation import EvaluationService
 from core.math_models import PseudoVoigtPeakModel
 
 from tools.optimization import (
@@ -16,11 +16,6 @@ from tools.optimization import (
     OptimizedComponent,
     optimize,
 )
-
-
-@pytest.fixture
-def dto_service(simple_collection):
-    return DTOService(simple_collection)
 
 
 @pytest.fixture
@@ -109,9 +104,7 @@ class TestOptimizationPlanner:
         y = np.zeros_like(x)
 
         cmp1 = _make_component("p1", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0})
-        cmp2 = _make_component(
-            "p2", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0}, amp_expr="2 * p1"
-        )
+        cmp2 = _make_component("p2", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0}, amp_expr="2 * p1")
 
         ctx = OptimizationContext("r1", "s1", False, x, y, (cmp1, cmp2))
 

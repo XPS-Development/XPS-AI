@@ -8,13 +8,18 @@ from app.optimization import (
 from core.services import CoreContext
 from app.command.changes import UpdateMultipleParameterValues, CompositeChange
 from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
-
+from tools.dto import DTOService
 from tools.optimization import OptimizedComponent
 
 
 @pytest.fixture
 def srv():
     return OptimizationService()
+
+
+@pytest.fixture
+def dto_service(simple_collection):
+    return DTOService(simple_collection)
 
 
 def test_components_to_changes():

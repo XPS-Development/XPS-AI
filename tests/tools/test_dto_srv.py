@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 
-from app.dto import DTOService, ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
+from tools.dto import DTOService, ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
 
 
 @pytest.fixture
