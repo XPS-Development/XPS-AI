@@ -53,48 +53,6 @@ def test_normalized_component_differs_from_raw(srv, peak_id):
     assert raw.parameters["amp"].value != norm.parameters["amp"].value
 
 
-# def test_apply_component_values_only_updates_values(srv, peak_id):
-#     dto = srv.get_component(peak_id)
-#     new_param = dto.parameters["cen"]
-#     new_param = ParameterDTO(
-#         name=new_param.name,
-#         value=10.0,
-#         lower=new_param.lower,
-#         upper=new_param.upper,
-#         vary=new_param.vary,
-#         expr=new_param.expr,
-#     )
-
-#     new_dto = ComponentDTO(**{**dto.__dict__, "parameters": {"cen": new_param}})
-
-#     srv.apply_component(new_dto, values_only=True)
-
-#     param = srv.comp_srv.get_parameter(peak_id, "cen")
-#     assert param.value == 10.0
-
-
-# def test_apply_normalized_component_roundtrip(srv, peak_id):
-#     raw_init = srv.get_component(peak_id, normalize=False)
-#     dto_norm = srv.get_component(peak_id, normalize=True)
-
-#     p = dto_norm.parameters["amp"]
-#     updated = ParameterDTO(
-#         name=p.name,
-#         value=p.value + 1.0,
-#         lower=p.lower,
-#         upper=p.upper,
-#         vary=p.vary,
-#         expr=p.expr,
-#     )
-
-#     dto_norm2 = ComponentDTO(**{**dto_norm.__dict__, "parameters": {"amp": updated}})
-
-#     srv.apply_component(dto_norm2)
-
-#     raw = srv.get_component(peak_id, normalize=False)
-#     assert raw.parameters["amp"].value != raw_init.parameters["amp"].value
-
-
 def test_get_region_returns_region_dto(srv, region_id):
     dto = srv.get_region(region_id)
 

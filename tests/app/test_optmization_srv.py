@@ -20,8 +20,8 @@ def srv():
 def test_components_to_changes():
     """components_to_changes produces UpdateMultipleParameterValues from OptimizedComponent."""
     components = [
-        OptimizedComponent(component_id="p1", parameters={"amp": 1.0, "cen": 5.0}),
-        OptimizedComponent(component_id="b1", parameters={"const": 2.0}),
+        OptimizedComponent(component_id="p1", parameters={"amp": 1.0, "cen": 5.0}, normalized=False),
+        OptimizedComponent(component_id="b1", parameters={"const": 2.0}, normalized=False),
     ]
     result = components_to_changes(components)
 
@@ -70,7 +70,7 @@ def test_optimize_regions_changes_apply_via_command_executor(
     executor.execute(change)
 
     comp_srv = ctx.component
-    params = comp_srv.get_parameters(peak_id)
+    params = comp_srv.get_parameters(peak_id, normalized=True)
     assert len(params) > 0
     for p in params.values():
-        assert np.isfinite(p.value)
+        assert np.isfinite(p["value"])

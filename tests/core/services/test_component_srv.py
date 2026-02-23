@@ -1,6 +1,6 @@
 import pytest
 
-from core.objects import Peak, Background, RuntimeParameter
+from core.objects import Peak, Background, Spectrum, Region
 from core.math_models import ModelRegistry
 from core.services import ComponentService
 
@@ -81,7 +81,7 @@ def test_detach(srv, region_id):
     assert peak_id not in srv.collection.objects_index
 
 
-def test_get_parameter_returns_runtime_parameter(srv, region_id):
+def test_get_parameter_returns_parameter_dict(srv, region_id):
     peak_id = srv.create_peak(
         region_id,
         "pseudo-voigt",
@@ -90,8 +90,11 @@ def test_get_parameter_returns_runtime_parameter(srv, region_id):
 
     param = srv.get_parameter(peak_id, "cen")
 
-    assert isinstance(param, RuntimeParameter)
-    assert param.value == 5.0
+    assert isinstance(param, dict)
+    assert param["value"] == 5.0
+    assert "lower" in param
+    assert "upper" in param
+    assert "vary" in param
 
 
 def test_get_parameters_returns_mapping(srv, region_id):
@@ -100,7 +103,7 @@ def test_get_parameters_returns_mapping(srv, region_id):
     params = srv.get_parameters(peak_id)
 
     assert isinstance(params, dict)
-    assert all(isinstance(p, RuntimeParameter) for p in params.values())
+    assert all(isinstance(p, dict) and "value" in p for p in params.values())
 
 
 def test_set_parameter_updates_value(srv, region_id):
@@ -113,7 +116,7 @@ def test_set_parameter_updates_value(srv, region_id):
     srv.set_parameter(peak_id, "cen", value=2.5)
 
     param = srv.get_parameter(peak_id, "cen")
-    assert param.value == 2.5
+    assert param["value"] == 2.5
 
 
 def test_set_parameter_updates_bounds(srv, region_id):
@@ -122,8 +125,8 @@ def test_set_parameter_updates_bounds(srv, region_id):
     srv.set_parameter(peak_id, "cen", lower=0.0, upper=10.0)
 
     p = srv.get_parameter(peak_id, "cen")
-    assert p.lower == 0.0
-    assert p.upper == 10.0
+    assert p["lower"] == 0.0
+    assert p["upper"] == 10.0
 
 
 def test_set_values_updates_multiple_parameters(srv, region_id):
@@ -140,8 +143,102 @@ def test_set_values_updates_multiple_parameters(srv, region_id):
 
     params = srv.get_parameters(peak_id)
 
-    assert params["cen"].value == 2.0
-    assert params["amp"].value == 10.0
+    assert params["cen"]["value"] == 2.0
+    assert params["amp"]["value"] == 10.0
+
+
+def _norm_ctx(srv, region_id):
+    """Get normalization context for the spectrum that owns the region."""
+    region = srv._get_typed(region_id, Region)
+    spectrum = srv._get_typed(region.parent_id, Spectrum)
+    return spectrum.norm_ctx
+
+
+def test_get_parameter_normalized_returns_normalized_value_for_amp(srv, region_id):
+    """For pseudo-voigt, amp is in normalization_target_parameters and uses scale only."""
+    peak_id = srv.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 10.0, "cen": 1.0},
+    )
+    ctx = _norm_ctx(srv, region_id)
+
+    raw = srv.get_parameter(peak_id, "amp", normalized=False)
+    norm = srv.get_parameter(peak_id, "amp", normalized=True)
+
+    assert raw["value"] == 10.0
+    expected_norm = 10.0 / ctx.scale  # PseudoVoigtPeakModel uses use_offset=False, use_scale=True
+    assert norm["value"] == pytest.approx(expected_norm)
+
+
+def test_get_parameter_normalized_leaves_non_target_unchanged(srv, region_id):
+    """Parameters not in normalization_target_parameters are unchanged when normalized=True."""
+    peak_id = srv.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"cen": 5.0},
+    )
+
+    raw = srv.get_parameter(peak_id, "cen", normalized=False)
+    norm = srv.get_parameter(peak_id, "cen", normalized=True)
+
+    assert raw["value"] == norm["value"] == 5.0
+
+
+def test_get_parameters_normalized_applies_to_target_params_only(srv, region_id):
+    peak_id = srv.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 4.0, "cen": 2.0},
+    )
+    ctx = _norm_ctx(srv, region_id)
+
+    raw = srv.get_parameters(peak_id, normalized=False)
+    norm = srv.get_parameters(peak_id, normalized=True)
+
+    assert raw["amp"]["value"] == 4.0
+    assert norm["amp"]["value"] == pytest.approx(4.0 / ctx.scale)
+    assert raw["cen"]["value"] == norm["cen"]["value"] == 2.0
+
+
+def test_set_parameter_normalized_denormalizes_value(srv, region_id):
+    peak_id = srv.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 1.0},
+    )
+    ctx = _norm_ctx(srv, region_id)
+    norm_value = 0.5  # normalized amp
+
+    srv.set_parameter(
+        peak_id,
+        "amp",
+        value=norm_value,
+        lower=0.0,
+        upper=1.0,
+        normalized=True,
+    )
+
+    raw = srv.get_parameter(peak_id, "amp", normalized=False)
+    expected_raw = norm_value * ctx.scale
+    assert raw["value"] == pytest.approx(expected_raw)
+
+
+def test_set_values_normalized_denormalizes_values(srv, region_id):
+    peak_id = srv.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 1.0, "cen": 0.0},
+    )
+    ctx = _norm_ctx(srv, region_id)
+
+    srv.set_values(peak_id, {"amp": 0.5}, normalized=True)
+
+    raw_amp = srv.get_parameter(peak_id, "amp", normalized=False)
+    assert raw_amp["value"] == pytest.approx(0.5 * ctx.scale)
+    # cen unchanged
+    raw_cen = srv.get_parameter(peak_id, "cen", normalized=False)
+    assert raw_cen["value"] == 0.0
 
 
 def test_get_model_returns_model_instance(srv, region_id):

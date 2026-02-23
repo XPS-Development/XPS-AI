@@ -47,7 +47,7 @@ def test_update_parameter_command_apply_updates_parameter(ctx, peak_id):
     cmd = UpdateParameterCommand.from_change(change, ctx)
     cmd.apply(ctx)
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 5.0
+    assert param["value"] == 5.0
 
 
 def test_update_parameter_command_undo_restores_old_value(ctx, peak_id):
@@ -57,7 +57,7 @@ def test_update_parameter_command_undo_restores_old_value(ctx, peak_id):
     cmd.apply(ctx)
     cmd.undo(ctx)
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 0.0
+    assert param["value"] == 0.0
 
 
 def test_update_parameter_command_undo_without_apply_raises(ctx, peak_id):
@@ -68,6 +68,7 @@ def test_update_parameter_command_undo_without_apply_raises(ctx, peak_id):
         parameter_field="value",
         new_value=5.0,
         old_value=None,
+        normalized=False,
     )
     with pytest.raises(RuntimeError, match="Command was not applied"):
         cmd.undo(ctx)
@@ -100,17 +101,17 @@ def test_update_region_slice_command_apply_undo_roundtrip(ctx, region_id):
 
 def test_update_multiple_parameter_values_command_roundtrip(ctx, peak_id):
     """from_change captures old values; apply/undo roundtrip."""
-    change = UpdateMultipleParameterValues(peak_id, {"cen": 2.0, "amp": 10.0})
+    change = UpdateMultipleParameterValues(peak_id, {"cen": 2.0, "amp": 10.0}, normalized=False)
     cmd = UpdateMultipleParameterValuesCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    params = ctx.component.get_parameters(peak_id)
-    assert params["cen"].value == 2.0
-    assert params["amp"].value == 10.0
+    params = ctx.component.get_parameters(peak_id, normalized=False)
+    assert params["cen"]["value"] == 2.0
+    assert params["amp"]["value"] == 10.0
 
     cmd.undo(ctx)
     params = ctx.component.get_parameters(peak_id)
-    assert params["cen"].value == 0.0
-    assert params["amp"].value == 1.0
+    assert params["cen"]["value"] == 0.0
+    assert params["amp"]["value"] == 1.0
 
 
 def test_remove_object_command_from_change_nonexistent_raises(ctx):
@@ -221,7 +222,7 @@ def test_composite_command_apply_runs_in_order(ctx, peak_id, region_id):
     composite.apply(ctx)
 
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 3.0
+    assert param["value"] == 3.0
     sl = ctx.region.get_slice(region_id)
     assert sl.start == 30
     assert sl.stop == 170
@@ -236,7 +237,7 @@ def test_composite_command_undo_runs_reverse_order(ctx, peak_id, region_id):
     composite.undo(ctx)
 
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 0.0
+    assert param["value"] == 0.0
     sl = ctx.region.get_slice(region_id)
     assert sl.start == 20
     assert sl.stop == 181
@@ -252,12 +253,12 @@ def test_replace_peak_model_command_roundtrip(ctx, peak_id):
     cmd = ReplacePeakModelCommand.from_change(change, ctx)
     cmd.apply(ctx)
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 2.0
+    assert param["value"] == 2.0
 
     cmd.undo(ctx)
     params = ctx.component.get_parameters(peak_id)
-    assert params["cen"].value == 0.0
-    assert params["amp"].value == 1.0
+    assert params["cen"]["value"] == 0.0
+    assert params["amp"]["value"] == 1.0
 
 
 def test_replace_background_model_command_roundtrip(ctx, region_id):
@@ -272,14 +273,14 @@ def test_replace_background_model_command_roundtrip(ctx, region_id):
     bg_id = ctx.collection.get_background(region_id)
     assert bg_id is not None
     params = ctx.component.get_parameters(bg_id)
-    assert params["i1"].value == 0.2
-    assert params["i2"].value == 1.0
+    assert params["i1"]["value"] == 0.2
+    assert params["i2"]["value"] == 1.0
 
     cmd.undo(ctx)
     bg_id = ctx.collection.get_background(region_id)
     assert bg_id is not None
     params = ctx.component.get_parameters(bg_id)
-    assert params["const"].value == 1.0
+    assert params["const"]["value"] == 1.0
 
 
 def test_set_metadata_command_from_change_captures_old(ctx, spectrum_id):

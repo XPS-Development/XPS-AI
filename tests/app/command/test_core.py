@@ -182,7 +182,7 @@ def test_command_executor_execute_applies_and_pushes(ctx, peak_id):
 
     assert stack.can_undo is True
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 7.0
+    assert param["value"] == 7.0
 
 
 def test_command_executor_undo_pops_undoes_pushes_redo(ctx, peak_id):
@@ -197,7 +197,7 @@ def test_command_executor_undo_pops_undoes_pushes_redo(ctx, peak_id):
 
     assert stack.can_redo is True
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == original_value
+    assert param["value"] == original_value
 
 
 def test_command_executor_undo_empty_raises(ctx):
@@ -220,7 +220,7 @@ def test_command_executor_redo_pops_applies_pushes_undo(ctx, peak_id):
 
     assert stack.can_undo is True
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 11.0
+    assert param["value"] == 11.0
 
 
 def test_command_executor_redo_empty_raises(ctx):
@@ -241,4 +241,4 @@ def test_command_executor_full_cycle_restores_state(ctx, peak_id):
     executor.redo()
 
     param = ctx.component.get_parameter(peak_id, "cen")
-    assert param.value == 13.0
+    assert param["value"] == 13.0
