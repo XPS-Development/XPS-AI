@@ -1,12 +1,10 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from core.collection import CoreCollection
 from core.services import CollectionQueryService, DataQueryService, ComponentService
-from core.math_models import BaseBackgroundModel, ParametricModelLike, NormalizationContext
-from core.types import ParameterLike
+from core.math_models import BaseBackgroundModel, ParametricModelLike
 
 from typing import Literal
-from core.math_models.base_models import NormalizationLikeFn
 from numpy.typing import NDArray
 
 
@@ -104,75 +102,6 @@ class DTOService:
         self.comp_srv = ComponentService(collection)
         self.data_srv = DataQueryService(collection)
 
-    @staticmethod
-    def _transform(
-        params: dict[str, dict[str, float | str | bool]],
-        targets: tuple[str, ...],
-        fn: NormalizationLikeFn,
-        norm_ctx: NormalizationContext,
-    ) -> dict[str, dict[str, float | str | bool]]:
-        """
-        Apply a normalization or denormalization transform to raw parameters.
-
-        Parameters
-        ----------
-        params : dict[str, dict[str, float | str | bool]]
-            Raw parameter dictionaries keyed by parameter name.
-        targets : tuple[str, ...]
-            Names of parameters subject to transformation.
-        fn : NormalizationLikeFn
-            Scalar transformation function applied to values and bounds.
-        norm_ctx : NormalizationContext
-            Normalization context providing offset and scale.
-
-        Returns
-        -------
-        dict[str, dict[str, float | str | bool]]
-            Transformed raw parameter dictionaries.
-        """
-        for name, pdict in params.items():
-            if name in targets:
-                pdict["value"] = fn(pdict["value"], norm_ctx)
-                pdict["lower"] = fn(pdict["lower"], norm_ctx)
-                pdict["upper"] = fn(pdict["upper"], norm_ctx)
-        return params
-
-    @staticmethod
-    def _params_to_raw(params: dict[str, ParameterLike]) -> dict[str, dict[str, float | str | bool]]:
-        """
-        Convert parameter-like objects into raw dictionary representations.
-
-        Parameters
-        ----------
-        params : dict[str, ParameterLike]
-            Mapping of parameter names to parameter-like objects.
-
-        Returns
-        -------
-        dict[str, dict[str, float | str | bool]]
-            Raw serializable parameter dictionaries.
-        """
-
-        return {k: asdict(v) for k, v in params.items()}
-
-    @staticmethod
-    def _raw_params_to_dtos(params: dict[str, dict[str, float | str | bool]]) -> dict[str, ParameterDTO]:
-        """
-        Convert raw parameter dictionaries into immutable ParameterDTO objects.
-
-        Parameters
-        ----------
-        params : dict[str, dict[str, float | str | bool]]
-            Raw parameter dictionaries.
-
-        Returns
-        -------
-        dict[str, ParameterDTO]
-            Immutable parameter DTOs keyed by parameter name.
-        """
-
-        return {k: ParameterDTO(**v) for k, v in params.items()}
-
     def get_component(self, component_id: str, *, normalize: bool = False):
         """
         Construct an immutable DTO projection of a component.
@@ -190,28 +119,13 @@ class DTOService:
             Immutable component projection with parameters and model metadata.
         """
 
-        core_params = self.comp_srv.get_parameters(component_id)
-        parent_id = self.query_srv.get_parent(component_id)
-        norm_ctx = self.data_srv.get_norm_ctx(region_id=parent_id)
+        core_params = self.comp_srv.get_parameters(component_id, normalized=normalize)
         model = self.comp_srv.get_model(component_id)
-
-        # get mutable inner projection
-        raw_params = self._params_to_raw(core_params)
-
-        if normalize:
-            # from denorm to norm values
-            raw_params = self._transform(
-                raw_params,
-                model.normalization_target_parameters,
-                model.normalize_value,  # from raw values to norm
-                norm_ctx,
-            )
-
-        params = self._raw_params_to_dtos(raw_params)
+        params = {k: ParameterDTO(**v) for k, v in core_params.items()}
 
         return ComponentDTO(
             id_=component_id,
-            parent_id=parent_id,
+            parent_id=self.query_srv.get_parent(component_id),
             normalized=normalize,
             parameters=params,
             model=model,
