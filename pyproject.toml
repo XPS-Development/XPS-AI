@@ -20,3 +20,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-benchmark>=5.2.3",
 ]
+interactive = [
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+]
