@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from core.math_models import (
+from dataclasses import dataclass, asdict
+from .math_models import (
     NormalizationContext,
     ModelRegistry,
     BaseBackgroundModel,
@@ -7,7 +7,7 @@ from core.math_models import (
     ParametricModelLike,
 )
 
-from .objects import Spectrum, Region, Peak, Background, Component, RuntimeParameter, CoreObject
+from .objects import Spectrum, Region, Peak, Background, Component, CoreObject
 from .collection import CoreCollection
 from .metadata import Metadata
 
@@ -594,6 +594,15 @@ class ComponentService(BaseCoreService):
 
         return obj
 
+    def _get_norm_ctx(self, component_id: str) -> NormalizationContext:
+        """
+        Retrieve the normalization context of a component.
+        """
+        component = self._get_typed(component_id, Component)
+        reg = self._get_typed(component.parent_id, Region)
+        spec = self._get_typed(reg.parent_id, Spectrum)
+        return spec.norm_ctx
+
     def create_peak(
         self,
         region_id: str,
@@ -681,7 +690,9 @@ class ComponentService(BaseCoreService):
 
         return new_bg.id_
 
-    def get_parameter(self, component_id: str, param: str) -> RuntimeParameter:
+    def get_parameter(
+        self, component_id: str, param: str, normalized: bool = False
+    ) -> dict[str, float | str | bool]:
         """
         Retrieve a runtime parameter of a component.
 
@@ -691,16 +702,32 @@ class ComponentService(BaseCoreService):
             Identifier of the component.
         param : str
             Parameter name.
+        normalized : bool, default=False
+            Whether to return normalized parameter values.
 
         Returns
         -------
-        RuntimeParameter
+        dict[str, float | str | bool]
             Requested parameter object.
         """
         component = self._get_typed(component_id, Component)
-        return component.get_param(param)
 
-    def get_parameters(self, component_id: str) -> dict[str, RuntimeParameter]:
+        param_obj = component.get_param(param)
+        param_raw = asdict(param_obj)
+
+        if normalized and param in component.model.normalization_target_parameters:
+            ctx = self._get_norm_ctx(component_id)
+            param_raw["value"] = component.model.normalize_value(param_raw["value"], ctx)
+            param_raw["lower"] = component.model.normalize_value(param_raw["lower"], ctx)
+            param_raw["upper"] = component.model.normalize_value(param_raw["upper"], ctx)
+
+        return param_raw
+
+    def get_parameters(
+        self,
+        component_id: str,
+        normalized: bool = False,
+    ) -> dict[str, dict[str, float | str | bool]]:
         """
         Retrieve all parameters of a component.
 
@@ -708,16 +735,31 @@ class ComponentService(BaseCoreService):
         ----------
         component_id : str
             Identifier of the component.
+        normalized : bool, default=False
+            Whether to return normalized parameter values.
 
         Returns
         -------
-        dict[str, RuntimeParameter]
-            Mapping of parameter names to runtime parameters.
+        dict[str, dict[str, float | str | bool]]
+            Mapping of parameter names to raw parameter dictionaries.
         """
         component = self._get_typed(component_id, Component)
-        return component.parameters
+        model = component.model
+        params = {name: asdict(param) for name, param in component.parameters.items()}
 
-    def set_parameter(self, component_id: str, param: str, **kwargs: float | str) -> None:
+        if normalized:
+            ctx = self._get_norm_ctx(component_id)
+            for name, pdict in params.items():
+                if name in model.normalization_target_parameters:
+                    pdict["value"] = model.normalize_value(pdict["value"], ctx)
+                    pdict["lower"] = model.normalize_value(pdict["lower"], ctx)
+                    pdict["upper"] = model.normalize_value(pdict["upper"], ctx)
+
+        return params
+
+    def set_parameter(
+        self, component_id: str, param: str, normalized: bool = False, **kwargs: float | str | bool
+    ) -> None:
         """
         Update attributes of a single component parameter.
 
@@ -727,13 +769,25 @@ class ComponentService(BaseCoreService):
             Identifier of the component.
         param : str
             Parameter name.
-        **kwargs
+        normalized : bool, default=False
+            Whether to update parameter values from normalized values.
+        **kwargs : float | str | bool
             Parameter attributes to update.
         """
         component = self._get_typed(component_id, Component)
+        model = component.model
+        ctx = self._get_norm_ctx(component_id)
+
+        if normalized and param in model.normalization_target_parameters:
+            kwargs["value"] = model.denormalize_value(kwargs["value"], ctx)
+            kwargs["lower"] = model.denormalize_value(kwargs["lower"], ctx)
+            kwargs["upper"] = model.denormalize_value(kwargs["upper"], ctx)
+
         component.set_param(param, **kwargs)
 
-    def set_values(self, component_id: str, parameters: dict[str, float]) -> None:
+    def set_values(
+        self, component_id: str, parameters: dict[str, str | bool | float], normalized: bool = False
+    ) -> None:
         """
         Update values of multiple parameters at once.
 
@@ -741,11 +795,17 @@ class ComponentService(BaseCoreService):
         ----------
         component_id : str
             Identifier of the component.
-        parameters : dict[str, float]
+        parameters : dict[str, str | bool | float]
             Mapping of parameter names to new values.
+        normalized : bool, default=False
+            Whether to update parameter values from normalized values.
         """
         component = self._get_typed(component_id, Component)
+        model = component.model
+        ctx = self._get_norm_ctx(component_id)
         for name, val in parameters.items():
+            if normalized and name in model.normalization_target_parameters:
+                val = model.denormalize_value(val, ctx)
             component.set_param(name, value=val)
 
     def get_model(self, component_id: str) -> ParametricModelLike:
