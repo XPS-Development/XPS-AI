@@ -21,7 +21,7 @@ from tools.optimization import (
 @pytest.fixture
 def optimization_context(dto_service, region_id):
     """Build OptimizationContext from simple_collection region (peak + constant bg)."""
-    reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalize=False)
+    reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalized=False)
     eval_svc = EvaluationService()
     y = reg_dto.y.copy()
 

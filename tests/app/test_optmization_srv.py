@@ -40,7 +40,7 @@ def test_components_to_changes():
 
 def test_build_contexts_excludes_static_backgrounds(srv, dto_service, region_id):
     """build_contexts subtracts static backgrounds and includes only optimizable components."""
-    region_reprs = [dto_service.get_region_repr(region_id, normalize=False)]
+    region_reprs = [dto_service.get_region_repr(region_id, normalized=False)]
     contexts = srv.build_contexts(region_reprs)
 
     assert len(contexts) == 1
@@ -51,7 +51,7 @@ def test_build_contexts_excludes_static_backgrounds(srv, dto_service, region_id)
 
 def test_optimize_regions_returns_composite_change(srv, dto_service, region_id):
     """optimize_regions returns CompositeChange with UpdateMultipleParameterValues."""
-    region_reprs = [dto_service.get_region_repr(region_id, normalize=True)]
+    region_reprs = [dto_service.get_region_repr(region_id, normalized=True)]
     change = srv.optimize_regions(region_reprs, method="least_squares")
 
     assert isinstance(change, CompositeChange)
@@ -63,7 +63,7 @@ def test_optimize_regions_changes_apply_via_command_executor(
     srv, dto_service, simple_collection, region_id, peak_id
 ):
     """Execute returned changes via CommandExecutor and verify parameter updates."""
-    region_reprs = [dto_service.get_region_repr(region_id, normalize=True)]
+    region_reprs = [dto_service.get_region_repr(region_id, normalized=True)]
     change = srv.optimize_regions(region_reprs, method="least_squares")
 
     assert len(change.changes) > 0

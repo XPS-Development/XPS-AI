@@ -41,14 +41,14 @@ def test_get_component_is_immutable(srv, peak_id):
 
 
 def test_get_component_normalized_flag(srv, peak_id):
-    dto = srv.get_component(peak_id, normalize=True)
+    dto = srv.get_component(peak_id, normalized=True)
 
     assert dto.normalized is True
 
 
 def test_normalized_component_differs_from_raw(srv, peak_id):
-    raw = srv.get_component(peak_id, normalize=False)
-    norm = srv.get_component(peak_id, normalize=True)
+    raw = srv.get_component(peak_id, normalized=False)
+    norm = srv.get_component(peak_id, normalized=True)
 
     assert raw.parameters["amp"].value != norm.parameters["amp"].value
 
@@ -107,8 +107,8 @@ def test_region_spectrum_array_immutable(srv, region_id, spectrum_id):
 
 
 def test_get_spectrum_normalized(srv, spectrum_id):
-    raw = srv.get_spectrum(spectrum_id, normalize=False)
-    norm = srv.get_spectrum(spectrum_id, normalize=True)
+    raw = srv.get_spectrum(spectrum_id, normalized=False)
+    norm = srv.get_spectrum(spectrum_id, normalized=True)
 
     assert not np.allclose(raw.y, norm.y)
 

@@ -102,7 +102,7 @@ class DTOService:
         self.comp_srv = ComponentService(collection)
         self.data_srv = DataQueryService(collection)
 
-    def get_component(self, component_id: str, *, normalize: bool = False):
+    def get_component(self, component_id: str, *, normalized: bool = False):
         """
         Construct an immutable DTO projection of a component.
 
@@ -110,7 +110,7 @@ class DTOService:
         ----------
         component_id : str
             Identifier of the component.
-        normalize : bool, optional
+        normalized : bool, optional
             If True, parameters are returned in normalized form.
 
         Returns
@@ -119,20 +119,20 @@ class DTOService:
             Immutable component projection with parameters and model metadata.
         """
 
-        core_params = self.comp_srv.get_parameters(component_id, normalized=normalize)
+        core_params = self.comp_srv.get_parameters(component_id, normalized=normalized)
         model = self.comp_srv.get_model(component_id)
         params = {k: ParameterDTO(**v) for k, v in core_params.items()}
 
         return ComponentDTO(
             id_=component_id,
             parent_id=self.query_srv.get_parent(component_id),
-            normalized=normalize,
+            normalized=normalized,
             parameters=params,
             model=model,
             kind="background" if isinstance(model, BaseBackgroundModel) else "peak",
         )
 
-    def get_region(self, region_id: str, *, normalize: bool = False) -> RegionDTO:
+    def get_region(self, region_id: str, *, normalized: bool = False) -> RegionDTO:
         """
         Construct an immutable DTO projection of a region's numerical data.
 
@@ -140,7 +140,7 @@ class DTOService:
         ----------
         region_id : str
             Identifier of the region.
-        normalize : bool, optional
+        normalized : bool, optional
             If True, spectrum data is returned in normalized form.
 
         Returns
@@ -151,7 +151,7 @@ class DTOService:
         # DataQueryService return views of the original arrays
         # set arr.flags.writeable = False
         # to prevent modifying
-        x, y = self.data_srv.get_region_data(region_id, normalized=normalize)
+        x, y = self.data_srv.get_region_data(region_id, normalized=normalized)
         x.flags.writeable = False
         y.flags.writeable = False
         parent_id = self.query_srv.get_parent(region_id)
@@ -159,13 +159,13 @@ class DTOService:
         return RegionDTO(
             id_=region_id,
             parent_id=parent_id,
-            normalized=normalize,
+            normalized=normalized,
             x=x,
             y=y,
         )
 
     def get_region_repr(
-        self, region_id: str, *, normalize: bool = False
+        self, region_id: str, *, normalized: bool = False
     ) -> tuple[RegionDTO, tuple[ComponentDTO, ...]]:
         """
         Construct a complete immutable representation of a region.
@@ -176,7 +176,7 @@ class DTOService:
         ----------
         region_id : str
             Identifier of the region.
-        normalize : bool, optional
+        normalized : bool, optional
             If True, data and parameters are normalized.
 
         Returns
@@ -185,13 +185,14 @@ class DTOService:
             Region DTO and its component DTOs.
         """
 
-        reg_dto = self.get_region(region_id, normalize=normalize)
+        reg_dto = self.get_region(region_id, normalized=normalized)
         cmp_dtos = tuple(
-            self.get_component(cid, normalize=normalize) for cid in self.query_srv.get_components(region_id)
+            self.get_component(cid, normalized=normalized)
+            for cid in self.query_srv.get_components(region_id)
         )
         return reg_dto, cmp_dtos
 
-    def get_spectrum(self, spectrum_id: str, *, normalize: bool = False) -> SpectrumDTO:
+    def get_spectrum(self, spectrum_id: str, *, normalized: bool = False) -> SpectrumDTO:
         """
         Construct an immutable DTO projection of a spectrum's numerical data.
 
@@ -199,7 +200,7 @@ class DTOService:
         ----------
         spectrum_id : str
             Identifier of the spectrum.
-        normalize : bool, optional
+        normalized : bool, optional
             If True, spectrum data is returned in normalized form.
 
         Returns
@@ -208,7 +209,7 @@ class DTOService:
             Immutable spectrum data projection.
         """
 
-        x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalize)
+        x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalized)
         x.flags.writeable = False
         y.flags.writeable = False
         parent_id = self.query_srv.get_parent(spectrum_id)
@@ -216,13 +217,13 @@ class DTOService:
         return SpectrumDTO(
             id_=spectrum_id,
             parent_id=parent_id,
-            normalized=normalize,
+            normalized=normalized,
             x=x,
             y=y,
         )
 
     def get_spectrum_repr(
-        self, spectrum_id: str, *, normalize: bool = False
+        self, spectrum_id: str, *, normalized: bool = False
     ) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
         """
         Construct a complete immutable representation of a spectrum.
@@ -233,7 +234,7 @@ class DTOService:
         ----------
         spectrum_id : str
             Identifier of the spectrum.
-        normalize : bool, optional
+        normalized : bool, optional
             If True, all numerical data and parameters are normalized.
 
         Returns
@@ -245,8 +246,9 @@ class DTOService:
             Full immutable spectrum representation.
         """
 
-        spectrum_dto = self.get_spectrum(spectrum_id, normalize=normalize)
+        spectrum_dto = self.get_spectrum(spectrum_id, normalized=normalized)
         reg_reprs = tuple(
-            self.get_region_repr(rid, normalize=normalize) for rid in self.query_srv.get_regions(spectrum_id)
+            self.get_region_repr(rid, normalized=normalized)
+            for rid in self.query_srv.get_regions(spectrum_id)
         )
         return spectrum_dto, reg_reprs
