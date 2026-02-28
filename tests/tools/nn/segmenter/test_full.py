@@ -10,7 +10,7 @@ import pytest
 
 from tools.nn.pipeline import SegmenterPipeline
 from tools.nn.segmenter import SegmenterResult
-from tools.nn.types import PeakDetectionResult
+from tools.nn.types import BackgroundDetectionResult, PeakDetectionResult
 
 
 # model.onnx at project root (skip if missing)
@@ -42,5 +42,7 @@ def test_segmenter_pipeline_real_model(
         assert hasattr(sr, "region") and hasattr(sr, "peaks")
         assert sr.region.start < sr.region.stop
         assert isinstance(sr.peaks, tuple)
+        assert sr.background is not None
+        assert isinstance(sr.background, BackgroundDetectionResult)
         for peak in sr.peaks:
             assert isinstance(peak, PeakDetectionResult)

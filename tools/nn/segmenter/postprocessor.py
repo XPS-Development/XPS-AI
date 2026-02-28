@@ -10,7 +10,12 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from ..types import ModelOutputT, PeakDetectionResult, RegionDetectionResult
+from ..types import (
+    BackgroundDetectionResult,
+    ModelOutputT,
+    PeakDetectionResult,
+    RegionDetectionResult,
+)
 from .adapter import ONNXSegmenterAdapter
 
 
@@ -22,6 +27,7 @@ class SegmenterResult:
 
     region: RegionDetectionResult
     peaks: tuple[PeakDetectionResult, ...]
+    background: BackgroundDetectionResult | None
 
 
 class SegmenterPostprocessor:
@@ -33,6 +39,7 @@ class SegmenterPostprocessor:
     """
 
     DEFAULT_PEAK_MODEL = "pseudo-voigt"
+    DEFAULT_BACKGROUND_MODEL = "shirley"
     DEFAULT_FRACTION = 0.0
 
     def __init__(
@@ -150,10 +157,22 @@ class SegmenterPostprocessor:
             res.append(
                 PeakDetectionResult(
                     model_name=self.DEFAULT_PEAK_MODEL,
-                    parameters={"amp": amp, "cen": x[max_idx], "sig": sig, "frac": frac},
+                    parameters={
+                        "amp": float(amp),
+                        "cen": float(x[max_idx]),
+                        "sig": float(sig),
+                        "frac": float(frac),
+                    },
                 )
             )
         return res
+
+    def _get_background_parameters(self, y: NDArray, start: int, stop: int) -> BackgroundDetectionResult:
+        """Get background parameters from x and y values."""
+        return BackgroundDetectionResult(
+            model_name=self.DEFAULT_BACKGROUND_MODEL,
+            parameters={"i1": float(y[start]), "i2": float(y[stop])},
+        )
 
     def _get_parameters_from_masks(
         self,
@@ -185,7 +204,8 @@ class SegmenterPostprocessor:
             f, t = borders[i], borders[i + 1]
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
             if local_max_idxs.size != 0:
-                reg = RegionDetectionResult(start=f, stop=t)
+                reg = RegionDetectionResult(start=int(f), stop=int(t))
                 peaks = self._get_peak_parameters(x, y, local_max_idxs)
-                result.append(SegmenterResult(region=reg, peaks=tuple(peaks)))
+                background = self._get_background_parameters(y, f, t)
+                result.append(SegmenterResult(region=reg, peaks=tuple(peaks), background=background))
         return result

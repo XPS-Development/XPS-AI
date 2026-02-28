@@ -30,9 +30,21 @@ class RegionDetectionResult:
 @dataclass(frozen=True)
 class PeakDetectionResult:
     """
-    Result for one peak: index bounds in x-space.
+    Result for one peak: model name and parameters.
 
     Maps to CreatePeak(region_id, model_name, parameters).
+    """
+
+    model_name: str
+    parameters: dict[str, float]
+
+
+@dataclass(frozen=True)
+class BackgroundDetectionResult:
+    """
+    Result for one background: model name and parameters.
+
+    Maps to CreateBackground(region_id, model_name, parameters).
     """
 
     model_name: str
