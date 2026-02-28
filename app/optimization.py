@@ -6,7 +6,7 @@ service returns BaseChange instances for CommandExecutor.
 """
 
 from tools.dto import RegionDTO, ComponentDTO
-from tools.evaluation import EvaluationService
+from tools.evaluation import component_y
 
 from .command.changes import UpdateMultipleParameterValues, CompositeChange
 
@@ -55,9 +55,6 @@ class OptimizationService:
     DTOService.get_region_repr; service returns Change objects for execution.
     """
 
-    def __init__(self) -> None:
-        self.eval = EvaluationService()
-
     def build_contexts(
         self,
         region_reprs: Sequence[tuple[RegionDTO, tuple[ComponentDTO, ...]]],
@@ -86,7 +83,7 @@ class OptimizationService:
             cmps_to_opt: list[ComponentDTO] = []
             for cmp in component_dtos:
                 if cmp.kind == "background" and cmp.model.static:
-                    y -= self.eval.component_y(cmp, reg_dto.x, reg_dto.y)
+                    y -= component_y(cmp, reg_dto.x, reg_dto.y)
                 else:
                     cmps_to_opt.append(cmp)
 

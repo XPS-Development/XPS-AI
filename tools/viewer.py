@@ -1,8 +1,9 @@
 """
 Matplotlib-based viewer for spectra and region models.
 
-Uses EvaluationService and protocol-typed objects (SpectrumLike, RegionLike,
-ComponentLike) from core.types for structural typing without coupling to DTOs.
+Uses evaluation functions from tools.evaluation and protocol-typed objects
+(SpectrumLike, RegionLike, ComponentLike) from core.types for structural
+typing without coupling to DTOs.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from matplotlib.axes import Axes
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
 
-from .evaluation import EvaluationService
+from .evaluation import region_bundle
 
 
 class ViewerDataProvider(Protocol):
@@ -51,8 +52,9 @@ class MatplotlibViewer:
     """
     High-level matplotlib viewer for debugging and exploration.
 
-    Uses EvaluationService for numerical model evaluation and protocol-typed
-    data (SpectrumLike, RegionLike, ComponentLike) for structural typing.
+    Uses evaluation functions from tools.evaluation for numerical model
+    evaluation and protocol-typed data (SpectrumLike, RegionLike, ComponentLike)
+    for structural typing.
 
     plot_raw_*:
         Draw only raw numerical data (spectrum or region).
@@ -67,7 +69,6 @@ class MatplotlibViewer:
 
     def __init__(
         self,
-        evaluation_svc: EvaluationService,
         data_provider: ViewerDataProvider,
         *,
         normalized: bool = False,
@@ -77,14 +78,11 @@ class MatplotlibViewer:
 
         Parameters
         ----------
-        evaluation_svc : EvaluationService
-            Stateless service for evaluating region/spectrum bundles.
         data_provider : ViewerDataProvider
             Supplies spectrum-like, region-like, and component-like objects by id.
         normalized : bool, optional
             Whether to request normalized data and parameters from the provider.
         """
-        self._eval = evaluation_svc
         self._provider = data_provider
         self._normalized = normalized
 
@@ -190,7 +188,7 @@ class MatplotlibViewer:
         ax = self._get_ax(ax)
 
         region, components = self._provider.get_region_repr(region_id, normalized=self._normalized)
-        bundle = self._eval.region_bundle(region, components, include_background=True)
+        bundle = region_bundle(region, components, include_background=True)
 
         x = bundle.x
         y = bundle.y

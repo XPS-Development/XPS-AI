@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from tools.dto import ParameterDTO, ComponentDTO
-from tools.evaluation import EvaluationService
+from tools.evaluation import component_y
 from core.math_models import PseudoVoigtPeakModel
 
 from tools.optimization import (
@@ -22,13 +22,12 @@ from tools.optimization import (
 def optimization_context(dto_service, region_id):
     """Build OptimizationContext from simple_collection region (peak + constant bg)."""
     reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalized=False)
-    eval_svc = EvaluationService()
     y = reg_dto.y.copy()
 
     cmps_to_opt = []
     for cmp in comp_dtos:
         if cmp.kind == "background" and cmp.model.static:
-            y -= eval_svc.component_y(cmp, reg_dto.x, reg_dto.y)
+            y -= component_y(cmp, reg_dto.x, reg_dto.y)
         else:
             cmps_to_opt.append(cmp)
 
