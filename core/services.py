@@ -537,6 +537,8 @@ class ComponentService(BaseCoreService):
     of peak and background components.
     """
 
+    DEFAULT_NORMALIZATION_FIELDS = ("value", "lower", "upper")
+
     @staticmethod
     def _create_component_obj(
         region_id: str,
@@ -779,9 +781,10 @@ class ComponentService(BaseCoreService):
         ctx = self._get_norm_ctx(component_id)
 
         if normalized and param in model.normalization_target_parameters:
-            kwargs["value"] = model.denormalize_value(kwargs["value"], ctx)
-            kwargs["lower"] = model.denormalize_value(kwargs["lower"], ctx)
-            kwargs["upper"] = model.denormalize_value(kwargs["upper"], ctx)
+            for key, value in kwargs.items():
+                if value is not None and key in self.DEFAULT_NORMALIZATION_FIELDS:
+                    value = model.denormalize_value(value, ctx)
+                kwargs[key] = value
 
         component.set_param(param, **kwargs)
 

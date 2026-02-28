@@ -10,7 +10,9 @@ from .types import ParsedSpectrum
 __all__ = ["ParsedSpectrum", "parse_spectrum_file", "parse_casa_txt", "parse_dat", "parse_vamas"]
 
 
-def parse_spectrum_file(path: str | Path) -> list[ParsedSpectrum]:
+def parse_spectrum_file(
+    path: str | Path, *, use_binding_energy: bool = True, use_cps: bool = True
+) -> list[ParsedSpectrum]:
     """
     Parse a spectrum file and return extracted spectra.
 
@@ -23,6 +25,12 @@ def parse_spectrum_file(path: str | Path) -> list[ParsedSpectrum]:
     ----------
     path : str or Path
         Path to the spectrum file.
+    use_binding_energy : bool, optional
+        If True, use binding energy axis for x; otherwise use kinetic energy.
+        Default True.
+    use_cps : bool, optional
+        If True, use CPS axis for y; otherwise use counts.
+        Default True.
 
     Returns
     -------
@@ -38,10 +46,10 @@ def parse_spectrum_file(path: str | Path) -> list[ParsedSpectrum]:
     suffix = path.suffix.lower()
 
     if suffix == ".txt":
-        return parse_casa_txt(path)
+        return parse_casa_txt(path, use_binding_energy=use_binding_energy, use_cps=use_cps)
     if suffix == ".dat":
         return parse_dat(path)
     if suffix in (".vms", ".vamas"):
-        return parse_vamas(path)
+        return parse_vamas(path, use_binding_energy=use_binding_energy, use_cps=use_cps)
 
     raise ValueError(f"Unsupported file extension: {suffix}")
