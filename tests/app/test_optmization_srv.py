@@ -38,17 +38,6 @@ def test_components_to_changes():
     assert result.changes[1].parameters == {"const": 2.0}
 
 
-def test_build_contexts_excludes_static_backgrounds(srv, dto_service, region_id):
-    """build_contexts subtracts static backgrounds and includes only optimizable components."""
-    region_reprs = [dto_service.get_region_repr(region_id, normalized=False)]
-    contexts = srv.build_contexts(region_reprs)
-
-    assert len(contexts) == 1
-    ctx = contexts[0]
-    assert len(ctx.components) == 1  # Only peak; constant bg is static
-    assert ctx.components[0].kind == "peak"
-
-
 def test_optimize_regions_returns_composite_change(srv, dto_service, region_id):
     """optimize_regions returns CompositeChange with UpdateMultipleParameterValues."""
     region_reprs = [dto_service.get_region_repr(region_id, normalized=True)]

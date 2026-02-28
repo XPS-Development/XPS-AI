@@ -1,12 +1,11 @@
 """
-Tests for tools.optimization: OptimizationPlanner, LmfitOptimizer, optimize().
+Tests for tools.optimization: build_contexts, OptimizationPlanner, LmfitOptimizer, optimize().
 """
 
 import numpy as np
 import pytest
 
 from tools.dto import ParameterDTO, ComponentDTO
-from tools.evaluation import component_y
 from core.math_models import PseudoVoigtPeakModel
 
 from tools.optimization import (
@@ -14,31 +13,49 @@ from tools.optimization import (
     OptimizationPlanner,
     LmfitOptimizer,
     OptimizedComponent,
+    build_contexts,
     optimize,
 )
 
 
 @pytest.fixture
 def optimization_context(dto_service, region_id):
-    """Build OptimizationContext from simple_collection region (peak + constant bg)."""
+    """Build OptimizationContext from simple_collection region via build_contexts."""
     reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalized=False)
-    y = reg_dto.y.copy()
+    contexts = build_contexts([(reg_dto, comp_dtos)])
+    return contexts[0]
 
-    cmps_to_opt = []
-    for cmp in comp_dtos:
-        if cmp.kind == "background" and cmp.model.static:
-            y -= component_y(cmp, reg_dto.x, reg_dto.y)
-        else:
-            cmps_to_opt.append(cmp)
 
-    return OptimizationContext(
-        id_=reg_dto.id_,
-        parent_id=reg_dto.parent_id,
-        normalized=reg_dto.normalized,
-        x=reg_dto.x,
-        y=y,
-        components=tuple(cmps_to_opt),
-    )
+class TestBuildContexts:
+    """Tests for build_contexts."""
+
+    def test_one_region_yields_one_context(self, dto_service, region_id):
+        """Single region repr yields one OptimizationContext."""
+        region_reprs = [dto_service.get_region_repr(region_id, normalized=False)]
+        contexts = build_contexts(region_reprs)
+        assert len(contexts) == 1
+        ctx = contexts[0]
+        assert ctx.id_ == region_reprs[0][0].id_
+        assert ctx.x is region_reprs[0][0].x
+        assert len(ctx.components) >= 1
+
+    def test_static_background_subtracted_and_excluded(self, dto_service, region_id):
+        """Static backgrounds are subtracted from y and excluded from ctx.components."""
+        reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalized=False)
+        contexts = build_contexts([(reg_dto, comp_dtos)])
+        ctx = contexts[0]
+        # simple_collection has one peak + one constant (static) background
+        assert len(ctx.components) == 1
+        assert ctx.components[0].kind == "peak"
+
+    def test_multiple_regions_yield_multiple_contexts(self, dto_service, region_id):
+        """Multiple region reprs yield one context per region."""
+        reg_dto, comp_dtos = dto_service.get_region_repr(region_id, normalized=False)
+        region_reprs = [(reg_dto, comp_dtos), (reg_dto, comp_dtos)]
+        contexts = build_contexts(region_reprs)
+        assert len(contexts) == 2
+        assert contexts[0].id_ == contexts[1].id_
+        assert len(contexts[0].components) == len(contexts[1].components)
 
 
 def _make_component(

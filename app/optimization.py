@@ -5,18 +5,16 @@ Uses tools.optimization for lmfit-based fitting. Caller provides DTOs;
 service returns BaseChange instances for CommandExecutor.
 """
 
-from tools.dto import RegionDTO, ComponentDTO
-from tools.evaluation import component_y
+from typing import Any, Sequence
 
-from .command.changes import UpdateMultipleParameterValues, CompositeChange
-
+from tools.dto import ComponentDTO, RegionDTO
 from tools.optimization import (
-    OptimizationContext,
     OptimizedComponent,
+    build_contexts,
     optimize as run_optimize,
 )
 
-from typing import Sequence, Any
+from .command.changes import CompositeChange, UpdateMultipleParameterValues
 
 
 def components_to_changes(
@@ -55,50 +53,6 @@ class OptimizationService:
     DTOService.get_region_repr; service returns Change objects for execution.
     """
 
-    def build_contexts(
-        self,
-        region_reprs: Sequence[tuple[RegionDTO, tuple[ComponentDTO, ...]]],
-    ) -> tuple[OptimizationContext, ...]:
-        """
-        Build optimization contexts from region DTOs.
-
-        Subtracts static backgrounds from y. Caller must provide DTOs
-        (e.g. via DTOService.get_region_repr).
-
-        Parameters
-        ----------
-        region_reprs : Sequence[tuple[RegionDTO, tuple[ComponentDTO, ...]]]
-            Region and component DTOs per region.
-
-        Returns
-        -------
-        tuple[OptimizationContext, ...]
-            Contexts for tools.optimization.optimize.
-        """
-        contexts: list[OptimizationContext] = []
-
-        for reg_dto, component_dtos in region_reprs:
-            y = reg_dto.y.copy()
-
-            cmps_to_opt: list[ComponentDTO] = []
-            for cmp in component_dtos:
-                if cmp.kind == "background" and cmp.model.static:
-                    y -= component_y(cmp, reg_dto.x, reg_dto.y)
-                else:
-                    cmps_to_opt.append(cmp)
-
-            ctx = OptimizationContext(
-                id_=reg_dto.id_,
-                parent_id=reg_dto.parent_id,
-                normalized=reg_dto.normalized,
-                x=reg_dto.x,
-                y=y,
-                components=tuple(cmps_to_opt),
-            )
-            contexts.append(ctx)
-
-        return tuple(contexts)
-
     def optimize_regions(
         self,
         region_reprs: Sequence[tuple[RegionDTO, tuple[ComponentDTO, ...]]],
@@ -119,6 +73,6 @@ class OptimizationService:
         CompositeChange
             CompositeChange containing UpdateMultipleParameterValues changes.
         """
-        contexts = self.build_contexts(region_reprs)
+        contexts = build_contexts(region_reprs)
         optimized = run_optimize(contexts, **kwargs)
         return components_to_changes(optimized)

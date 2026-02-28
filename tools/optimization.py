@@ -12,7 +12,9 @@ import numpy as np
 from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
 
-from core.types import ComponentLike
+from core.types import ComponentLike, RegionLike
+
+from tools.evaluation import component_y
 
 from typing import Sequence, Any
 
@@ -34,6 +36,55 @@ class OptimizationContext:
     x: np.ndarray
     y: np.ndarray
     components: tuple[ComponentLike, ...]
+
+
+def build_contexts(
+    region_reprs: Sequence[tuple[RegionLike, Sequence[ComponentLike]]],
+) -> tuple[OptimizationContext, ...]:
+    """
+    Build optimization contexts from region-like and component-like data.
+
+    Subtracts static background contributions from y and includes only
+    components to optimize. Works with any RegionLike and ComponentLike
+    (e.g. DTOs from DTOService.get_region_repr).
+
+    Parameters
+    ----------
+    region_reprs : Sequence[tuple[RegionLike, Sequence[ComponentLike]]]
+        Per-region (region, components) pairs.
+
+    Returns
+    -------
+    tuple[OptimizationContext, ...]
+        Contexts for optimize().
+    """
+    contexts: list[OptimizationContext] = []
+
+    for region, components in region_reprs:
+        y = region.y.copy()
+        cmps_to_opt: list[ComponentLike] = []
+
+        for cmp in components:
+            is_static_bg = (
+                cmp.kind == "background"
+                and getattr(cmp.model, "static", False)
+            )
+            if is_static_bg:
+                y -= component_y(cmp, region.x, region.y)
+            else:
+                cmps_to_opt.append(cmp)
+
+        ctx = OptimizationContext(
+            id_=region.id_,
+            parent_id=region.parent_id,
+            normalized=region.normalized,
+            x=region.x,
+            y=y,
+            components=tuple(cmps_to_opt),
+        )
+        contexts.append(ctx)
+
+    return tuple(contexts)
 
 
 @dataclass(frozen=True)
