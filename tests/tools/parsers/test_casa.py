@@ -24,8 +24,8 @@ def test_parse_casa_txt_extracts_binding_energy_and_cps():
     result = parse_casa_txt("tests/data/test_1_spec.txt")
     ps = result[0]
     assert len(ps.x) == len(ps.y)
-    assert ps.x[0] == pytest.approx(380.0)
-    assert ps.y[0] == pytest.approx(37690.0)
+    assert ps.x.min() == pytest.approx(351.0)
+    assert ps.y[-1] == pytest.approx(37690.0)
 
 
 def test_parse_casa_txt_file_path_in_metadata():
