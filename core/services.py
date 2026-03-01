@@ -886,6 +886,15 @@ class MetadataService(BaseCoreService):
         """
         self._metadata.pop(obj_id, None)
 
+    def clear(self) -> None:
+        """
+        Remove all stored metadata.
+
+        Used when replacing collection and metadata in-place (e.g. load
+        with replace mode). The collection is not modified.
+        """
+        self._metadata.clear()
+
     def find_objects(
         self, md_field: str, md_value: str, match_exact: bool = False, tp: type[Metadata] | None = None
     ) -> tuple[str, ...]:
@@ -956,4 +965,24 @@ class CoreContext:
             data=DataQueryService(collection),
             component=ComponentService(collection),
             metadata=MetadataService(collection),
+        )
+
+    @classmethod
+    def from_collection_and_metadata(
+        cls, collection: CoreCollection, metadata_service: MetadataService
+    ) -> "CoreContext":
+        """
+        Build context from a collection and an existing metadata service.
+
+        Use when the metadata service was created and populated elsewhere
+        (e.g. after loading from file with mode "new") so that loaded
+        metadata is preserved.
+        """
+        return cls(
+            query=CollectionQueryService(collection),
+            spectrum=SpectrumService(collection),
+            region=RegionService(collection),
+            data=DataQueryService(collection),
+            component=ComponentService(collection),
+            metadata=metadata_service,
         )

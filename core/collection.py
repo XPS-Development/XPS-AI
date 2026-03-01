@@ -89,6 +89,15 @@ class CoreCollection:
 
         self.objects_index[obj.id_] = obj
 
+    def clear(self) -> None:
+        """
+        Remove all objects from the collection.
+
+        Clears the internal index. Used when replacing collection contents
+        in-place (e.g. load with replace mode). No cascade logic is applied.
+        """
+        self.objects_index.clear()
+
     def remove(self, obj: CoreObject | str) -> list[CoreObject]:
         """
         Remove an object from the collection and return the removed objects.

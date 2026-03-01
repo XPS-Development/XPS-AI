@@ -7,7 +7,7 @@ preserving object relationships, metadata, and data in a compact representation.
 
 import json
 from dataclasses import asdict
-from typing import Optional, Any
+from typing import Any, Literal, Optional, Union
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +17,9 @@ from core.objects import Spectrum, Region, Peak, Background, Component
 from core.services import MetadataService
 from core.metadata import Metadata, SpectrumMetadata, RegionMetadata, PeakMetadata, BackgroundMetadata
 from core.math_models import ModelRegistry
+
+LoadMode = Literal["append", "replace", "new"]
+DeserializeResult = Union[CoreCollection, tuple[CoreCollection, MetadataService]]
 
 
 class CollectionSerializer:
@@ -449,30 +452,46 @@ class CollectionSerializer:
         data: dict[str, Any],
         collection: Optional[CoreCollection] = None,
         metadata_service: Optional[MetadataService] = None,
-    ) -> CoreCollection:
+        *,
+        mode: LoadMode = "replace",
+    ) -> DeserializeResult:
         """
-        Deserialize a dictionary to a CoreCollection.
+        Deserialize a dictionary to a CoreCollection (and optionally metadata).
 
         Parameters
         ----------
         data : dict[str, Any]
             Serialized collection dictionary.
         collection : CoreCollection, optional
-            Existing collection to append objects to. If None, creates a new collection.
+            Existing collection. Required for replace; used for append; must be
+            None for new.
         metadata_service : MetadataService, optional
-            Service for storing metadata. If None, metadata will not be restored.
+            Service for storing metadata. Required for replace; used for append;
+            must be None for new.
+        mode : {"append", "replace", "new"}, optional
+            - "append": Add deserialized objects to existing collection/metadata;
+              skip objects that already exist by id. collection optional (new
+              if None); metadata_service optional.
+            - "replace": Clear collection and metadata in-place, then deserialize
+              into the same instances. Requires both collection and metadata_service.
+            - "new": Create new CoreCollection and MetadataService, deserialize
+              into them. Requires collection is None and metadata_service is None.
+              Returns (collection, metadata_service).
 
         Returns
         -------
-        CoreCollection
-            Deserialized collection.
+        CoreCollection or tuple[CoreCollection, MetadataService]
+            For append/replace: the collection. For new: (collection, metadata_service).
 
         Raises
         ------
         ValueError
-            If version is incompatible or data format is invalid.
+            If version is incompatible, data format is invalid, or mode
+            requirements are not met (e.g. new with collection provided).
         """
-        # Check version compatibility
+        if mode not in ("append", "replace", "new"):
+            raise ValueError(f"mode must be 'append', 'replace', or 'new'; got {mode!r}")
+
         version = data.get("version", "unknown")
         if version != self.VERSION:
             raise ValueError(
@@ -480,22 +499,30 @@ class CollectionSerializer:
                 "Deserialization may not work correctly."
             )
 
-        # Create or use existing collection
-        if collection is None:
+        if mode == "new":
+            if collection is not None or metadata_service is not None:
+                raise ValueError("mode='new' requires collection and metadata_service to be None")
+            collection = CoreCollection()
+            metadata_service = MetadataService(collection)
+        elif mode == "replace":
+            if collection is None or metadata_service is None:
+                raise ValueError("mode='replace' requires both collection and metadata_service")
+            collection.clear()
+            metadata_service.clear()
+
+        # For append: collection may be None (create new); metadata_service optional
+        if mode == "append" and collection is None:
             collection = CoreCollection()
 
         objects_data = data.get("objects", [])
         if not objects_data:
+            if mode == "new":
+                return (collection, metadata_service)
             return collection
 
-        # Sort objects by type to ensure parents exist:
-        # 1. Spectra (no parent)
-        # 2. Regions (parent: Spectrum)
-        # 3. Components (parent: Region)
         type_order = {"Spectrum": 0, "Region": 1, "Peak": 2, "Background": 2, "Component": 2}
         sorted_objects = sorted(objects_data, key=lambda obj: type_order.get(obj.get("type", ""), 99))
 
-        # Deserialize objects in order
         for obj_data in sorted_objects:
             obj_type = obj_data.get("type")
             obj_id = obj_data.get("id")
@@ -503,15 +530,12 @@ class CollectionSerializer:
             if obj_id is None:
                 raise ValueError("Object missing 'id' field")
 
-            # Skip if object already exists (when appending to existing collection)
             if obj_id in collection.objects_index:
                 continue
 
-            # Deserialize object based on type
             if obj_type == "Spectrum":
                 obj = self._deserialize_spectrum(obj_data)
             elif obj_type == "Region":
-                # Verify parent exists
                 parent_id = obj_data.get("parent_id")
                 if parent_id and parent_id not in collection.objects_index:
                     raise ValueError(f"Region {obj_id} references non-existent parent {parent_id}")
@@ -531,6 +555,8 @@ class CollectionSerializer:
                 if metadata is not None:
                     metadata_service.set_metadata(obj_id, metadata)
 
+        if mode == "new":
+            return (collection, metadata_service)
         return collection
 
     def load(
@@ -538,25 +564,29 @@ class CollectionSerializer:
         fp: str | Path,
         collection: Optional[CoreCollection] = None,
         metadata_service: Optional[MetadataService] = None,
-    ) -> CoreCollection:
+        *,
+        mode: LoadMode = "replace",
+    ) -> DeserializeResult:
         """
-        Deserialize a JSON string or file to a CoreCollection.
+        Deserialize a JSON file to a CoreCollection (and optionally metadata).
 
         Parameters
         ----------
-        json_data : str or Path
-            JSON string or path to JSON file.
+        fp : str or Path
+            Path to JSON file.
         collection : CoreCollection, optional
-            Existing collection to append objects to. If None, creates a new collection.
+            Existing collection. Semantics as in deserialize (see mode).
         metadata_service : MetadataService, optional
-            Service for storing metadata.
+            Service for storing metadata. Semantics as in deserialize (see mode).
+        mode : {"append", "replace", "new"}, optional
+            Same as deserialize: append, replace (default), or new.
 
         Returns
         -------
-        CoreCollection
-            Deserialized collection.
+        CoreCollection or tuple[CoreCollection, MetadataService]
+            For append/replace: the collection. For new: (collection, metadata_service).
         """
         fp = Path(fp)
         with fp.open("r") as f:
             data = json.load(f)
-        return self.deserialize(data, collection, metadata_service)
+        return self.deserialize(data, collection, metadata_service, mode=mode)

@@ -30,8 +30,9 @@ def test_serialize_deserialize_simple_collection(simple_collection):
     assert "objects" in data
     assert data["version"] == CollectionSerializer.VERSION
 
-    # Deserialize back
-    restored_collection = serializer.deserialize(data)
+    # Deserialize back (mode=new returns tuple)
+    result = serializer.deserialize(data, mode="new")
+    restored_collection = result[0]
 
     # Verify collection structure
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
@@ -93,10 +94,15 @@ def test_serialize_deserialize_with_metadata(simple_collection):
     # Serialize with metadata
     data = serializer.serialize(simple_collection, metadata_service=metadata_service)
 
-    # Deserialize with metadata service
+    # Deserialize with metadata service (replace mode)
     restored_collection = CoreCollection()
     restored_metadata_service = MetadataService(restored_collection)
-    serializer.deserialize(data, collection=restored_collection, metadata_service=restored_metadata_service)
+    serializer.deserialize(
+        data,
+        collection=restored_collection,
+        metadata_service=restored_metadata_service,
+        mode="replace",
+    )
 
     # Verify metadata was restored
     restored_spectrum_metadata = restored_metadata_service.get_metadata(spectrum_id)
@@ -117,7 +123,8 @@ def test_serialize_deserialize_empty_collection(empty_collection):
     serializer = CollectionSerializer()
 
     data = serializer.serialize(empty_collection)
-    restored_collection = serializer.deserialize(data)
+    result = serializer.deserialize(data, mode="new")
+    restored_collection = result[0]
 
     assert len(restored_collection.objects_index) == 0
     assert data["version"] == CollectionSerializer.VERSION
@@ -133,13 +140,13 @@ def test_append_to_existing_collection(simple_collection, empty_collection):
     # Serialize simple_collection
     data = serializer.serialize(simple_collection)
 
-    # Deserialize into empty collection (should work)
-    serializer.deserialize(data, collection=empty_collection)
+    # Deserialize into empty collection (append mode)
+    serializer.deserialize(data, collection=empty_collection, mode="append")
 
     assert len(empty_collection.objects_index) == len(simple_collection.objects_index)
 
     # Try to deserialize again (should skip duplicates)
-    serializer.deserialize(data, collection=empty_collection)
+    serializer.deserialize(data, collection=empty_collection, mode="append")
 
     # Should still have same number of objects (no duplicates)
     assert len(empty_collection.objects_index) == len(simple_collection.objects_index)
@@ -154,9 +161,9 @@ def test_version_compatibility():
     # Create data with wrong version
     invalid_data = {"version": "2.0", "objects": []}
 
-    # Should raise ValueError
+    # Should raise ValueError (mode=new to reach version check)
     with pytest.raises(ValueError, match="Version mismatch"):
-        serializer.deserialize(invalid_data)
+        serializer.deserialize(invalid_data, mode="new")
 
 
 def test_dump_and_load_file(simple_collection, tmp_path):
@@ -172,8 +179,9 @@ def test_dump_and_load_file(simple_collection, tmp_path):
     # Verify file exists
     assert file_path.exists()
 
-    # Load from file
-    restored_collection = serializer.load(file_path)
+    # Load from file (mode=new returns tuple)
+    result = serializer.load(file_path, mode="new")
+    restored_collection = result[0]
 
     # Verify collection structure
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
@@ -209,10 +217,15 @@ def test_dump_and_load_with_metadata(simple_collection, tmp_path):
     # Serialize to file with metadata
     serializer.dump(simple_collection, file_path, metadata_service=metadata_service)
 
-    # Load from file with metadata service
+    # Load from file with metadata service (replace mode)
     restored_collection = CoreCollection()
     restored_metadata_service = MetadataService(restored_collection)
-    serializer.load(file_path, collection=restored_collection, metadata_service=restored_metadata_service)
+    serializer.load(
+        file_path,
+        collection=restored_collection,
+        metadata_service=restored_metadata_service,
+        mode="replace",
+    )
 
     # Verify metadata was restored
     restored_spectrum_metadata = restored_metadata_service.get_metadata(spectrum_id)
@@ -274,8 +287,9 @@ def test_deserialize_spectrum_reconstructs_x_axis(simple_collection):
         obj for obj in simple_collection.objects_index.values() if isinstance(obj, Spectrum)
     )
 
-    # Deserialize
-    restored_collection = serializer.deserialize(data)
+    # Deserialize (mode=new returns tuple)
+    result = serializer.deserialize(data, mode="new")
+    restored_collection = result[0]
     restored_spectrum = next(
         obj for obj in restored_collection.objects_index.values() if isinstance(obj, Spectrum)
     )
@@ -307,7 +321,7 @@ def test_deserialize_missing_parent_raises_error():
     }
 
     with pytest.raises(ValueError, match="references non-existent parent"):
-        serializer.deserialize(invalid_data)
+        serializer.deserialize(invalid_data, mode="new")
 
 
 def test_deserialize_missing_id_raises_error():
@@ -332,7 +346,7 @@ def test_deserialize_missing_id_raises_error():
     }
 
     with pytest.raises(ValueError, match="missing 'id' field"):
-        serializer.deserialize(invalid_data)
+        serializer.deserialize(invalid_data, mode="new")
 
 
 def test_deserialize_unknown_type_raises_error():
@@ -354,7 +368,7 @@ def test_deserialize_unknown_type_raises_error():
     }
 
     with pytest.raises(ValueError, match="Unknown object type"):
-        serializer.deserialize(invalid_data)
+        serializer.deserialize(invalid_data, mode="new")
 
 
 def test_serialize_without_metadata_service(simple_collection):
@@ -376,8 +390,9 @@ def test_deserialize_without_metadata_service(simple_collection):
     serializer = CollectionSerializer()
     data = serializer.serialize(simple_collection)
 
-    # Deserialize without metadata service
-    restored_collection = serializer.deserialize(data)
+    # Deserialize without metadata service (mode=new returns tuple)
+    result = serializer.deserialize(data, mode="new")
+    restored_collection = result[0]
 
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
 
@@ -412,10 +427,90 @@ def test_json_serialization_inf_nan_handling():
 
     # Should not raise error
     data_restored = json.loads(json_str)
-    restored_collection = serializer.deserialize(data_restored)
+    result = serializer.deserialize(data_restored, mode="new")
+    restored_collection = result[0]
 
     # Verify parameter bounds are restored correctly
     restored_peak = next(obj for obj in restored_collection.objects_index.values() if isinstance(obj, Peak))
     amp_param = restored_peak.get_param("amp")
     assert amp_param.lower == -np.inf
     assert amp_param.upper == np.inf
+
+
+def test_deserialize_mode_replace_clears_and_fills_in_place(simple_collection, tmp_path):
+    """
+    mode=replace clears existing collection and metadata, then deserializes into same refs.
+    """
+    serializer = CollectionSerializer()
+    metadata_service = MetadataService(simple_collection)
+    spectrum_id = next(
+        obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Spectrum)
+    )
+    metadata_service.set_metadata(spectrum_id, SpectrumMetadata(name="Before", group="G", file="f"))
+
+    file_path = tmp_path / "coll.json"
+    serializer.dump(simple_collection, file_path, metadata_service=metadata_service)
+
+    # Replace: clear and load into same collection/metadata
+    collection_ref = simple_collection
+    metadata_ref = metadata_service
+    result = serializer.deserialize(
+        serializer.serialize(simple_collection, metadata_service),
+        collection=simple_collection,
+        metadata_service=metadata_service,
+        mode="replace",
+    )
+    assert result is collection_ref
+    assert len(collection_ref.objects_index) == len(simple_collection.objects_index)
+    assert metadata_ref.get_metadata(spectrum_id) is not None
+
+
+def test_deserialize_mode_new_returns_tuple(simple_collection):
+    """mode=new with no collection/metadata creates both and returns (collection, metadata_service)."""
+    serializer = CollectionSerializer()
+    data = serializer.serialize(simple_collection)
+    result = serializer.deserialize(data, mode="new")
+    assert isinstance(result, tuple)
+    new_collection, new_metadata_service = result
+    assert new_collection is not simple_collection
+    assert len(new_collection.objects_index) == len(simple_collection.objects_index)
+    assert new_metadata_service.collection is new_collection
+
+
+def test_load_mode_new_returns_tuple(simple_collection, tmp_path):
+    """load(..., mode='new') returns (collection, metadata_service)."""
+    serializer = CollectionSerializer()
+    file_path = tmp_path / "coll.json"
+    serializer.dump(simple_collection, file_path)
+    result = serializer.load(file_path, mode="new")
+    assert isinstance(result, tuple)
+    new_collection, new_metadata_service = result
+    assert len(new_collection.objects_index) == len(simple_collection.objects_index)
+
+
+def test_deserialize_replace_requires_collection_and_metadata():
+    """mode=replace raises if collection or metadata_service is missing."""
+    serializer = CollectionSerializer()
+    data = {"version": CollectionSerializer.VERSION, "objects": []}
+    with pytest.raises(ValueError, match="mode='replace' requires both"):
+        serializer.deserialize(data, collection=CoreCollection(), mode="replace")
+    with pytest.raises(ValueError, match="mode='replace' requires both"):
+        serializer.deserialize(
+            data,
+            metadata_service=MetadataService(CoreCollection()),
+            mode="replace",
+        )
+
+
+def test_deserialize_new_requires_none():
+    """mode=new raises if collection or metadata_service is provided."""
+    serializer = CollectionSerializer()
+    data = {"version": CollectionSerializer.VERSION, "objects": []}
+    with pytest.raises(ValueError, match="mode='new' requires"):
+        serializer.deserialize(data, collection=CoreCollection(), mode="new")
+    with pytest.raises(ValueError, match="mode='new' requires"):
+        serializer.deserialize(
+            data,
+            metadata_service=MetadataService(CoreCollection()),
+            mode="new",
+        )
