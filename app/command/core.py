@@ -64,6 +64,11 @@ class UndoRedoStack:
         """True if there is at least one command to redo."""
         return len(self._redo_stack) > 0
 
+    def clear_all(self) -> None:
+        """Clear both undo and redo stacks."""
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+
     def push(self, cmd: Command) -> None:
         """
         Push a newly executed command onto the undo stack and clear the redo stack.
@@ -247,3 +252,7 @@ class CommandExecutor:
         cmd = self.stack.pop_redo()
         cmd.apply(self.ctx)
         self.stack.push_undo(cmd)
+
+    def clear(self) -> None:
+        """Clear both undo and redo stacks."""
+        self.stack.clear_all()
