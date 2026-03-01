@@ -26,7 +26,7 @@ class PseudoVoigtPeakModel(BasePeakModel):
 class ConstantBackgroundModel(BaseBackgroundModel):
     name = "constant"
     parameter_schema = (ParameterSpec("const", 0.0),)
-    is_active = False
+    static = True
     normalization_target_parameters = ("const",)
     use_scale = False
     use_offset = True
@@ -42,7 +42,7 @@ class LinearBackgroundModel(BaseBackgroundModel):
         ParameterSpec("i1", 0.0),
         ParameterSpec("i2", 0.0),
     )
-    is_active = False
+    static = True
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
     use_offset = True
@@ -58,7 +58,7 @@ class ShirleyBackgroundModel(BaseBackgroundModel):
         ParameterSpec("i1", 0.0),
         ParameterSpec("i2", 0.0),
     )
-    is_active = False
+    static = True
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
     use_offset = True

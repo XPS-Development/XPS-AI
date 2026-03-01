@@ -73,64 +73,6 @@ def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: 
     return amplitude * ((1 - fraction) * gauss(x, center, sigma_g) + fraction * lorentz(x, center, sigma))
 
 
-def npvoigt(params: dict[str, float], x: NDArray, combine: Sequence[int]) -> NDArray:
-    """
-    Sum multiple pseudo-Voigt peaks on the same x-array.
-
-    Parameters
-    ----------
-    params : dict[str, float]
-        Dictionary containing parameters of all peaks, keys like '0_amp', '0_cen', etc.
-    x : NDArray
-        Array of x-values.
-    combine : Sequence[str]
-        Indexes of peaks to sum.
-
-    Returns
-    -------
-    NDArray
-        Combined peak function evaluated at x.
-    """
-    y = np.zeros_like(x)
-    for i in combine:
-        y += pvoigt(
-            x,
-            params[f"{i}_amp"],
-            params[f"{i}_cen"],
-            params[f"{i}_sig"],
-            params[f"{i}_frac"],
-        )
-    return y
-
-
-def ndpvoigt(
-    params: dict[str, float],
-    x: Sequence[NDArray],
-    combinations: Sequence[Sequence[int]],
-) -> List[NDArray]:
-    """
-    Calculate multiple peaks datasets simultaneously.
-
-    Parameters
-    ----------
-    params : dict[str, float]
-        Dictionary containing parameters of all peaks.
-    x : Sequence[NDArray]
-        Sequence of x-arrays for each dataset.
-    combinations : Sequence[Sequence[int]]
-        Sequence of sequences of peak indices to apply to each dataset.
-
-    Returns
-    -------
-    List[NDArray]
-        List of evaluated pseudo-Voigt datasets.
-    """
-    y_list: List[NDArray] = []
-    for row, combination in zip(x, combinations):
-        y_list.append(npvoigt(params, row, combination))
-    return y_list
-
-
 def static_shirley_background(x: NDArray, y: NDArray, i1: float, i2: float, iters: int = 8) -> NDArray:
     """
     Calculate iterative Shirley background.

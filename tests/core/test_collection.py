@@ -1,12 +1,17 @@
 import numpy as np
 import pytest
 
-from core import Spectrum, Region, Peak, Background, SpectrumCollection
+from core.objects import Spectrum, Region, Peak, Background
+from core.collection import CoreCollection
 from core.math_models import PseudoVoigtPeakModel, ConstantBackgroundModel
 
 
-def test_collection_add_and_get():
-    col = SpectrumCollection()
+@pytest.fixture
+def col(empty_collection):
+    return empty_collection
+
+
+def test_collection_add_and_get(col):
     s = Spectrum(x=np.arange(5), y=np.arange(5))
 
     col.add(s)
@@ -14,8 +19,7 @@ def test_collection_add_and_get():
     assert col.get(s.id_) is s
 
 
-def test_collection_add_duplicate_raises():
-    col = SpectrumCollection()
+def test_collection_add_duplicate_raises(col):
     s = Spectrum(x=np.arange(3), y=np.arange(3))
 
     col.add(s)
@@ -23,8 +27,7 @@ def test_collection_add_duplicate_raises():
         col.add(s)
 
 
-def test_collection_remove_peak_only():
-    col = SpectrumCollection()
+def test_collection_remove_peak_only(col):
     s = Spectrum(x=np.arange(5), y=np.arange(5))
     r = Region(slice_=slice(0, 5), parent_id=s.id_)
     p = Peak(model=PseudoVoigtPeakModel(), region_id=r.id_)
@@ -40,8 +43,7 @@ def test_collection_remove_peak_only():
     assert s.id_ in col.objects_index
 
 
-def test_collection_remove_region_cascades():
-    col = SpectrumCollection()
+def test_collection_remove_region_cascades(col):
     s = Spectrum(x=np.arange(5), y=np.arange(5))
     r = Region(slice_=slice(0, 5), parent_id=s.id_)
     p = Peak(model=PseudoVoigtPeakModel(), region_id=r.id_)
@@ -58,8 +60,7 @@ def test_collection_remove_region_cascades():
     assert s.id_ in col.objects_index
 
 
-def test_collection_remove_spectrum_cascades():
-    col = SpectrumCollection()
+def test_collection_remove_spectrum_cascades(col):
     s = Spectrum(x=np.arange(5), y=np.arange(5))
     r = Region(slice_=slice(0, 5), parent_id=s.id_)
 
@@ -71,8 +72,8 @@ def test_collection_remove_spectrum_cascades():
     assert not col.objects_index
 
 
-def test_collection_get_typed():
-    col = SpectrumCollection()
+def test_collection_get_typed(col):
+    col = CoreCollection()
     s = Spectrum(x=np.arange(3), y=np.arange(3))
     col.add(s)
 

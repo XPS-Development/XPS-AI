@@ -1,16 +1,16 @@
 from typing import Dict, TypeVar
 
-from .core_objects import CoreObject, Spectrum, Region
+from .objects import CoreObject, Spectrum, Region
 
 T = TypeVar("T")
 
 
-class SpectrumCollection:
+class CoreCollection:
     """
-    Collection and lifecycle manager for spectral core objects.
+    Collection and lifecycle manager for core objects.
 
-    `SpectrumCollection` is a lightweight registry that stores and indexes
-    all core objects participating in the spectral model:
+    `CoreCollection` is a lightweight registry that stores and indexes
+    all core objects participating in the model:
     - Spectrum
     - Region
     - Peak
@@ -71,7 +71,7 @@ class SpectrumCollection:
 
         Parameters
         ----------
-        obj : Spectrum or Region or Peak
+        obj : Spectrum or Region or Peak or Background
             core object to register.
 
         Raises
@@ -89,19 +89,33 @@ class SpectrumCollection:
 
         self.objects_index[obj.id_] = obj
 
-    def remove(self, obj: CoreObject | str) -> None:
+    def clear(self) -> None:
         """
-        Remove an object from the collection.
+        Remove all objects from the collection.
+
+        Clears the internal index. Used when replacing collection contents
+        in-place (e.g. load with replace mode). No cascade logic is applied.
+        """
+        self.objects_index.clear()
+
+    def remove(self, obj: CoreObject | str) -> list[CoreObject]:
+        """
+        Remove an object from the collection and return the removed objects.
 
         Removal is recursive:
         - If a Spectrum is removed, all its Regions and Peaks are removed.
         - If a Region is removed, all its Peaks (and Backgrounds) are removed.
-        - If a Peak is removed, only the peak itself is removed.
+        - If a Peak or Background is removed, only the object itself is removed.
 
         Parameters
         ----------
         obj : Spectrum or Region or Peak or Background or str
             Object instance or its ID.
+
+        Returns
+        -------
+        list[CoreObject]
+            The removed objects.
 
         Raises
         ------
@@ -114,11 +128,14 @@ class SpectrumCollection:
             obj_id = obj.id_
 
         obj = self.objects_index.pop(obj_id)
+        removed_objects: list[CoreObject] = [obj]
 
         if isinstance(obj, (Spectrum, Region)):
             children = list(self.get_children(obj_id))
             for ch in children:
-                self.remove(ch)
+                removed_objects.extend(self.remove(ch))
+
+        return removed_objects
 
     def get(self, obj_id: str) -> CoreObject:
         """
@@ -187,3 +204,25 @@ class SpectrumCollection:
             The order is not guaranteed.
         """
         return tuple(ch for ch in self.objects_index.values() if ch.parent_id == obj_id)
+
+    def get_subtree(self, obj_id: str) -> tuple[CoreObject, ...]:
+        """
+        Return the object and all descendants without removing.
+
+        Same set of objects that would be returned by remove(obj_id).
+
+        Parameters
+        ----------
+        obj_id : str
+            Root object ID.
+
+        Returns
+        -------
+        tuple[CoreObject, ...]
+            The object and all its descendants.
+        """
+        obj = self.objects_index[obj_id]
+        result: list[CoreObject] = [obj]
+        for ch in self.get_children(obj_id):
+            result.extend(self.get_subtree(ch.id_))
+        return tuple(result)
