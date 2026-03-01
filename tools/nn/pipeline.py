@@ -6,7 +6,7 @@ Composes preprocessor, adapter, and postprocessor. Stays free of app concepts
 """
 
 from typing import Any, Protocol
-
+from pathlib import Path
 from numpy.typing import NDArray
 
 from core.types import SpectrumLike
@@ -118,6 +118,6 @@ class SegmenterPipeline(InferencePipeline):
         model_output = self.adapter.run(model_input)
         return self.postprocessor(model_output, **metadata, y=original_spectrum.y)
 
-    def load_model(self, model_path: str) -> None:
+    def load_model(self, model_path: str | Path) -> None:
         """Load or reload the ONNX model from the given path."""
         self.adapter.load(model_path)

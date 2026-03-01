@@ -6,6 +6,8 @@ pipeline outputs to CreateRegion, CreateBackground, CreatePeak changes
 via the SegmenterPipelineAdapter.
 """
 
+from pathlib import Path
+
 from core.types import SpectrumLike
 from tools.nn import SegmenterPipeline
 
@@ -50,13 +52,13 @@ class NNService:
             interp_num=interp_num,
         )
 
-    def load_model(self, model_path: str) -> None:
+    def load_model(self, model_path: str | Path) -> None:
         """
         Load or reload the ONNX model into the segmenter pipeline.
 
         Parameters
         ----------
-        model_path : str
+        model_path : str or Path
             Path to the segmenter ONNX model file.
         """
         self._pipeline.load_model(model_path)

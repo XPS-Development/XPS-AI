@@ -45,8 +45,7 @@ class ONNXSegmenterAdapter:
 
     def load(self, model_path: str | Path) -> None:
         """Load or reload the ONNX model from the given path."""
-        self._model_path = Path(model_path)
-        self._session = ort.InferenceSession(str(self._model_path), providers=["CPUExecutionProvider"])
+        self._session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
 
     def run(self, model_input: ModelInputT) -> ModelOutputT:
         """
