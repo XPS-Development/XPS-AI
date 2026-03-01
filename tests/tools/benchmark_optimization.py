@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from app.dto import ParameterDTO, ComponentDTO
+from tools.dto import ParameterDTO, ComponentDTO
 from core.math_models import PseudoVoigtPeakModel
 from core.math_models.model_funcs import pvoigt
 
@@ -178,9 +178,7 @@ def _build_contexts_from_peaks(
     for i, params in enumerate(peak_params):
         comp_id = f"{id_prefix}p{i + 1}"
         expr = amp_exprs[i] if i < len(amp_exprs) else None
-        components.append(
-            _make_component(comp_id, region_id, params, amp_expr=expr)
-        )
+        components.append(_make_component(comp_id, region_id, params, amp_expr=expr))
     ctx = OptimizationContext(
         id_=region_id,
         parent_id=parent_id,
@@ -206,7 +204,7 @@ class TestBenchmarkQuality:
         true = TRUE_PARAMS_1PEAK
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
         result = optimize([ctx], method="least_squares")
         opt_dict = {o.component_id: o.parameters for o in result}
         rmse = _compute_param_rmse(opt_dict, true)
@@ -220,7 +218,7 @@ class TestBenchmarkQuality:
         true = TRUE_PARAMS_2PEAKS
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
         result = optimize([ctx], method="least_squares")
         opt_dict = {o.component_id: o.parameters for o in result}
         rmse = _compute_param_rmse(opt_dict, true)
@@ -234,7 +232,7 @@ class TestBenchmarkQuality:
         true = TRUE_PARAMS_3PEAKS
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
         result = optimize([ctx], method="least_squares")
         opt_dict = {o.component_id: o.parameters for o in result}
         rmse = _compute_param_rmse(opt_dict, true)
@@ -248,7 +246,7 @@ class TestBenchmarkQuality:
         true = TRUE_PARAMS_1PEAK
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.2, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
         result = optimize([ctx], method="least_squares")
         opt_dict = {o.component_id: o.parameters for o in result}
         rmse = _compute_param_rmse(opt_dict, true)
@@ -262,7 +260,7 @@ class TestBenchmarkQuality:
         true = TRUE_PARAMS_1PEAK
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.05, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
         result = optimize([ctx], method="least_squares")
         opt_dict = {o.component_id: o.parameters for o in result}
         rmse = _compute_param_rmse(opt_dict, true)
@@ -332,7 +330,7 @@ class TestBenchmarkLatency:
         true = TRUE_PARAMS_1PEAK
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
 
         def run():
             return optimize([ctx], method="least_squares")
@@ -349,7 +347,7 @@ class TestBenchmarkLatency:
         true = TRUE_PARAMS_3PEAKS
         y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
         init = perturb_params(true, 0.1, RNG)
-        ctx, = _build_contexts_from_peaks(x, y, init)
+        (ctx,) = _build_contexts_from_peaks(x, y, init)
 
         def run():
             return optimize([ctx], method="least_squares")
@@ -366,7 +364,7 @@ class TestBenchmarkLatency:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
@@ -386,7 +384,7 @@ class TestBenchmarkLatency:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
@@ -406,7 +404,7 @@ class TestBenchmarkLatency:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
@@ -454,7 +452,7 @@ class TestBenchmarkStress:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
@@ -476,7 +474,7 @@ class TestBenchmarkStress:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
@@ -498,7 +496,7 @@ class TestBenchmarkStress:
             true = TRUE_PARAMS_2PEAKS[:n_peaks] if n_peaks == 2 else TRUE_PARAMS_1PEAK
             y = generate_pvoigt_spectrum(x, true, noise_scale=0.01, rng=RNG)
             init = perturb_params(true, 0.1, RNG)
-            ctx, = _build_contexts_from_peaks(
+            (ctx,) = _build_contexts_from_peaks(
                 x, y, init, region_id=f"r{i}", parent_id="s1", id_prefix=f"r{i}_"
             )
             contexts.append(ctx)
