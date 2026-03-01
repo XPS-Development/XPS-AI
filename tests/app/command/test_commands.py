@@ -126,7 +126,7 @@ def test_remove_object_command_apply_detaches(ctx, peak_id):
     change = RemoveObject(peak_id)
     cmd = RemoveObjectCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert not ctx.collection.check_object_exists(peak_id)
+    assert not ctx.query.check_object_exists(peak_id)
 
 
 def test_remove_object_command_undo_reattaches(ctx, peak_id):
@@ -135,7 +135,7 @@ def test_remove_object_command_undo_reattaches(ctx, peak_id):
     cmd = RemoveObjectCommand.from_change(change, ctx)
     cmd.apply(ctx)
     cmd.undo(ctx)
-    assert ctx.collection.check_object_exists(peak_id)
+    assert ctx.query.check_object_exists(peak_id)
 
 
 def test_remove_object_command_undo_without_apply_raises(ctx, peak_id):
@@ -151,10 +151,10 @@ def test_create_spectrum_command_apply_undo(ctx, x_axis, simple_gauss, noise):
     change = CreateSpectrum(x=x_axis, y=y, spectrum_id="s2")
     cmd = CreateSpectrumCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert ctx.collection.check_object_exists("s2")
+    assert ctx.query.check_object_exists("s2")
 
     cmd.undo(ctx)
-    assert not ctx.collection.check_object_exists("s2")
+    assert not ctx.query.check_object_exists("s2")
 
 
 def test_create_region_command_from_change_invalid_slice_raises(ctx, spectrum_id):
@@ -176,10 +176,10 @@ def test_create_region_command_apply_undo(ctx, spectrum_id):
     change = CreateRegion(spectrum_id=spectrum_id, start=50, stop=100, region_id="r2")
     cmd = CreateRegionCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert ctx.collection.check_object_exists("r2")
+    assert ctx.query.check_object_exists("r2")
 
     cmd.undo(ctx)
-    assert not ctx.collection.check_object_exists("r2")
+    assert not ctx.query.check_object_exists("r2")
 
 
 def test_create_peak_command_apply_undo(ctx, region_id):
@@ -192,10 +192,10 @@ def test_create_peak_command_apply_undo(ctx, region_id):
     )
     cmd = CreatePeakCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert ctx.collection.check_object_exists("p2")
+    assert ctx.query.check_object_exists("p2")
 
     cmd.undo(ctx)
-    assert not ctx.collection.check_object_exists("p2")
+    assert not ctx.query.check_object_exists("p2")
 
 
 def test_create_background_command_apply_undo(ctx, region_id):
@@ -208,10 +208,10 @@ def test_create_background_command_apply_undo(ctx, region_id):
     )
     cmd = CreateBackgroundCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert ctx.collection.check_object_exists("b2")
+    assert ctx.query.check_object_exists("b2")
 
     cmd.undo(ctx)
-    assert not ctx.collection.check_object_exists("b2")
+    assert not ctx.query.check_object_exists("b2")
 
 
 def test_composite_command_apply_runs_in_order(ctx, peak_id, region_id):
@@ -270,14 +270,14 @@ def test_replace_background_model_command_roundtrip(ctx, region_id):
     )
     cmd = ReplaceBackgroundModelCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    bg_id = ctx.collection.get_background(region_id)
+    bg_id = ctx.query.get_background(region_id)
     assert bg_id is not None
     params = ctx.component.get_parameters(bg_id)
     assert params["i1"]["value"] == 0.2
     assert params["i2"]["value"] == 1.0
 
     cmd.undo(ctx)
-    bg_id = ctx.collection.get_background(region_id)
+    bg_id = ctx.query.get_background(region_id)
     assert bg_id is not None
     params = ctx.component.get_parameters(bg_id)
     assert params["const"]["value"] == 1.0
@@ -329,13 +329,13 @@ def test_replace_background_model_command_no_existing_background(x_axis, simple_
     from core.services import CoreContext
     from core.objects import Spectrum, Region
 
-    collection = CoreCollection()
+    col = CoreCollection()
     x, y = x_axis, simple_gauss + noise + 1.0
     s = Spectrum(x, y, id_="s1")
     r = Region(slice(20, 181), parent_id=s.id_, id_="r1")
-    collection.add(s)
-    collection.add(r)
-    ctx = CoreContext.from_collection(collection)
+    col.add(s)
+    col.add(r)
+    ctx = CoreContext.from_collection(col)
 
     change = ReplaceBackgroundModel(
         region_id="r1",
@@ -344,7 +344,7 @@ def test_replace_background_model_command_no_existing_background(x_axis, simple_
     )
     cmd = ReplaceBackgroundModelCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    assert ctx.collection.get_background("r1") is not None
+    assert ctx.query.get_background("r1") is not None
 
     cmd.undo(ctx)
-    assert ctx.collection.get_background("r1") is None
+    assert ctx.query.get_background("r1") is None

@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-
-from core.collection import CoreCollection
-from core.services import CollectionQueryService, DataQueryService, ComponentService
-from core.math_models import BaseBackgroundModel, ParametricModelLike
-
 from typing import Literal
+
 from numpy.typing import NDArray
+
+from core.math_models import BaseBackgroundModel, ParametricModelLike
+from core.services import CoreContext
 
 
 @dataclass(frozen=True)
@@ -89,7 +88,7 @@ class DTOService:
     and UI layers.
     """
 
-    def __init__(self, collection: CoreCollection):
+    def __init__(self, ctx: CoreContext):
         """
         Initialize DTO service with access to core domain services.
 
@@ -98,9 +97,9 @@ class DTOService:
         collection : CoreCollection
             Active spectrum collection used as the data source.
         """
-        self.query_srv = CollectionQueryService(collection)
-        self.comp_srv = ComponentService(collection)
-        self.data_srv = DataQueryService(collection)
+        self.query_srv = ctx.query
+        self.comp_srv = ctx.component
+        self.data_srv = ctx.data
 
     def get_component(self, component_id: str, *, normalized: bool = False):
         """

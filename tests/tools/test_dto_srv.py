@@ -1,12 +1,12 @@
 import pytest
 import numpy as np
 
-from tools.dto import DTOService, ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
+from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
 
 
 @pytest.fixture
-def srv(simple_collection):
-    return DTOService(simple_collection)
+def srv(dto_service):
+    return dto_service
 
 
 def test_get_component_returns_component_dto(srv, region_id, peak_id, background_id):

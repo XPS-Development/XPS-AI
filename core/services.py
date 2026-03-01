@@ -939,7 +939,7 @@ class MetadataService(BaseCoreService):
 class CoreContext:
     """Read and write access to core services."""
 
-    collection: CollectionQueryService
+    query: CollectionQueryService
     spectrum: SpectrumService
     region: RegionService
     data: DataQueryService
@@ -950,7 +950,7 @@ class CoreContext:
     def from_collection(cls, collection: CoreCollection) -> "CoreContext":
         """Build context from a core collection."""
         return cls(
-            collection=CollectionQueryService(collection),
+            query=CollectionQueryService(collection),
             spectrum=SpectrumService(collection),
             region=RegionService(collection),
             data=DataQueryService(collection),

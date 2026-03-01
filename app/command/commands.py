@@ -354,7 +354,7 @@ class RemoveMetadataCommand(Command):
         RemoveMetadataCommand
             Command instance with old metadata stored for undo.
         """
-        if not ctx.collection.check_object_exists(change.obj_id):
+        if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         old_metadata = ctx.metadata.get_metadata(change.obj_id)
         return cls(obj_id=change.obj_id, old_metadata=old_metadata)
@@ -391,20 +391,20 @@ class RemoveObjectCommand(Command):
         """
         Create a RemoveObjectCommand from a change.
         """
-        if not ctx.collection.check_object_exists(change.obj_id):
+        if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         return cls(obj_id=change.obj_id)
 
     def apply(self, ctx: CoreContext) -> None:
         """Remove the object and all its children from the collection."""
-        self.objs = ctx.collection.detach(self.obj_id)
+        self.objs = ctx.query.detach(self.obj_id)
 
     def undo(self, ctx: CoreContext) -> None:
         """Restore the object and all its children to the collection."""
         if self.objs is None:
             raise RuntimeError("Command was not applied")
         for obj in self.objs:
-            ctx.collection.attach(obj)
+            ctx.query.attach(obj)
 
 
 class CreateObjectCommand(Command):
@@ -427,13 +427,13 @@ class CreateObjectCommand(Command):
 
     def apply(self, ctx: CoreContext) -> None:
         """Add the object to the collection."""
-        ctx.collection.attach(self.obj)
+        ctx.query.attach(self.obj)
 
     def undo(self, ctx: CoreContext) -> None:
         """Remove the object from the collection."""
-        if not ctx.collection.check_object_exists(self.obj.id_):
+        if not ctx.query.check_object_exists(self.obj.id_):
             raise RuntimeError("Command was not applied")
-        ctx.collection.detach(self.obj)
+        ctx.query.detach(self.obj)
 
 
 class CreateSpectrumCommand(CreateObjectCommand):
@@ -587,7 +587,7 @@ class ReplacePeakModelCommand(CompositeCommand):
         """
         rm_ch = RemoveObject(change.peak_id)
         create_ch = CreatePeak(
-            region_id=ctx.collection.get_parent(change.peak_id),
+            region_id=ctx.query.get_parent(change.peak_id),
             model_name=change.new_model_name,
             parameters=change.parameters,
             peak_id=change.peak_id,
@@ -633,7 +633,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
             parameters=change.parameters,
             background_id=change.background_id,
         )
-        bg_id = ctx.collection.get_background(change.region_id)
+        bg_id = ctx.query.get_background(change.region_id)
         rm_ch = RemoveObject(bg_id) if bg_id else None
         return rm_ch, create_ch
 
@@ -687,9 +687,9 @@ class FullRemoveObjectCommand(CompositeCommand):
         FullRemoveObjectCommand
             Command instance.
         """
-        if not ctx.collection.check_object_exists(change.obj_id):
+        if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
-        subtree = ctx.collection.get_subtree(change.obj_id)
+        subtree = ctx.query.get_subtree(change.obj_id)
         metadata_commands: list[Command] = []
         for obj_id in subtree:
             rm_meta_cmd = RemoveMetadataCommand.from_change(RemoveMetadata(obj_id), ctx)

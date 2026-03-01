@@ -158,13 +158,7 @@ def test_segmenter_changes_execute_via_command_executor(empty_collection, simple
     assert backgrounds[0].parent_id == regions[0].id_
 
 
-@pytest.fixture
-def dto_service(simple_collection):
-    """DTO service for spectrum/region DTOs."""
-    return DTOService(simple_collection)
-
-
-def test_nn_service_run_segmenter_returns_composite_change(simple_collection, spectrum_id, dto_service):
+def test_nn_service_run_segmenter_returns_composite_change(spectrum_id, dto_service):
     """NnService.run_segmenter returns CompositeChange (with patched pipeline)."""
     service = NNService(model_path=None)
     norm_spec = dto_service.get_spectrum(spectrum_id, normalized=True)
