@@ -226,3 +226,22 @@ class CoreCollection:
         for ch in self.get_children(obj_id):
             result.extend(self.get_subtree(ch.id_))
         return tuple(result)
+
+    def get_parent(self, obj_id: str) -> CoreObject | None:
+        """
+        Retrieve the parent of an object.
+        """
+        parent_id = self.objects_index[obj_id].parent_id
+        return self.objects_index[parent_id] if parent_id else None
+
+    def get_typed_parent(self, obj_id: str, tp: type[T]) -> T | None:
+        """
+        Retrieve the parent of an object and check type.
+        """
+        parent = self.get_parent(obj_id)
+        if parent is None:
+            return None
+        elif isinstance(parent, tp):
+            return parent
+
+        return self.get_typed_parent(parent.id_, tp)

@@ -234,9 +234,9 @@ def test_orchestrator_update_region_slice(orchestrator_with_data, region_id):
     """update_region_slice changes region bounds."""
     orch = orchestrator_with_data
     orch.update_region_slice(region_id, 25, 175)
-    sl = orch.ctx.region.get_slice(region_id)
-    assert sl.start == 25
-    assert sl.stop == 175
+    start, stop = orch.ctx.region.get_slice(region_id, mode="index")
+    assert start == 25
+    assert stop == 175
 
 
 def test_orchestrator_replace_peak_model(orchestrator_with_data: AppOrchestrator, peak_id: str):

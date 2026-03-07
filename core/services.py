@@ -1,18 +1,19 @@
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
+from typing import Literal, Optional, TypeVar
+
+import numpy as np
+from numpy.typing import NDArray
+
+from .collection import CoreCollection
 from .math_models import (
-    NormalizationContext,
-    ModelRegistry,
     BaseBackgroundModel,
     BasePeakModel,
+    ModelRegistry,
+    NormalizationContext,
     ParametricModelLike,
 )
-
-from .objects import Spectrum, Region, Peak, Background, Component, CoreObject
-from .collection import CoreCollection
 from .metadata import Metadata
-
-from typing import Optional, TypeVar
-from numpy.typing import NDArray
+from .objects import Background, Component, CoreObject, Peak, Region, Spectrum
 
 T = TypeVar("T")
 
@@ -84,6 +85,18 @@ class BaseCoreService:
             If the object is not an instance of the requested type.
         """
         return self.collection.get_typed(obj_id, tp)
+
+    def _get_first_parent(self, obj_id: str) -> CoreObject:
+        """
+        Retrieve the first parent of an object.
+        """
+        return self.collection.get_parent(obj_id)
+
+    def _get_typed_parent(self, obj_id: str, tp: type[T]) -> T:
+        """
+        Retrieve the parent of an object by type.
+        """
+        return self.collection.get_typed_parent(obj_id, tp)
 
     def attach(self, obj: CoreObject) -> None:
         """
@@ -353,18 +366,32 @@ class RegionService(BaseCoreService):
         """
         return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
 
-    def _check_slice(self, spectrum_id: str, start: int, stop: int) -> bool:
+    def _convert_value_to_index(self, spectrum_id: str, value: float) -> int:
+        """
+        Convert a value to an index.
+        """
+        return np.searchsorted(self._get_typed(spectrum_id, Spectrum).x, value)
+
+    def _check_slice(
+        self,
+        spectrum_id: str,
+        start: int | float,
+        stop: int | float,
+    ) -> bool:
         """
         Check if a slice is valid.
         """
         spectrum = self._get_typed(spectrum_id, Spectrum)
-        if start < 0 or stop > len(spectrum.x):
-            return False
-        if start >= stop:
-            return False
-        return True
+        return 0 <= start < stop <= len(spectrum.x)
 
-    def create_region(self, spectrum_id: str, start: int, stop: int, region_id: Optional[str] = None) -> str:
+    def create_region(
+        self,
+        spectrum_id: str,
+        start: int | float,
+        stop: int | float,
+        region_id: Optional[str] = None,
+        mode: Literal["value", "index"] = "index",
+    ) -> str:
         """
         Create and register a region bound to a spectrum.
 
@@ -372,12 +399,14 @@ class RegionService(BaseCoreService):
         ----------
         spectrum_id : str
             Identifier of the parent spectrum.
-        start : int
+        start : int or float
             Start index (inclusive).
-        stop : int
+        stop : int or float
             Stop index (exclusive).
         region_id : str, optional
             Explicit region identifier.
+        mode : Literal["value", "index"], default="index"
+            Mode of the region creation.
 
         Returns
         -------
@@ -389,13 +418,24 @@ class RegionService(BaseCoreService):
         ValueError
             If indices are outside spectrum bounds or start >= stop.
         """
+        if mode == "value":
+            start = self._convert_value_to_index(spectrum_id, start)
+            stop = self._convert_value_to_index(spectrum_id, stop)
+
         if not self._check_slice(spectrum_id, start, stop):
             raise ValueError("Invalid region slice")
+
         region = self._create_region_obj(spectrum_id, start, stop, region_id)
         self.attach(region)
         return region.id_
 
-    def update_slice(self, region_id: str, start: int, stop: int) -> None:
+    def update_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        mode: Literal["value", "index"] = "index",
+    ) -> None:
         """
         Update the index slice of an existing region.
 
@@ -403,10 +443,12 @@ class RegionService(BaseCoreService):
         ----------
         region_id : str
             Identifier of the region.
-        start : int
-            New start index.
-        stop : int
-            New stop index.
+        start : int or float
+            New start index or value of x-axis.
+        stop : int or float
+            New stop index or value of x-axis.
+        mode : Literal["value", "index"], default="index"
+            Mode of the slice update.
 
         Raises
         ------
@@ -414,25 +456,40 @@ class RegionService(BaseCoreService):
             If indices are outside spectrum bounds or start >= stop.
         """
         region = self._get_typed(region_id, Region)
+
+        if mode == "value":
+            start = self._convert_value_to_index(region.parent_id, start)
+            stop = self._convert_value_to_index(region.parent_id, stop)
+
         if not self._check_slice(region.parent_id, start, stop):
             raise ValueError("Invalid region slice")
+
         region.slice_ = slice(start, stop)
 
-    def get_slice(self, region_id: str) -> slice:
+    def get_slice(
+        self, region_id: str, mode: Literal["value", "index"] = "index"
+    ) -> tuple[int | float, int | float]:
         """
-        Retrieve the index slice of an existing region.
+        Retrieve the start and stop values or indices of an existing region.
 
         Parameters
         ----------
         region_id : str
             Identifier of the region.
+        mode : Literal["value", "index"], default="index"
+            Mode of the slice retrieval.
 
         Returns
         -------
-        slice
-            Index slice of the region.
+        tuple[int | float, int | float]
+            Start and stop values or indices of the region in the spectrum.
         """
-        return self._get_typed(region_id, Region).slice_
+        region = self._get_typed(region_id, Region)
+        spectrum = self._get_typed(region.parent_id, Spectrum)
+        if mode == "value":
+            return (spectrum.x[region.slice_.start], spectrum.x[region.slice_.stop - 1])
+        else:
+            return (region.slice_.start, region.slice_.stop)
 
 
 class DataQueryService(BaseCoreService):

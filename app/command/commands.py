@@ -5,30 +5,30 @@ Commands are created from Change instances via CommandRegistry.
 They encapsulate "how" to apply and undo changes against the core data model.
 """
 
-from dataclasses import asdict
 from abc import ABC, abstractmethod
+from dataclasses import asdict
+from typing import Any, Callable
 
-from core.services import SpectrumService, RegionService, ComponentService, CoreContext
 from core.metadata import Metadata
-from core.objects import Peak, Background, CoreObject
+from core.objects import Background, CoreObject, Peak, Region
+from core.services import ComponentService, CoreContext, RegionService, SpectrumService
+
 from .changes import (
     BaseChange,
+    CreateBackground,
+    CreatePeak,
+    CreateRegion,
+    CreateSpectrum,
+    FullRemoveObject,
+    RemoveMetadata,
+    RemoveObject,
+    ReplaceBackgroundModel,
+    ReplacePeakModel,
+    SetMetadata,
+    UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
-    UpdateMultipleParameterValues,
-    RemoveObject,
-    RemoveMetadata,
-    FullRemoveObject,
-    CreateSpectrum,
-    CreateRegion,
-    CreatePeak,
-    CreateBackground,
-    ReplacePeakModel,
-    ReplaceBackgroundModel,
-    SetMetadata,
 )
-
-from typing import Callable, Any
 
 
 class Command(ABC):
@@ -134,9 +134,16 @@ class UpdateParameterCommand(Command):
 
 
 class UpdateRegionSliceCommand(Command):
-    """Command that updates a region's index slice; stores previous slice for undo."""
+    """Command that updates a region's index slice; stores indices only (values converted in from_change)."""
 
-    def __init__(self, region_id: str, new_start: int, new_stop: int, old_start: int, old_stop: int) -> None:
+    def __init__(
+        self,
+        region_id: str,
+        new_start: int,
+        new_stop: int,
+        old_start: int,
+        old_stop: int,
+    ) -> None:
         """
         Initialize an update region slice command.
 
@@ -164,32 +171,34 @@ class UpdateRegionSliceCommand(Command):
         """
         Create an UpdateRegionSliceCommand from a change, initializing undo state.
 
-        Parameters
-        ----------
-        change : UpdateRegionSlice
-            The change to convert to a command.
-        ctx : CoreContext
-            Application context for reading current state.
-
-        Returns
-        -------
-        UpdateRegionSliceCommand
-            Command instance with old slice values initialized for undo.
+        Converts value-mode start/stop to indices so the command works only with indices.
         """
-        old_slice = ctx.region.get_slice(change.region_id)
+        old_start, old_stop = ctx.region.get_slice(change.region_id, mode="index")
+        spectrum_id = ctx.query.get_parent(change.region_id)
+
+        if change.mode == "value":
+            new_start = ctx.region._convert_value_to_index(spectrum_id, change.start)
+            new_stop = ctx.region._convert_value_to_index(spectrum_id, change.stop)
+        else:
+            new_start = int(change.start)
+            new_stop = int(change.stop)
+
+        if not ctx.region._check_slice(spectrum_id, new_start, new_stop):
+            raise ValueError("Invalid region slice")
+
         return cls(
             region_id=change.region_id,
-            new_start=change.start,
-            new_stop=change.stop,
-            old_start=old_slice.start,
-            old_stop=old_slice.stop,
+            new_start=new_start,
+            new_stop=new_stop,
+            old_start=old_start,
+            old_stop=old_stop,
         )
 
     def apply(self, ctx: CoreContext) -> None:
-        ctx.region.update_slice(self.region_id, self.new_start, self.new_stop)
+        ctx.region.update_slice(self.region_id, self.new_start, self.new_stop, mode="index")
 
     def undo(self, ctx: CoreContext) -> None:
-        ctx.region.update_slice(self.region_id, self.old_start, self.old_stop)
+        ctx.region.update_slice(self.region_id, self.old_start, self.old_stop, mode="index")
 
 
 class UpdateMultipleParameterValuesCommand(Command):
@@ -488,9 +497,23 @@ class CreateRegionCommand(CreateObjectCommand):
         ValueError
             If the region slice is out of bounds.
         """
-        if not ctx.region._check_slice(change.spectrum_id, change.start, change.stop):
+        if change.mode == "value":
+            start = ctx.region._convert_value_to_index(change.spectrum_id, change.start)
+            stop = ctx.region._convert_value_to_index(change.spectrum_id, change.stop)
+        else:
+            start = change.start
+            stop = change.stop
+
+        if not ctx.region._check_slice(change.spectrum_id, start, stop):
             raise ValueError("Invalid region slice")
-        return cls(**asdict(change))
+
+        # Command works with indices only; pass converted start/stop, drop mode.
+        d = asdict(change)
+        d["start"] = start
+        d["stop"] = stop
+        d.pop("mode", None)
+
+        return cls(**d)
 
 
 class CreatePeakCommand(CreateObjectCommand):

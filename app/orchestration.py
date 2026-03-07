@@ -232,9 +232,15 @@ class AppOrchestrator:
             )
         )
 
-    def update_region_slice(self, region_id: str, start: int, stop: int) -> None:
+    def update_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        mode: Literal["value", "index"] = "index",
+    ) -> None:
         """Update the index slice of an existing region; executed as a command."""
-        self.execute(UpdateRegionSlice(region_id=region_id, start=start, stop=stop))
+        self.execute(UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode))
 
     def replace_peak_model(
         self,
@@ -282,9 +288,10 @@ class AppOrchestrator:
     def create_region(
         self,
         spectrum_id: str,
-        start: int,
-        stop: int,
+        start: int | float,
+        stop: int | float,
         region_id: str | None = None,
+        mode: Literal["value", "index"] = "index",
     ) -> None:
         """Create a new region; executed as a command."""
         self.execute(
@@ -293,6 +300,7 @@ class AppOrchestrator:
                 start=start,
                 stop=stop,
                 region_id=region_id,
+                mode=mode,
             )
         )
 

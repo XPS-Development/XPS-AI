@@ -75,7 +75,7 @@ def test_update_parameter_command_undo_without_apply_raises(ctx, peak_id):
 
 
 def test_update_region_slice_command_from_change_captures_old_slice(ctx, region_id):
-    """from_change captures old slice from context."""
+    """from_change captures old slice from context; command stores indices only."""
     change = UpdateRegionSlice(region_id, 25, 175)
     cmd = UpdateRegionSliceCommand.from_change(change, ctx)
     assert cmd.new_start == 25
@@ -89,14 +89,29 @@ def test_update_region_slice_command_apply_undo_roundtrip(ctx, region_id):
     change = UpdateRegionSlice(region_id, 25, 175)
     cmd = UpdateRegionSliceCommand.from_change(change, ctx)
     cmd.apply(ctx)
-    sl = ctx.region.get_slice(region_id)
-    assert sl.start == 25
-    assert sl.stop == 175
+    start, stop = ctx.region.get_slice(region_id, mode="index")
+    assert start == 25
+    assert stop == 175
 
     cmd.undo(ctx)
-    sl = ctx.region.get_slice(region_id)
-    assert sl.start == 20
-    assert sl.stop == 181
+    start, stop = ctx.region.get_slice(region_id, mode="index")
+    assert start == 20
+    assert stop == 181
+
+
+def test_update_region_slice_command_value_mode_roundtrip(ctx, region_id):
+    """UpdateRegionSlice with mode='value' applies x-axis values; undo restores indices."""
+    change = UpdateRegionSlice(region_id, -3.0, 3.0, mode="value")
+    cmd = UpdateRegionSliceCommand.from_change(change, ctx)
+    cmd.apply(ctx)
+    start_val, stop_val = ctx.region.get_slice(region_id, mode="value")
+    assert start_val <= -2.9
+    assert stop_val >= 2.9
+
+    cmd.undo(ctx)
+    start, stop = ctx.region.get_slice(region_id, mode="index")
+    assert start == 20
+    assert stop == 181
 
 
 def test_update_multiple_parameter_values_command_roundtrip(ctx, peak_id):
@@ -182,6 +197,22 @@ def test_create_region_command_apply_undo(ctx, spectrum_id):
     assert not ctx.query.check_object_exists("r2")
 
 
+def test_create_region_command_value_mode_apply_undo(ctx, spectrum_id):
+    """CreateRegion with mode='value' creates region from x-axis values; undo removes it."""
+    change = CreateRegion(
+        spectrum_id=spectrum_id, start=-5.0, stop=5.0, region_id="r2", mode="value"
+    )
+    cmd = CreateRegionCommand.from_change(change, ctx)
+    cmd.apply(ctx)
+    assert ctx.query.check_object_exists("r2")
+    start_val, stop_val = ctx.region.get_slice("r2", mode="value")
+    assert start_val <= -4.9
+    assert stop_val >= 4.9
+
+    cmd.undo(ctx)
+    assert not ctx.query.check_object_exists("r2")
+
+
 def test_create_peak_command_apply_undo(ctx, region_id):
     """from_change + apply adds peak; undo removes it."""
     change = CreatePeak(
@@ -223,9 +254,9 @@ def test_composite_command_apply_runs_in_order(ctx, peak_id, region_id):
 
     param = ctx.component.get_parameter(peak_id, "cen")
     assert param["value"] == 3.0
-    sl = ctx.region.get_slice(region_id)
-    assert sl.start == 30
-    assert sl.stop == 170
+    start, stop = ctx.region.get_slice(region_id, mode="index")
+    assert start == 30
+    assert stop == 170
 
 
 def test_composite_command_undo_runs_reverse_order(ctx, peak_id, region_id):
@@ -238,9 +269,9 @@ def test_composite_command_undo_runs_reverse_order(ctx, peak_id, region_id):
 
     param = ctx.component.get_parameter(peak_id, "cen")
     assert param["value"] == 0.0
-    sl = ctx.region.get_slice(region_id)
-    assert sl.start == 20
-    assert sl.stop == 181
+    start, stop = ctx.region.get_slice(region_id, mode="index")
+    assert start == 20
+    assert stop == 181
 
 
 def test_replace_peak_model_command_roundtrip(ctx, peak_id):
