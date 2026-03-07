@@ -6,15 +6,13 @@ Uses evaluation functions from tools.evaluation and protocol-typed objects
 typing without coupling to DTOs.
 """
 
-from __future__ import annotations
-
 from typing import Optional, Protocol
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt
 
 from .evaluation import region_bundle
 

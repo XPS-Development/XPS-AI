@@ -5,18 +5,16 @@ Provides OptimizationContext, OptimizationPlanner, LmfitOptimizer, and optimize(
 for use as a standalone library or via the app layer. Uses core.types protocols only;
 """
 
-import re
 from dataclasses import dataclass
+import re
+from typing import Any, Sequence
 
-import numpy as np
 from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
+import numpy as np
 
 from core.types import ComponentLike, RegionLike
-
 from tools.evaluation import component_y
-
-from typing import Sequence, Any
 
 _COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 
@@ -65,10 +63,7 @@ def build_contexts(
         cmps_to_opt: list[ComponentLike] = []
 
         for cmp in components:
-            is_static_bg = (
-                cmp.kind == "background"
-                and getattr(cmp.model, "static", False)
-            )
+            is_static_bg = cmp.kind == "background" and getattr(cmp.model, "static", False)
             if is_static_bg:
                 y -= component_y(cmp, region.x, region.y)
             else:
