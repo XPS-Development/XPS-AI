@@ -4,8 +4,15 @@ Set of useful methods for routine tasks.
 Provides functions for guessing parameters.
 """
 
+from typing import Literal
+
 import numpy as np
 from numpy.typing import NDArray
+
+from core.services import CoreContext
+
+from .dto import DTOService
+from .evaluation import region_bundle
 
 
 def guess_pseudo_voigt_sig_paramater(x: NDArray, y: NDArray, max_idx: int) -> float:
@@ -85,7 +92,7 @@ def calculate_background_intensities(
     return i1, i2
 
 
-def guess_pseudo_voigt_peak_parameters_at_max_idx(
+def guess_pseudo_voigt_params_at_max(
     x: NDArray,
     y: NDArray,
     max_idx: int,
@@ -120,20 +127,131 @@ def guess_pseudo_voigt_peak_parameters_at_max_idx(
     return amp, x[max_idx], sig, frac
 
 
-def guess_peak_position_at_max_idx(x: NDArray, diff: NDArray) -> float:
-    """Guess peak position by difference of Y values and model values.
-    The peak position is the index of the maximum difference.
+def guess_peak_position_by_residuals(x: NDArray, residuals: NDArray) -> int:
+    """Guess peak position by residuals.
+    The peak position is the index of the maximum residual.
 
     Parameters
     ----------
     x : NDArray
         X values.
-    diff : NDArray
-        Difference of Y values and model values.
+    residuals : NDArray
+        Residuals.
 
     Returns
     -------
-    float
-        Peak position.
+    int
+        Index of the peak maximum.
     """
-    return x[np.argmax(diff)]
+    return np.argmax(residuals)
+
+
+class AutomaticEvaluator:
+    """
+    Evaluator for automatization tools.
+
+    Provides methods for guessing parameters.
+
+    Uses DTO service to get component parameters.
+    """
+
+    GUESS_INTENSITIES_FOR_MODELS = ("constant", "linear", "shirley")
+
+    def __init__(self, ctx: CoreContext, *, dto: DTOService | None = None) -> None:
+        self._ctx = ctx
+        self._dto = dto or DTOService(ctx)
+
+    def calculate_background_parameters(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        mode: Literal["value", "index"] = "index",
+        avg_on: int = 3,
+    ) -> dict[str, float] | None:
+        """Calculate background parameters for a region.
+
+        Useful for region with background.
+        This method can be used to update background parameters for a region according to the new slice.
+
+        Parameters
+        ----------
+        region_id: str
+            Region ID.
+        start: int | float
+            Start value or index.
+        stop: int | float
+            Stop value or index.
+        mode: Literal["value", "index"]
+            Mode to convert start and stop to indices.
+        avg_on: int, default=3
+            Number of points to average on the start and stop indices.
+
+        Returns
+        -------
+        dict[str, float] | None
+            Background parameters or None if no background is found or model is not supported.
+        """
+        bg_id = self._ctx.query.get_background(region_id)
+        spectrum_id = self._ctx.query.get_parent(region_id)
+        spectrum = self._dto.get_spectrum(spectrum_id)
+
+        if bg_id is None:
+            return None
+        model_name = self._ctx.component.get_model(bg_id).name
+        if model_name not in self.GUESS_INTENSITIES_FOR_MODELS:
+            return None
+
+        if mode == "value":
+            start = np.searchsorted(spectrum.x, start)
+            stop = np.searchsorted(spectrum.x, stop)
+
+        i1, i2 = calculate_background_intensities(spectrum.y, start, stop, avg_on)
+
+        if model_name == "constant":
+            return {"const": min(i1, i2)}
+        elif model_name == "linear" or model_name == "shirley":
+            return {"i1": i1, "i2": i2}
+
+    def create_pseudo_voigt_peak_parameters(self, region_id: str) -> dict[str, float]:
+        """Create pseudo-voigt peak parameters by residuals.
+
+        This method can be used to create initial peak parameters for pseudo-voigt model.
+
+        Parameters
+        ----------
+        region_id: str
+            Region ID.
+        """
+        region, components = self._dto.get_region_repr(region_id)
+        region_eval = region_bundle(region, components)
+
+        max_idx = guess_peak_position_by_residuals(region_eval.x, region_eval.residuals)
+        amp, cen, sig, frac = guess_pseudo_voigt_params_at_max(region_eval.x, region_eval.y, max_idx)
+
+        return {"amp": amp, "cen": cen, "sig": sig, "frac": frac}
+
+    def create_i1_i2_parameters(self, region_id: str, avg_on: int = 3) -> dict[str, float]:
+        """Create i1 and i2 parameters for a region.
+        i1 and i2 are the intensities at the start and stop of the region.
+
+        Useful for region without background.
+        This method can be used to create initial background parameters for a region.
+
+        Parameters
+        ----------
+        region_id: str
+            Region ID.
+        avg_on: int, default=3
+            Number of points to average on the start and stop indices.
+
+        Returns
+        -------
+        dict[str, float]
+            i1 and i2 parameters .
+        """
+        spectrum_id = self._ctx.query.get_parent(region_id)
+        spectrum = self._dto.get_spectrum(spectrum_id)
+        start, stop = self._ctx.region.get_slice(region_id)
+        i1, i2 = calculate_background_intensities(spectrum.y, start, stop, avg_on=avg_on)
+        return {"i1": i1, "i2": i2}

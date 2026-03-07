@@ -11,9 +11,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..._tools import recalculate_idx
-from ...automatizations import (
+from ...automatization import (
     calculate_background_intensities,
-    guess_pseudo_voigt_peak_parameters_at_max_idx,
+    guess_pseudo_voigt_params_at_max,
 )
 from ..types import (
     BackgroundDetectionResult,
@@ -133,7 +133,7 @@ class SegmenterPostprocessor:
 
     def _guess_peaks(self, x: NDArray, y: NDArray, max_idxs: NDArray) -> tuple[PeakDetectionResult, ...]:
         """Guess peak parameters for pseudo-voigt model."""
-        parameters = tuple(guess_pseudo_voigt_peak_parameters_at_max_idx(x, y, idx) for idx in max_idxs)
+        parameters = tuple(guess_pseudo_voigt_params_at_max(x, y, idx) for idx in max_idxs)
         return tuple(
             PeakDetectionResult(
                 model_name=self.DEFAULT_PEAK_MODEL, parameters=dict(amp=amp, cen=cen, sig=sig, frac=frac)
