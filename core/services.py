@@ -241,7 +241,7 @@ class CollectionQueryService(BaseCoreService):
         Raises
         ------
         RuntimeError
-            If the region has no background or more than one background.
+            If the region has more than one background.
         """
         bgs = [obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)]
 
