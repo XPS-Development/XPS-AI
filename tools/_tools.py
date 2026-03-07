@@ -28,3 +28,26 @@ def interpolate(x: NDArray, y: NDArray, num: int = 256) -> tuple[NDArray, NDArra
     new_x = np.linspace(x[0], x[-1], num, dtype=np.float32)
     new_y = f(new_x)
     return new_x, new_y
+
+
+def recalculate_idx(idx: int, array_1: NDArray, array_2: NDArray) -> int:
+    """Map index from interpolated grid (array_1) to original grid (array_2).
+
+    Parameters
+    ----------
+    idx : int
+        Index in the interpolated grid.
+    array_1 : NDArray
+        Interpolated grid.
+    array_2 : NDArray
+        Original grid.
+
+    Returns
+    -------
+    int
+        Index in the original grid.
+    """
+    if idx >= len(array_1):
+        return len(array_2)
+    val = array_1[idx]
+    return int(np.abs(array_2 - val).argmin())
