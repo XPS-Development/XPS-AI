@@ -167,9 +167,9 @@ class PropertiesModel(QAbstractItemModel):
                 return False
 
             region_service = self._controller.ctx.region
-            current_slice = region_service.get_slice(item.region_id)
-            start = current_slice.start or 0
-            stop = current_slice.stop or 0
+            start, stop = region_service.get_slice(item.region_id, mode="index")
+            start = start or 0
+            stop = stop or 0
 
             if item.name == "start":
                 start = new_bound
@@ -274,11 +274,11 @@ class PropertiesModel(QAbstractItemModel):
             )
             self._root_item.append_child(region_item)
 
-            region_slice = region_service.get_slice(region_id)
+            start_val, stop_val = region_service.get_slice(region_id, mode="index")
             region_item.append_child(
                 PropertyItem(
                     name="start",
-                    value=str(region_slice.start),
+                    value=str(start_val),
                     parent=region_item,
                     kind="region_slice",
                     region_id=region_id,
@@ -287,7 +287,7 @@ class PropertiesModel(QAbstractItemModel):
             region_item.append_child(
                 PropertyItem(
                     name="stop",
-                    value=str(region_slice.stop),
+                    value=str(stop_val),
                     parent=region_item,
                     kind="region_slice",
                     region_id=region_id,

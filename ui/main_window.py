@@ -6,6 +6,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QToolBar, QWidget
 
 from .controller import ControllerWrapper
+from .plot_area import PlotAreaWidget
 from .properties import PropertiesView
 from .spectrum_tree import SpectrumTreeWidget
 
@@ -154,7 +155,7 @@ class MainWindow(QMainWindow):
         self._spectrum_tree = SpectrumTreeWidget(self._controller, splitter)
         self._spectrum_tree.setObjectName("SpectrumTree")
 
-        self._plot_area = QWidget(splitter)
+        self._plot_area = PlotAreaWidget(self._controller, splitter)
         self._plot_area.setObjectName("PlotArea")
 
         self._properties_view = PropertiesView(self._controller, splitter)
@@ -171,6 +172,9 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(splitter)
 
+        if self._plot_area is not None:
+            self._plot_area.refresh()
+
     def _create_status_bar(self) -> None:
         """Create and attach the status bar."""
         status_bar = QStatusBar(self)
@@ -185,6 +189,9 @@ class MainWindow(QMainWindow):
 
         if self._spectrum_tree is not None:
             self._controller.collectionChanged.connect(self._spectrum_tree.refresh)
+        if self._plot_area is not None:
+            self._controller.collectionChanged.connect(self._plot_area.refresh)
+            self._controller.selectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
             self._controller.collectionChanged.connect(self._properties_view.refresh)
             self._controller.selectionChanged.connect(self._properties_view.refresh)

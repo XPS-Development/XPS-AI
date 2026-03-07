@@ -192,6 +192,94 @@ class ControllerWrapper(QObject):
         return self.ctx.metadata.get_metadata(obj_id)
 
     # ------------------------------------------------------------------
+    # ViewerDataProvider (for plot area; delegates to dto_service)
+    # ------------------------------------------------------------------
+
+    def get_spectrum(self, spectrum_id: str, *, normalized: bool = False) -> Any:
+        """
+        Return a spectrum-like projection with .x and .y arrays.
+
+        Implements ViewerDataProvider for the plot area.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+        normalized : bool, optional
+            If True, return normalized data.
+
+        Returns
+        -------
+        SpectrumLike
+            Spectrum projection with x and y arrays.
+        """
+        return self.dto_service.get_spectrum(spectrum_id, normalized=normalized)
+
+    def get_region(self, region_id: str, *, normalized: bool = False) -> Any:
+        """
+        Return a region-like projection with .x and .y arrays.
+
+        Implements ViewerDataProvider for the plot area.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+        normalized : bool, optional
+            If True, return normalized data.
+
+        Returns
+        -------
+        RegionLike
+            Region projection with x and y arrays.
+        """
+        return self.dto_service.get_region(region_id, normalized=normalized)
+
+    def get_spectrum_repr(
+        self, spectrum_id: str, *, normalized: bool = False
+    ) -> Any:
+        """
+        Return spectrum-like and its region-like and component-like objects.
+
+        Implements ViewerDataProvider for the plot area.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+        normalized : bool, optional
+            If True, return normalized data and parameters.
+
+        Returns
+        -------
+        tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]
+            Spectrum and its regions with components for evaluation.
+        """
+        return self.dto_service.get_spectrum_repr(spectrum_id, normalized=normalized)
+
+    def get_region_repr(
+        self, region_id: str, *, normalized: bool = False
+    ) -> tuple[Any, tuple[Any, ...]]:
+        """
+        Return region-like and its component-like objects.
+
+        Implements ViewerDataProvider for the plot area.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+        normalized : bool, optional
+            If True, return normalized data and parameters.
+
+        Returns
+        -------
+        tuple[RegionLike, tuple[ComponentLike, ...]]
+            Region and its components for evaluation.
+        """
+        return self.dto_service.get_region_repr(region_id, normalized=normalized)
+
+    # ------------------------------------------------------------------
     # Mutation API: thin forwarding to orchestrator with signals
     # ------------------------------------------------------------------
 
