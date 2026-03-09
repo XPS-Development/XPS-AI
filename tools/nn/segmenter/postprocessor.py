@@ -173,10 +173,9 @@ class SegmenterPostprocessor:
             if local_max_idxs.size != 0:
                 reg = RegionDetectionResult(start=int(f), stop=int(t))
                 peaks = self._guess_peaks(x, y, local_max_idxs)
-                i1, i2 = calculate_background_intensities(y, f, t)
                 background = BackgroundDetectionResult(
                     model_name=self.DEFAULT_BACKGROUND_MODEL,
-                    parameters=dict(i1=i1, i2=i2),
+                    parameters=calculate_background_intensities(x, y, f, t),
                 )
                 result.append(SegmenterResult(region=reg, peaks=peaks, background=background))
         return result

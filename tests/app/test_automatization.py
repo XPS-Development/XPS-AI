@@ -5,29 +5,48 @@ App-level tests: service uses CoreContext and returns Command-layer Change objec
 (CompositeChange, CreatePeak, CreateBackground) for the command executor.
 """
 
+import numpy as np
 import pytest
 
-from app.automatization import AutomatizationService
+from app.automatization import AutomatizationAdapter
 from app.command.changes import (
     CompositeChange,
-    UpdateRegionSlice,
-    UpdateMultipleParameterValues,
-    CreatePeak,
     CreateBackground,
+    CreatePeak,
+    UpdateMultipleParameterValues,
+    UpdateRegionSlice,
 )
 
 
 @pytest.fixture
-def service(ctx, dto_service) -> AutomatizationService:
-    return AutomatizationService(ctx, dto=dto_service)
+def adapter() -> AutomatizationAdapter:
+    return AutomatizationAdapter()
+
+
+def _dummy_spectrum() -> tuple[np.ndarray, np.ndarray]:
+    x = np.linspace(0.0, 10.0, 201)
+    y = np.linspace(1.0, 2.0, 201)
+    return x, y
 
 
 def test_update_slice_with_intensities_returns_composite_change(
-    service: AutomatizationService,
-    region_id: str,
+    adapter: AutomatizationAdapter,
 ) -> None:
     """update_slice_with_intensities returns CompositeChange with slice and bg updates."""
-    change = service.update_slice_with_intensities(region_id, start=25, stop=175, mode="index", avg_on=3)
+    region_id = "region-1"
+    background_id = "bg-1"
+    x, y = _dummy_spectrum()
+    change = adapter.update_slice_with_intensities(
+        region_id=region_id,
+        background_id=background_id,
+        background_model_name="shirley",
+        spectrum_x=x,
+        spectrum_y=y,
+        start=25,
+        stop=175,
+        mode="index",
+        avg_on=3,
+    )
     assert isinstance(change, CompositeChange)
     assert len(change.changes) == 2
     assert isinstance(change.changes[0], UpdateRegionSlice)
@@ -35,11 +54,23 @@ def test_update_slice_with_intensities_returns_composite_change(
 
 
 def test_update_slice_with_intensities_slice_change_content(
-    service: AutomatizationService,
-    region_id: str,
+    adapter: AutomatizationAdapter,
 ) -> None:
     """UpdateRegionSlice has correct region_id, start, stop, mode."""
-    change = service.update_slice_with_intensities(region_id, start=30, stop=170, mode="index")
+    region_id = "region-1"
+    background_id = "bg-1"
+    x, y = _dummy_spectrum()
+    change = adapter.update_slice_with_intensities(
+        region_id=region_id,
+        background_id=background_id,
+        background_model_name="shirley",
+        spectrum_x=x,
+        spectrum_y=y,
+        start=30,
+        stop=170,
+        mode="index",
+        avg_on=3,
+    )
     slice_change = change.changes[0]
     assert isinstance(slice_change, UpdateRegionSlice)
     assert slice_change.region_id == region_id
@@ -48,40 +79,80 @@ def test_update_slice_with_intensities_slice_change_content(
     assert slice_change.mode == "index"
 
 
-def test_update_slice_with_intensities_background_parameters(
-    service: AutomatizationService,
-    region_id: str,
+def test_update_slice_with_intensities_background_parameters_constant(
+    adapter: AutomatizationAdapter,
 ) -> None:
     """UpdateMultipleParameterValues has component_id and parameters for constant bg."""
-    change = service.update_slice_with_intensities(region_id, start=25, stop=175, mode="index", avg_on=3)
+    region_id = "region-1"
+    background_id = "bg-1"
+    x, y = _dummy_spectrum()
+    change = adapter.update_slice_with_intensities(
+        region_id=region_id,
+        background_id=background_id,
+        background_model_name="constant",
+        spectrum_x=x,
+        spectrum_y=y,
+        start=25,
+        stop=175,
+        mode="index",
+        avg_on=3,
+    )
     bg_change = change.changes[1]
     assert isinstance(bg_change, UpdateMultipleParameterValues)
-    assert bg_change.component_id is not None
+    assert bg_change.component_id == background_id
     assert "const" in bg_change.parameters
 
 
+class _DummyRegion:
+    def __init__(self, region_id: str) -> None:
+        self.id_ = region_id
+
+
 def test_create_pseudo_voigt_peak_returns_create_peak(
-    service: AutomatizationService,
-    region_id: str,
+    adapter: AutomatizationAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """create_pseudo_voigt_peak returns CreatePeak with model_name and parameters."""
-    change = service.create_pseudo_voigt_peak(region_id)
+    region = _DummyRegion("region-1")
+    components = ("c1", "c2")
+
+    captured: dict[str, object] = {}
+
+    def _fake_create_params(region_arg, components_arg):  # type: ignore[no-untyped-def]
+        captured["region"] = region_arg
+        captured["components"] = components_arg
+        return {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
+
+    monkeypatch.setattr(
+        "app.automatization.create_pseudo_voigt_peak_parameters",
+        _fake_create_params,
+    )
+
+    change = adapter.create_pseudo_voigt_peak(region, components)  # type: ignore[arg-type]
     assert isinstance(change, CreatePeak)
-    assert change.region_id == region_id
+    assert change.region_id == region.id_
     assert change.model_name == "pseudo-voigt"
     assert change.parameters is not None
-    assert "amp" in change.parameters
-    assert "cen" in change.parameters
-    assert "sig" in change.parameters
-    assert "frac" in change.parameters
+    assert set(change.parameters.keys()) == {"amp", "cen", "sig", "frac"}
+    assert captured["region"] is region
+    assert captured["components"] == components
 
 
 def test_create_background_shirley_returns_create_background(
-    service: AutomatizationService,
-    region_id: str,
+    adapter: AutomatizationAdapter,
 ) -> None:
     """create_background with shirley returns CreateBackground with i1, i2."""
-    change = service.create_background(region_id, model_name="shirley", avg_on=3)
+    region_id = "region-1"
+    x, y = _dummy_spectrum()
+    change = adapter.create_background(
+        region_id=region_id,
+        model_name="shirley",
+        spectrum_x=x,
+        spectrum_y=y,
+        start=25,
+        stop=175,
+        mode="index",
+        avg_on=3,
+    )
     assert isinstance(change, CreateBackground)
     assert change.region_id == region_id
     assert change.model_name == "shirley"
@@ -91,12 +162,23 @@ def test_create_background_shirley_returns_create_background(
 
 
 def test_create_background_constant_returns_const_parameter(
-    service: AutomatizationService,
-    region_id: str,
+    adapter: AutomatizationAdapter,
 ) -> None:
     """create_background with constant returns CreateBackground with const."""
-    change = service.create_background(region_id, model_name="constant", avg_on=3)
+    region_id = "region-1"
+    x, y = _dummy_spectrum()
+    change = adapter.create_background(
+        region_id=region_id,
+        model_name="constant",
+        spectrum_x=x,
+        spectrum_y=y,
+        start=25,
+        stop=175,
+        mode="index",
+        avg_on=3,
+    )
     assert isinstance(change, CreateBackground)
     assert change.region_id == region_id
     assert change.model_name == "constant"
+    assert change.parameters is not None
     assert "const" in change.parameters
