@@ -462,7 +462,11 @@ class AppOrchestrator:
 
     @property
     def ctx(self) -> CoreContext:
-        """Core services context (query, metadata, component, region, etc.)."""
+        """
+        Core services context (internal; for tests and low-level access only).
+
+        Prefer using :attr:`query` for read operations in application code.
+        """
         return self.__ctx
 
     @property
@@ -886,6 +890,18 @@ class AppOrchestrator:
         )
         if resolved_mode == "replace":
             self._executor.clear()
+
+    def new_collection(self) -> None:
+        """
+        Clear collection, metadata, undo stack, and reset save path.
+
+        Used when creating a new document (e.g. File > New).
+        """
+        self._core_collection.clear()
+        self.__ctx.metadata.clear()
+        self._params.default_serialization_path = None
+        self._serialization.mark_dirty()
+        self._executor.clear()
 
     def set_default_save_path(self, path: str | Path | None) -> None:
         """Set the default save path (stored in AppParameters)."""

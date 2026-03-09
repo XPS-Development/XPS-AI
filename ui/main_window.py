@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
@@ -201,15 +200,15 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_new_triggered(self) -> None:
-        """Placeholder for creating a new collection."""
+        """Create a new collection (clear current workspace)."""
         if not self._confirm_discard_changes():
             return
-        # For now this just clears in-memory collection.
-        self._controller.collection.clear()
-        self._controller.ctx.metadata.clear()
-        self._controller.ctx.query.collection.clear()
-        self._controller.orchestrator.serialization.set_default_path(Path())
-        self._controller.orchestrator.serialization.mark_dirty()
+        self._controller.orchestrator.new_collection()
+        self._controller.collectionChanged.emit()
+        self._controller.undoRedoStateChanged.emit(
+            self._controller.orchestrator.can_undo,
+            self._controller.orchestrator.can_redo,
+        )
         self._on_collection_changed()
 
     def _on_open_triggered(self) -> None:
@@ -300,11 +299,8 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select a spectrum before running the segmenter.")
             return
 
-        dto_service = self._controller.dto_service
         try:
-            norm_spec = dto_service.get_spectrum(spectrum_id, normalized=True)
-            raw_spec = dto_service.get_spectrum(spectrum_id, normalized=False)
-            self._controller.run_segmenter(spectrum_id, norm_spec, raw_spec)
+            self._controller.run_segmenter([spectrum_id])
         except Exception as exc:  # noqa: BLE001
             self._show_error("Failed to run segmenter", str(exc))
 
@@ -315,15 +311,8 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select a spectrum before optimizing regions.")
             return
 
-        dto_service = self._controller.dto_service
         try:
-            region_ids = self._controller.ctx.query.get_regions(spectrum_id)
-            region_reprs: list[tuple[Any, tuple[Any, ...]]] = []
-            for region_id in region_ids:
-                region_repr = dto_service.get_region_repr(region_id)
-                region_reprs.append(region_repr)
-            if region_reprs:
-                self._controller.optimize_regions(region_reprs)
+            self._controller.optimize_regions(spectrum_ids=[spectrum_id])
         except Exception as exc:  # noqa: BLE001
             self._show_error("Failed to optimize regions", str(exc))
 
@@ -345,15 +334,15 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
-    def _on_selection_changed(self, spectrum_id: Any, region_id: Any) -> None:
+    def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:
         """
         React to selection changes by updating the status bar.
 
         Parameters
         ----------
-        spectrum_id : Any
+        spectrum_id : str or None
             Selected spectrum identifier.
-        region_id : Any
+        region_id : str or None
             Selected region identifier.
         """
         self._update_status_bar()
@@ -371,8 +360,7 @@ class MainWindow(QMainWindow):
 
     def _update_window_title(self) -> None:
         """Set the window title based on save path and dirty state."""
-        serialization = self._controller.orchestrator.serialization
-        path: Path | None = serialization.get_default_path()
+        path: Path | None = self._controller.orchestrator.get_default_save_path()
 
         if path is None:
             name = "Untitled"
@@ -387,8 +375,7 @@ class MainWindow(QMainWindow):
         if self._status_bar is None:
             return
 
-        serialization = self._controller.orchestrator.serialization
-        path = serialization.get_default_path()
+        path = self._controller.orchestrator.get_default_save_path()
         path_str = str(path) if path is not None else "No file"
 
         spectrum_id = self._controller.selected_spectrum_id
@@ -412,8 +399,7 @@ class MainWindow(QMainWindow):
         bool
             True if the operation may proceed, False to cancel.
         """
-        # At the moment we approximate dirty state using is_saved.
-        if self._controller.orchestrator.serialization.is_saved:
+        if not self._controller.orchestrator.is_dirty:
             return True
 
         answer = QMessageBox.question(

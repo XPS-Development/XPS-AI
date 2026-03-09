@@ -4,11 +4,9 @@ from typing import Any, Sequence
 from PySide6.QtCore import QObject, Signal
 
 from app.command.changes import BaseChange, ParameterField
-from app.orchestration import AppOrchestrator
+from app.orchestration import AppOrchestrator, AppParameters, QueryService
 from core.collection import CoreCollection
 from core.metadata import Metadata
-from core.services import CoreContext
-from tools.dto import DTOService
 
 
 class ControllerWrapper(QObject):
@@ -53,10 +51,8 @@ class ControllerWrapper(QObject):
             self._collection = orchestrator.core_collection
         else:
             self._collection = collection or CoreCollection()
-            self._orchestrator = AppOrchestrator(
-                self._collection,
-                nn_model_path=nn_model_path,
-            )
+            params = AppParameters(nn_model_path=nn_model_path)
+            self._orchestrator = AppOrchestrator(self._collection, params)
 
         self._selected_spectrum_id: str | None = None
         self._selected_region_id: str | None = None
@@ -90,29 +86,16 @@ class ControllerWrapper(QObject):
         return self._orchestrator
 
     @property
-    def ctx(self) -> CoreContext:
+    def query(self) -> QueryService:
         """
-        Core services context.
+        Query service for collection, metadata, and DTO projections.
 
         Returns
         -------
-        CoreContext
-            Context with query, spectrum, region, data, component, metadata
-            services.
+        QueryService
+            Read-only query façade bound to the orchestrator.
         """
-        return self._orchestrator.ctx
-
-    @property
-    def dto_service(self) -> DTOService:
-        """
-        DTO service from the orchestrator.
-
-        Returns
-        -------
-        DTOService
-            DTO service instance used to build view-facing data objects.
-        """
-        return self._orchestrator.dto_service
+        return self._orchestrator.query
 
     # ------------------------------------------------------------------
     # Selection handling
@@ -173,7 +156,7 @@ class ControllerWrapper(QObject):
         tuple[str, ...]
             All spectrum identifiers.
         """
-        return self.ctx.query.get_all_spectra()
+        return self._orchestrator.query.get_all_spectra_ids()
 
     def get_metadata(self, obj_id: str) -> Metadata | None:
         """
@@ -189,10 +172,10 @@ class ControllerWrapper(QObject):
         Metadata or None
             Stored metadata, if any.
         """
-        return self.ctx.metadata.get_metadata(obj_id)
+        return self._orchestrator.query.get_metadata(obj_id)
 
     # ------------------------------------------------------------------
-    # ViewerDataProvider (for plot area; delegates to dto_service)
+    # ViewerDataProvider (for plot area; delegates to query)
     # ------------------------------------------------------------------
 
     def get_spectrum(self, spectrum_id: str, *, normalized: bool = False) -> Any:
@@ -213,7 +196,7 @@ class ControllerWrapper(QObject):
         SpectrumLike
             Spectrum projection with x and y arrays.
         """
-        return self.dto_service.get_spectrum(spectrum_id, normalized=normalized)
+        return self._orchestrator.query.get_spectrum_dto(spectrum_id, normalized=normalized)
 
     def get_region(self, region_id: str, *, normalized: bool = False) -> Any:
         """
@@ -233,7 +216,7 @@ class ControllerWrapper(QObject):
         RegionLike
             Region projection with x and y arrays.
         """
-        return self.dto_service.get_region(region_id, normalized=normalized)
+        return self._orchestrator.query.get_region_dto(region_id, normalized=normalized)
 
     def get_spectrum_repr(
         self, spectrum_id: str, *, normalized: bool = False
@@ -255,7 +238,7 @@ class ControllerWrapper(QObject):
         tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]
             Spectrum and its regions with components for evaluation.
         """
-        return self.dto_service.get_spectrum_repr(spectrum_id, normalized=normalized)
+        return self._orchestrator.query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
 
     def get_region_repr(
         self, region_id: str, *, normalized: bool = False
@@ -277,7 +260,7 @@ class ControllerWrapper(QObject):
         tuple[RegionLike, tuple[ComponentLike, ...]]
             Region and its components for evaluation.
         """
-        return self.dto_service.get_region_repr(region_id, normalized=normalized)
+        return self._orchestrator.query.get_region_dto_repr(region_id, normalized=normalized)
 
     # ------------------------------------------------------------------
     # Mutation API: thin forwarding to orchestrator with signals
@@ -321,47 +304,42 @@ class ControllerWrapper(QObject):
         self._orchestrator.import_spectra(path)
         self._emit_collection_and_undo_redo()
 
-    def run_segmenter(
-        self,
-        spectrum_id: str,
-        normalized_spectrum: Any,
-        original_spectrum: Any,
-    ) -> None:
+    def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """
         Run the segmenter pipeline and emit signals.
 
         Parameters
         ----------
-        spectrum_id : str
-            Spectrum identifier.
-        normalized_spectrum : Any
-            Normalized spectrum representation.
-        original_spectrum : Any
-            Original spectrum representation.
+        spectrum_ids : Sequence[str]
+            Identifiers of the parent spectra for segmentation.
         """
-        self._orchestrator.run_segmenter(
-            spectrum_id=spectrum_id,
-            normalized_spectrum=normalized_spectrum,
-            original_spectrum=original_spectrum,
-        )
+        self._orchestrator.run_segmenter(spectrum_ids)
         self._emit_collection_and_undo_redo()
 
     def optimize_regions(
         self,
-        region_reprs: Sequence[tuple[Any, tuple[Any, ...]]],
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
         **kwargs: Any,
     ) -> None:
         """
-        Run optimization for a set of regions and emit signals.
+        Run optimization for regions and emit signals.
 
         Parameters
         ----------
-        region_reprs : sequence of tuple
-            Region and component DTO tuples as expected by the orchestrator.
+        region_ids : Sequence[str] or None, optional
+            Identifiers of the regions to optimize.
+        spectrum_ids : Sequence[str] or None, optional
+            Identifiers of the spectra whose regions to optimize.
         **kwargs
             Extra keyword arguments forwarded to the optimization service.
         """
-        self._orchestrator.optimize_regions(region_reprs, **kwargs)
+        self._orchestrator.optimize_regions(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+            **kwargs,
+        )
         self._emit_collection_and_undo_redo()
 
     def update_parameter(

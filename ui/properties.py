@@ -166,8 +166,7 @@ class PropertiesModel(QAbstractItemModel):
             except (TypeError, ValueError):
                 return False
 
-            region_service = self._controller.ctx.region
-            start, stop = region_service.get_slice(item.region_id, mode="index")
+            start, stop = self._controller.query.get_region_slice(item.region_id, mode="index")
             start = start or 0
             stop = stop or 0
 
@@ -254,11 +253,9 @@ class PropertiesModel(QAbstractItemModel):
             self.endResetModel()
             return
 
-        query = self._controller.ctx.query
-        region_service = self._controller.ctx.region
-        dto_service = self._controller.dto_service
+        query = self._controller.query
 
-        region_ids = query.get_regions(spectrum_id)
+        region_ids = query.get_regions_ids(spectrum_id)
         if not region_ids:
             self._root_item.append_child(PropertyItem(name="No regions", parent=self._root_item))
             self.endResetModel()
@@ -274,7 +271,7 @@ class PropertiesModel(QAbstractItemModel):
             )
             self._root_item.append_child(region_item)
 
-            start_val, stop_val = region_service.get_slice(region_id, mode="index")
+            start_val, stop_val = query.get_region_slice(region_id, mode="index")
             region_item.append_child(
                 PropertyItem(
                     name="start",
@@ -294,8 +291,8 @@ class PropertiesModel(QAbstractItemModel):
                 )
             )
 
-            background_id = query.get_background(region_id)
-            peaks_ids = list(query.get_peaks(region_id))
+            background_id = query.get_background_id(region_id)
+            peaks_ids = list(query.get_peaks_ids(region_id))
 
             if background_id is not None:
                 background_item = PropertyItem(
@@ -306,7 +303,7 @@ class PropertiesModel(QAbstractItemModel):
                     component_id=background_id,
                 )
                 region_item.append_child(background_item)
-                background_dto = dto_service.get_component(background_id)
+                background_dto = query.get_component_dto(background_id)
                 model_name = type(background_dto.model).__name__
                 background_item.append_child(
                     PropertyItem(
@@ -350,7 +347,7 @@ class PropertiesModel(QAbstractItemModel):
                     component_id=peak_id,
                 )
                 region_item.append_child(peak_item)
-                peak_dto = dto_service.get_component(peak_id)
+                peak_dto = query.get_component_dto(peak_id)
                 model_name = type(peak_dto.model).__name__
                 peak_item.append_child(
                     PropertyItem(
@@ -509,9 +506,8 @@ class PropertiesView(QTreeView):
         if spectrum_id is None:
             return
 
-        dto_service = self._controller.dto_service
         try:
-            spectrum_dto = dto_service.get_spectrum(spectrum_id, normalized=False)
+            spectrum_dto = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
         except Exception:  # noqa: BLE001
             return
 
