@@ -41,7 +41,6 @@ class ControllerWrapper(QObject):
         collection: CoreCollection | None = None,
         orchestrator: AppOrchestrator | None = None,
         *,
-        nn_model_path: str | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -51,7 +50,7 @@ class ControllerWrapper(QObject):
             self._collection = orchestrator.core_collection
         else:
             self._collection = collection or CoreCollection()
-            params = AppParameters(nn_model_path=nn_model_path)
+            params = AppParameters()
             self._orchestrator = AppOrchestrator(self._collection, params)
 
         self._selected_spectrum_id: str | None = None
@@ -218,9 +217,7 @@ class ControllerWrapper(QObject):
         """
         return self._orchestrator.query.get_region_dto(region_id, normalized=normalized)
 
-    def get_spectrum_repr(
-        self, spectrum_id: str, *, normalized: bool = False
-    ) -> Any:
+    def get_spectrum_repr(self, spectrum_id: str, *, normalized: bool = False) -> Any:
         """
         Return spectrum-like and its region-like and component-like objects.
 
@@ -240,9 +237,7 @@ class ControllerWrapper(QObject):
         """
         return self._orchestrator.query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
 
-    def get_region_repr(
-        self, region_id: str, *, normalized: bool = False
-    ) -> tuple[Any, tuple[Any, ...]]:
+    def get_region_repr(self, region_id: str, *, normalized: bool = False) -> tuple[Any, tuple[Any, ...]]:
         """
         Return region-like and its component-like objects.
 
@@ -654,3 +649,45 @@ class ControllerWrapper(QObject):
             self._orchestrator.can_undo,
             self._orchestrator.can_redo,
         )
+
+    # ------------------------------------------------------------------
+    # NN service helpers
+    # ------------------------------------------------------------------
+
+    def load_nn_model(self, model_path: str | Path) -> None:
+        """
+        Load or reload the NN model used by the segmenter pipeline.
+
+        Parameters
+        ----------
+        model_path : str or Path
+            Path to the NN model file.
+        """
+        self._orchestrator.load_nn_model(model_path)
+
+    # ------------------------------------------------------------------
+    # App parameters
+    # ------------------------------------------------------------------
+
+    def get_app_parameters(self) -> AppParameters:
+        """
+        Return the current application parameters used by the orchestrator.
+
+        Returns
+        -------
+        AppParameters
+            Mutable parameters instance backing app services.
+        """
+        return self._orchestrator.params
+
+    def apply_app_parameters(self, params: AppParameters) -> None:
+        """
+        Apply updated application parameters to the orchestrator.
+
+        Parameters
+        ----------
+        params : AppParameters
+            Updated parameters to use for subsequent operations.
+        """
+        self._orchestrator._params = params
+        self._orchestrator.reconfigure_services_from_params()

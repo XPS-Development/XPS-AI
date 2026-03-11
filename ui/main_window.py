@@ -4,7 +4,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QToolBar, QWidget
 
+from app.error_dump import save_error_dump
 from .controller import ControllerWrapper
+from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties import PropertiesView
 from .spectrum_tree import SpectrumTreeWidget
@@ -40,6 +42,8 @@ class MainWindow(QMainWindow):
         self._action_redo: QAction | None = None
         self._action_run_segmenter: QAction | None = None
         self._action_optimize_regions: QAction | None = None
+        self._action_load_nn_model: QAction | None = None
+        self._action_app_parameters: QAction | None = None
 
         self._main_toolbar: QToolBar | None = None
         self._status_bar: QStatusBar | None = None
@@ -62,6 +66,8 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
+        self.resize(1280, 720)
+
     # ------------------------------------------------------------------
     # UI construction helpers
     # ------------------------------------------------------------------
@@ -81,6 +87,8 @@ class MainWindow(QMainWindow):
 
         self._action_run_segmenter = QAction("Run segmenter", self)
         self._action_optimize_regions = QAction("Optimize regions", self)
+        self._action_load_nn_model = QAction("Load NN model…", self)
+        self._action_app_parameters = QAction("Application parameters…", self)
 
         self._action_new.triggered.connect(self._on_new_triggered)
         self._action_open.triggered.connect(self._on_open_triggered)
@@ -93,6 +101,8 @@ class MainWindow(QMainWindow):
 
         self._action_run_segmenter.triggered.connect(self._on_run_segmenter_triggered)
         self._action_optimize_regions.triggered.connect(self._on_optimize_regions_triggered)
+        self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
+        self._action_app_parameters.triggered.connect(self._on_app_parameters_triggered)
 
     def _create_menus(self) -> None:
         """Build the menu bar structure."""
@@ -122,6 +132,12 @@ class MainWindow(QMainWindow):
             run_menu.addAction(self._action_run_segmenter)
         if self._action_optimize_regions is not None:
             run_menu.addAction(self._action_optimize_regions)
+
+        options_menu = menu_bar.addMenu("Options")
+        if self._action_load_nn_model is not None:
+            options_menu.addAction(self._action_load_nn_model)
+        if self._action_app_parameters is not None:
+            options_menu.addAction(self._action_app_parameters)
 
     def _create_toolbar(self) -> None:
         """Create the main toolbar and add actions."""
@@ -238,7 +254,9 @@ class MainWindow(QMainWindow):
                     return
                 self._controller.load_collection(filename)
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to open file", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to open file", message)
             return
 
         self._update_window_title()
@@ -252,7 +270,9 @@ class MainWindow(QMainWindow):
             self._on_save_as_triggered()
             return
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to save file", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to save file", message)
             return
 
         self._update_window_title()
@@ -272,7 +292,9 @@ class MainWindow(QMainWindow):
         try:
             self._controller.dump_collection(filename)
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to save file", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to save file", message)
             return
 
         self._update_window_title()
@@ -283,14 +305,18 @@ class MainWindow(QMainWindow):
         try:
             self._controller.undo()
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to undo", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to undo", message)
 
     def _on_redo_triggered(self) -> None:
         """Trigger a redo via the controller."""
         try:
             self._controller.redo()
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to redo", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to redo", message)
 
     def _on_run_segmenter_triggered(self) -> None:
         """Run the segmenter for the currently selected spectrum."""
@@ -302,7 +328,9 @@ class MainWindow(QMainWindow):
         try:
             self._controller.run_segmenter([spectrum_id])
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to run segmenter", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to run segmenter", message)
 
     def _on_optimize_regions_triggered(self) -> None:
         """Run optimization for regions associated with the selected spectrum."""
@@ -314,7 +342,40 @@ class MainWindow(QMainWindow):
         try:
             self._controller.optimize_regions(spectrum_ids=[spectrum_id])
         except Exception as exc:  # noqa: BLE001
-            self._show_error("Failed to optimize regions", str(exc))
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to optimize regions", message)
+
+    def _on_load_nn_model_triggered(self) -> None:
+        """Open a file dialog and load an NN model into the service."""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load NN model",
+            "",
+            "ONNX models (*.onnx);;All files (*)",
+        )
+        if not filename:
+            return
+
+        try:
+            self._controller.load_nn_model(filename)
+        except Exception as exc:  # noqa: BLE001
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to load NN model", message)
+
+    def _on_app_parameters_triggered(self) -> None:
+        """Open the application parameters dialog."""
+        params = self._controller.get_app_parameters()
+        dialog = OptionsDialog(self)
+        dialog.load_from_params(params)
+        if dialog.exec() != dialog.accepted:
+            return
+
+        if not dialog.validate_and_apply(params):
+            return
+
+        self._controller.apply_app_parameters(params)
 
     # ------------------------------------------------------------------
     # Slots for controller signals

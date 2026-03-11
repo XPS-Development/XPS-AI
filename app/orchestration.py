@@ -55,7 +55,7 @@ class AppParameters:
     import_use_cps: bool = True
 
     # ---- NN service parameters ----
-    nn_model_path: str | None = None
+    nn_model_path: str | None = "model.onnx"
     nn_pred_threshold: float = 0.5
     nn_smooth: bool = True
     nn_interp_num: int = 256
@@ -480,6 +480,32 @@ class AppOrchestrator:
             Query façade bound to the current core context.
         """
         return self._query
+
+    @property
+    def params(self) -> AppParameters:
+        """
+        Application parameters governing import, NN, optimization, and serialization.
+
+        Returns
+        -------
+        AppParameters
+            Mutable parameter set used by the orchestrator and its services.
+        """
+        return self._params
+
+    def reconfigure_services_from_params(self) -> None:
+        """
+        Reconfigure internal services to reflect the current AppParameters values.
+
+        Currently this refreshes the NN service with updated NN-related
+        parameters; other services read parameters lazily when invoked.
+        """
+        self._nn = NNService(
+            model_path=self._params.nn_model_path,
+            pred_threshold=self._params.nn_pred_threshold,
+            smooth=self._params.nn_smooth,
+            interp_num=self._params.nn_interp_num,
+        )
 
     @property
     def can_undo(self) -> bool:
