@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from tools.automatization import (
-    guess_pseudo_voigt_sig_paramater,
+    guess_pseudo_voigt_sig_parameter,
     guess_pseudo_voigt_amp_parameter,
     calculate_background_intensities,
     guess_pseudo_voigt_params_at_max,
@@ -27,7 +27,7 @@ def test_guess_pseudo_voigt_sig_paramater_symmetric_peak() -> None:
     # Gaussian-like: max at center, sigma ~ 1
     y = np.exp(-(x**2) / 2)
     max_idx = 50
-    sig = guess_pseudo_voigt_sig_paramater(x, y, max_idx)
+    sig = guess_pseudo_voigt_sig_parameter(x, y, max_idx)
     assert sig > 0
     # FWHM for exp(-x^2/2) is 2*sqrt(2*ln2) ~ 2.35; half is ~1.17
     assert 0.5 < sig < 2.0

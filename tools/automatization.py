@@ -14,7 +14,7 @@ from core.types import ComponentLike, RegionLike
 from .evaluation import region_bundle
 
 
-def guess_pseudo_voigt_sig_paramater(x: NDArray, y: NDArray, max_idx: int) -> float:
+def guess_pseudo_voigt_sig_parameter(x: NDArray, y: NDArray, max_idx: int) -> float:
     """Guess sigma parameter for pseudo-voigt model at max_idx.
 
     Parameters
@@ -31,10 +31,14 @@ def guess_pseudo_voigt_sig_paramater(x: NDArray, y: NDArray, max_idx: int) -> fl
     float
         Sigma parameter for pseudo-voigt model at max_idx.
     """
+
     half_max = (y[max_idx] - y.min()) / 2 + y.min()
-    l_hm_idx = np.where(y[:max_idx] <= half_max)[0][-1]
-    r_hm_idx = np.where(y[max_idx:] <= half_max)[0][0] + max_idx
-    return (x[r_hm_idx] - x[l_hm_idx]) / 2
+    try:
+        l_hm_idx = np.where(y[:max_idx] <= half_max)[0][-1]
+        r_hm_idx = np.where(y[max_idx:] <= half_max)[0][0] + max_idx
+        return (x[r_hm_idx] - x[l_hm_idx]) / 2
+    except IndexError:
+        return 1.0
 
 
 def guess_pseudo_voigt_amp_parameter(y: NDArray, max_idx: int, sig: float, frac: float) -> float:
@@ -134,7 +138,7 @@ def guess_pseudo_voigt_params_at_max(
     frac : float
         Fraction of the peak.
     """
-    sig = guess_pseudo_voigt_sig_paramater(x, y, max_idx)
+    sig = guess_pseudo_voigt_sig_parameter(x, y, max_idx)
     amp = guess_pseudo_voigt_amp_parameter(y, max_idx, sig, frac)
     return amp, x[max_idx], sig, frac
 
