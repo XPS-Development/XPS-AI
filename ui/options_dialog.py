@@ -36,6 +36,7 @@ class OptionsDialog(QDialog):
 
         self._automatic_methods_cb = QCheckBox()
         self._default_bg_model_edit = QLineEdit()
+        self._show_spectrum_id_in_tree_cb = QCheckBox()
 
         self._import_use_be_cb = QCheckBox()
         self._import_use_cps_cb = QCheckBox()
@@ -73,6 +74,7 @@ class OptionsDialog(QDialog):
         core_layout = QFormLayout(core_group)
         core_layout.addRow("Automatic methods", self._automatic_methods_cb)
         core_layout.addRow("Default background model", self._default_bg_model_edit)
+        core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
 
         import_group = QGroupBox("Import")
         import_layout = QFormLayout(import_group)
@@ -126,6 +128,7 @@ class OptionsDialog(QDialog):
         """
         self._automatic_methods_cb.setChecked(params.automatic_methods)
         self._default_bg_model_edit.setText(params.default_background_model_for_auto_methods)
+        self._show_spectrum_id_in_tree_cb.setChecked(params.show_spectrum_id_in_tree)
 
         self._import_use_be_cb.setChecked(params.import_use_binding_energy)
         self._import_use_cps_cb.setChecked(params.import_use_cps)
@@ -160,6 +163,7 @@ class OptionsDialog(QDialog):
         """
         params.automatic_methods = self._automatic_methods_cb.isChecked()
         params.default_background_model_for_auto_methods = self._default_bg_model_edit.text()
+        params.show_spectrum_id_in_tree = self._show_spectrum_id_in_tree_cb.isChecked()
 
         params.import_use_binding_energy = self._import_use_be_cb.isChecked()
         params.import_use_cps = self._import_use_cps_cb.isChecked()

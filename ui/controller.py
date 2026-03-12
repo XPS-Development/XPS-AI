@@ -35,6 +35,7 @@ class ControllerWrapper(QObject):
     collectionChanged: Signal = Signal()
     undoRedoStateChanged: Signal = Signal(bool, bool)
     selectionChanged: Signal = Signal(object, object)
+    spectrumTreeChanged: Signal = Signal()
 
     def __init__(
         self,
@@ -261,23 +262,12 @@ class ControllerWrapper(QObject):
     # Mutation API: thin forwarding to orchestrator with signals
     # ------------------------------------------------------------------
 
-    def execute(self, change: BaseChange) -> None:
-        """
-        Execute a change via the orchestrator and emit signals.
-
-        Parameters
-        ----------
-        change : BaseChange
-            Change instance to execute.
-        """
-        self._orchestrator.execute(change)
-        self._emit_collection_and_undo_redo()
-
     def undo(self) -> None:
         """
         Undo the last executed command and emit signals.
         """
         self._orchestrator.undo()
+        self._emit_spectrum_tree_changed()
         self._emit_collection_and_undo_redo()
 
     def redo(self) -> None:
@@ -285,6 +275,7 @@ class ControllerWrapper(QObject):
         Redo the last undone command and emit signals.
         """
         self._orchestrator.redo()
+        self._emit_spectrum_tree_changed()
         self._emit_collection_and_undo_redo()
 
     def import_spectra(self, path: str | Path) -> None:
@@ -297,7 +288,8 @@ class ControllerWrapper(QObject):
             Path to the spectra file.
         """
         self._orchestrator.import_spectra(path)
-        self._emit_collection_and_undo_redo()
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """
@@ -432,7 +424,8 @@ class ControllerWrapper(QObject):
             Explicit spectrum identifier.
         """
         self._orchestrator.create_spectrum(x=x, y=y, spectrum_id=spectrum_id)
-        self._emit_collection_and_undo_redo()
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
 
     def create_region(
         self,
@@ -533,7 +526,55 @@ class ControllerWrapper(QObject):
             Metadata instance to store.
         """
         self._orchestrator.set_metadata(obj_id, metadata)
-        self._emit_collection_and_undo_redo()
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
+
+    def rename_spectrum(self, spectrum_id: str, new_name: str) -> None:
+        """
+        Rename a single spectrum and emit collection/undo-redo signals.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum to rename.
+        new_name : str
+            New display name.
+        """
+        self._orchestrator.rename_spectrum(spectrum_id, new_name)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
+
+    def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
+        """
+        Rename a group within a file and emit collection/undo-redo signals.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose group should be renamed.
+        old_group_label : str
+            Existing group label.
+        new_group_label : str
+            New group label.
+        """
+        self._orchestrator.rename_group(file_label, old_group_label, new_group_label)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
+
+    def rename_file(self, old_file_label: str, new_file_label: str) -> None:
+        """
+        Rename a file bucket and emit collection/undo-redo signals.
+
+        Parameters
+        ----------
+        old_file_label : str
+            Existing file label.
+        new_file_label : str
+            New file label.
+        """
+        self._orchestrator.rename_file(old_file_label, new_file_label)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
 
     def remove_object(self, obj_id: str) -> None:
         """
@@ -557,7 +598,8 @@ class ControllerWrapper(QObject):
             Identifier of the object whose metadata to remove.
         """
         self._orchestrator.remove_metadata(obj_id)
-        self._emit_collection_and_undo_redo()
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
 
     def full_remove_object(self, obj_id: str) -> None:
         """
@@ -570,6 +612,47 @@ class ControllerWrapper(QObject):
         """
         self._orchestrator.full_remove_object(obj_id)
         self._emit_collection_and_undo_redo()
+
+    def remove_spectrum(self, spectrum_id: str) -> None:
+        """
+        Remove a spectrum and emit signals.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum to remove.
+        """
+        self._orchestrator.full_remove_object(spectrum_id)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
+
+    def remove_group(self, file_label: str, group_label: str) -> None:
+        """
+        Remove all spectra belonging to a given file/group combination.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose group contents should be removed.
+        group_label : str
+            Group label to remove.
+        """
+        self._orchestrator.remove_group(file_label, group_label)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
+
+    def remove_file(self, file_label: str) -> None:
+        """
+        Remove all spectra associated with a given file label.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose spectra should be removed.
+        """
+        self._orchestrator.remove_file(file_label)
+        self._emit_spectrum_tree_changed()
+        self._emit_undo_redo_state()
 
     def dump_collection(
         self,
@@ -609,8 +692,8 @@ class ControllerWrapper(QObject):
             Loading mode passed to the orchestrator.
         """
         self._orchestrator.load_collection(path, mode=mode)  # type: ignore[arg-type]
-        self.collectionChanged.emit()
-        self._emit_undo_redo_state()
+        self._emit_spectrum_tree_changed()
+        self._emit_collection_and_undo_redo()
 
     def set_default_save_path(self, path: str | Path) -> None:
         """
@@ -637,6 +720,10 @@ class ControllerWrapper(QObject):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _emit_spectrum_tree_changed(self) -> None:
+        """Emit spectrum treeChanged signal."""
+        self.spectrumTreeChanged.emit()
 
     def _emit_collection_and_undo_redo(self) -> None:
         """Emit collectionChanged and updated undo/redo state."""

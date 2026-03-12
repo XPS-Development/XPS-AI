@@ -9,7 +9,7 @@ from .controller import ControllerWrapper
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties import PropertiesView
-from .spectrum_tree import SpectrumTreeWidget
+from .spectrum_tree_panel import SpectrumTreePanel
 
 
 class MainWindow(QMainWindow):
@@ -48,7 +48,7 @@ class MainWindow(QMainWindow):
         self._main_toolbar: QToolBar | None = None
         self._status_bar: QStatusBar | None = None
 
-        self._spectrum_tree: SpectrumTreeWidget | None = None
+        self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: QWidget | None = None
         self._properties_view: PropertiesView | None = None
 
@@ -167,8 +167,8 @@ class MainWindow(QMainWindow):
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Horizontal, self)
 
-        self._spectrum_tree = SpectrumTreeWidget(self._controller, splitter)
-        self._spectrum_tree.setObjectName("SpectrumTree")
+        self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
+        self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
 
         self._plot_area = PlotAreaWidget(self._controller, splitter)
         self._plot_area.setObjectName("PlotArea")
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         self._properties_view = PropertiesView(self._controller, splitter)
         self._properties_view.setObjectName("PropertiesView")
 
-        splitter.addWidget(self._spectrum_tree)
+        splitter.addWidget(self._spectrum_tree_panel)
         splitter.addWidget(self._plot_area)
         splitter.addWidget(self._properties_view)
 
@@ -202,13 +202,13 @@ class MainWindow(QMainWindow):
         self._controller.collectionChanged.connect(self._on_collection_changed)
         self._controller.selectionChanged.connect(self._on_selection_changed)
 
-        if self._spectrum_tree is not None:
-            self._controller.collectionChanged.connect(self._spectrum_tree.refresh)
+        if self._spectrum_tree_panel is not None:
+            self._controller.spectrumTreeChanged.connect(self._spectrum_tree_panel.refresh)
         if self._plot_area is not None:
-            self._controller.collectionChanged.connect(self._plot_area.refresh)
+            self._controller.spectrumTreeChanged.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
-            self._controller.collectionChanged.connect(self._properties_view.refresh)
+            self._controller.spectrumTreeChanged.connect(self._properties_view.refresh)
             self._controller.selectionChanged.connect(self._properties_view.refresh)
 
     # ------------------------------------------------------------------
@@ -320,13 +320,15 @@ class MainWindow(QMainWindow):
 
     def _on_run_segmenter_triggered(self) -> None:
         """Run the segmenter for the currently selected spectrum."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
+        spectrum_ids: list[str] = []
+        if self._spectrum_tree_panel is not None:
+            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
             self._show_info("No spectrum selected", "Select a spectrum before running the segmenter.")
             return
 
         try:
-            self._controller.run_segmenter([spectrum_id])
+            self._controller.run_segmenter(spectrum_ids)
         except Exception as exc:  # noqa: BLE001
             dump_path = save_error_dump(exc)
             message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
@@ -334,13 +336,15 @@ class MainWindow(QMainWindow):
 
     def _on_optimize_regions_triggered(self) -> None:
         """Run optimization for regions associated with the selected spectrum."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
+        spectrum_ids: list[str] = []
+        if self._spectrum_tree_panel is not None:
+            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
             self._show_info("No spectrum selected", "Select a spectrum before optimizing regions.")
             return
 
         try:
-            self._controller.optimize_regions(spectrum_ids=[spectrum_id])
+            self._controller.optimize_regions(spectrum_ids=spectrum_ids)
         except Exception as exc:  # noqa: BLE001
             dump_path = save_error_dump(exc)
             message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
@@ -369,13 +373,16 @@ class MainWindow(QMainWindow):
         params = self._controller.get_app_parameters()
         dialog = OptionsDialog(self)
         dialog.load_from_params(params)
-        if dialog.exec() != dialog.accepted:
+
+        if not dialog.exec():
             return
 
         if not dialog.validate_and_apply(params):
             return
 
         self._controller.apply_app_parameters(params)
+        if self._spectrum_tree_panel is not None:
+            self._spectrum_tree_panel.refresh()
 
     # ------------------------------------------------------------------
     # Slots for controller signals
@@ -392,7 +399,6 @@ class MainWindow(QMainWindow):
         For now this only updates title and status bar; dedicated widgets
         for spectrum tree, plot area, and properties will hook in later.
         """
-        self._update_window_title()
         self._update_status_bar()
 
     def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:
@@ -420,8 +426,8 @@ class MainWindow(QMainWindow):
             self._action_redo.setEnabled(can_redo)
 
     def _update_window_title(self) -> None:
-        """Set the window title based on save path and dirty state."""
-        path: Path | None = self._controller.orchestrator.get_default_save_path()
+        """Set the window title based on save path"""
+        path: Path | None = self._controller.get_default_save_path()
 
         if path is None:
             name = "Untitled"
@@ -436,19 +442,36 @@ class MainWindow(QMainWindow):
         if self._status_bar is None:
             return
 
-        path = self._controller.orchestrator.get_default_save_path()
-        path_str = str(path) if path is not None else "No file"
+        path = self._controller.get_default_save_path()
+        path_str = path.name if path is not None else "No file"
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
-        selection_parts = []
+
+        selection_parts: list[str] = []
         if spectrum_id is not None:
             selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
         if region_id is not None:
             selection_parts.append(f"Region: {region_id[:5]}")
-        selection_str = " | ".join(selection_parts) if selection_parts else "No selection"
 
-        text = f"{path_str} | {selection_str}"
+        extra_selection = ""
+        if self._spectrum_tree_panel is not None:
+            selected_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
+            if selected_ids:
+                if spectrum_id is not None and selected_ids.count(spectrum_id) > 0:
+                    others = len(selected_ids) - 1
+                else:
+                    others = len(selected_ids)
+                if others > 0:
+                    extra_selection = f" (+{others} spectra)"
+
+        selection_str_base = " | ".join(selection_parts) if selection_parts else "No selection"
+        selection_str = f"{selection_str_base}{extra_selection}"
+
+        if self._controller.orchestrator.is_dirty:
+            text = f"* {path_str} | {selection_str}"
+        else:
+            text = f"{path_str} | {selection_str}"
         self._status_bar.showMessage(text)
 
     def _confirm_discard_changes(self) -> bool:

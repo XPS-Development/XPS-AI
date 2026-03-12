@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal, Sequence
 
 from core.collection import CoreCollection
-from core.metadata import Metadata
+from core.metadata import Metadata, SpectrumMetadata
 from core.services import CoreContext
 from tools.dto import ComponentDTO, DTOService, RegionDTO, SpectrumDTO
 
@@ -44,11 +44,18 @@ from .serialization import SerializationService
 class AppParameters:
     """
     Parameters for the app orchestrator.
+
+    This dataclass stores configuration values that control import behavior,
+    NN and optimization services, serialization defaults, and selected UI
+    preferences that need to be persisted between sessions.
     """
 
     # ---- Core collection parameters ----
     automatic_methods: bool = True
     default_background_model_for_auto_methods: str = "shirley"
+
+    # ---- UI parameters ----
+    show_spectrum_id_in_tree: bool = True
 
     # ---- Import service parameters ----
     import_use_binding_energy: bool = True
@@ -831,6 +838,82 @@ class AppOrchestrator:
         """Set metadata for an object; executed as a command."""
         self.execute(SetMetadata(obj_id=obj_id, metadata=metadata))
 
+    def rename_spectrum(self, spectrum_id: str, new_name: str) -> None:
+        """
+        Rename a single spectrum by updating its SpectrumMetadata.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum to rename.
+        new_name : str
+            New display name for the spectrum.
+        """
+        metadata = self._query.get_metadata(spectrum_id)
+        if isinstance(metadata, SpectrumMetadata):
+            updated = SpectrumMetadata(
+                name=new_name,
+                group=metadata.group,
+                file=metadata.file,
+            )
+        else:
+            updated = SpectrumMetadata(name=new_name, group="", file="")
+        self.execute(SetMetadata(obj_id=spectrum_id, metadata=updated))
+
+    def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
+        """
+        Rename a group within a file by updating SpectrumMetadata.group.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose group should be renamed.
+        old_group_label : str
+            Existing group label.
+        new_group_label : str
+            New group label.
+        """
+        spectrum_ids = self._query.find_objects(
+            md_field="file",
+            md_value=file_label,
+            match_exact=True,
+            tp=SpectrumMetadata,
+        )
+        changes: list[BaseChange] = []
+        for spectrum_id in spectrum_ids:
+            md = self._query.get_metadata(spectrum_id)
+            if isinstance(md, SpectrumMetadata) and md.group == old_group_label:
+                updated = SpectrumMetadata(name=md.name, group=new_group_label, file=md.file)
+                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
+        if changes:
+            self.execute(CompositeChange(changes=changes))
+
+    def rename_file(self, old_file_label: str, new_file_label: str) -> None:
+        """
+        Rename a file bucket by updating SpectrumMetadata.file for all spectra.
+
+        Parameters
+        ----------
+        old_file_label : str
+            Existing file label.
+        new_file_label : str
+            New file label.
+        """
+        spectrum_ids = self._query.find_objects(
+            md_field="file",
+            md_value=old_file_label,
+            match_exact=True,
+            tp=SpectrumMetadata,
+        )
+        changes: list[BaseChange] = []
+        for spectrum_id in spectrum_ids:
+            md = self._query.get_metadata(spectrum_id)
+            if isinstance(md, SpectrumMetadata):
+                updated = SpectrumMetadata(name=md.name, group=md.group, file=new_file_label)
+                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
+        if changes:
+            self.execute(CompositeChange(changes=changes))
+
     # ---- Remove ----
 
     def remove_object(self, obj_id: str) -> None:
@@ -844,6 +927,51 @@ class AppOrchestrator:
     def full_remove_object(self, obj_id: str) -> None:
         """Remove an object and its metadata (and all descendants' metadata); executed as a command."""
         self.execute(FullRemoveObject(obj_id=obj_id))
+
+    def remove_group(self, file_label: str, group_label: str) -> None:
+        """
+        Remove all spectra belonging to a given file/group combination.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose group contents should be removed.
+        group_label : str
+            Group label to remove.
+        """
+        spectrum_ids = self._query.find_objects(
+            md_field="file",
+            md_value=file_label,
+            match_exact=True,
+            tp=SpectrumMetadata,
+        )
+        changes: list[BaseChange] = []
+        for spectrum_id in spectrum_ids:
+            md = self._query.get_metadata(spectrum_id)
+            if isinstance(md, SpectrumMetadata) and md.group == group_label:
+                changes.append(FullRemoveObject(obj_id=spectrum_id))
+        if changes:
+            self.execute(CompositeChange(changes=changes))
+
+    def remove_file(self, file_label: str) -> None:
+        """
+        Remove all spectra associated with a given file label.
+
+        Parameters
+        ----------
+        file_label : str
+            File label whose spectra should be removed.
+        """
+        spectrum_ids = self._query.find_objects(
+            md_field="file",
+            md_value=file_label,
+            match_exact=True,
+            tp=SpectrumMetadata,
+        )
+        if not spectrum_ids:
+            return
+        changes: list[BaseChange] = [FullRemoveObject(obj_id=spectrum_id) for spectrum_id in spectrum_ids]
+        self.execute(CompositeChange(changes=changes))
 
     # ---- Serialization ----
 
@@ -914,6 +1042,9 @@ class AppOrchestrator:
             metadata_service=self.__ctx.metadata,
             mode=resolved_mode,
         )
+
+        self.set_default_save_path(path)
+
         if resolved_mode == "replace":
             self._executor.clear()
 
