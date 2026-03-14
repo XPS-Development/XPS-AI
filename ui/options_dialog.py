@@ -3,6 +3,7 @@ from typing import Any
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -37,6 +38,8 @@ class OptionsDialog(QDialog):
         self._automatic_methods_cb = QCheckBox()
         self._default_bg_model_edit = QLineEdit()
         self._show_spectrum_id_in_tree_cb = QCheckBox()
+        self._region_slice_display_mode_combo = QComboBox()
+        self._show_id_in_properties_tree_cb = QCheckBox()
 
         self._import_use_be_cb = QCheckBox()
         self._import_use_cps_cb = QCheckBox()
@@ -66,6 +69,9 @@ class OptionsDialog(QDialog):
         self._serialization_indent_sb.setRange(0, 16)
         self._serialization_indent_sb.setSpecialValueText("None")
 
+        self._region_slice_display_mode_combo.addItem("Indices", "index")
+        self._region_slice_display_mode_combo.addItem("X values", "value")
+
     def _build_layout(self) -> None:
         """Create the main dialog layout."""
         main_layout = QVBoxLayout(self)
@@ -75,6 +81,8 @@ class OptionsDialog(QDialog):
         core_layout.addRow("Automatic methods", self._automatic_methods_cb)
         core_layout.addRow("Default background model", self._default_bg_model_edit)
         core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
+        core_layout.addRow("Region slice in properties", self._region_slice_display_mode_combo)
+        core_layout.addRow("Show object ID in properties tree", self._show_id_in_properties_tree_cb)
 
         import_group = QGroupBox("Import")
         import_layout = QFormLayout(import_group)
@@ -129,6 +137,10 @@ class OptionsDialog(QDialog):
         self._automatic_methods_cb.setChecked(params.automatic_methods)
         self._default_bg_model_edit.setText(params.default_background_model_for_auto_methods)
         self._show_spectrum_id_in_tree_cb.setChecked(params.show_spectrum_id_in_tree)
+        idx = self._region_slice_display_mode_combo.findData(params.region_slice_display_mode)
+        if idx >= 0:
+            self._region_slice_display_mode_combo.setCurrentIndex(idx)
+        self._show_id_in_properties_tree_cb.setChecked(params.show_id_in_properties_tree)
 
         self._import_use_be_cb.setChecked(params.import_use_binding_energy)
         self._import_use_cps_cb.setChecked(params.import_use_cps)
@@ -164,6 +176,9 @@ class OptionsDialog(QDialog):
         params.automatic_methods = self._automatic_methods_cb.isChecked()
         params.default_background_model_for_auto_methods = self._default_bg_model_edit.text()
         params.show_spectrum_id_in_tree = self._show_spectrum_id_in_tree_cb.isChecked()
+        mode_data = self._region_slice_display_mode_combo.currentData()
+        params.region_slice_display_mode = mode_data if mode_data is not None else "index"
+        params.show_id_in_properties_tree = self._show_id_in_properties_tree_cb.isChecked()
 
         params.import_use_binding_energy = self._import_use_be_cb.isChecked()
         params.import_use_cps = self._import_use_cps_cb.isChecked()
