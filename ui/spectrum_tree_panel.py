@@ -100,7 +100,7 @@ class SpectrumTreePanel(QWidget):
             index = self.model.index(row, 0, parent_index)
             item = self.model.item_from_index(index)
 
-            label = item.public_label.lower() if item is not None else ""
+            label = item.label.lower() if item is not None else ""
             matched = query in label
 
             child_has_match = self._visit(index, ancestor_visible or matched, query)

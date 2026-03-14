@@ -207,9 +207,11 @@ class MainWindow(QMainWindow):
         if self._plot_area is not None:
             self._controller.spectrumTreeChanged.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
+            self._controller.collectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
             self._controller.spectrumTreeChanged.connect(self._properties_view.refresh)
             self._controller.selectionChanged.connect(self._properties_view.refresh)
+            self._controller.collectionChanged.connect(self._properties_view.refresh)
 
     # ------------------------------------------------------------------
     # Slots for actions

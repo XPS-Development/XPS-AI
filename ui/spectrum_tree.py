@@ -254,6 +254,28 @@ class SpectrumTreeWidget(QTreeView):
     # Selection helpers
     # ------------------------------------------------------------------
 
+    def _collect_spectra_in_subtree(self, item: SpectrumTreeItem, acc: list[str], seen: set[str]) -> None:
+        """
+        Collect spectrum identifiers from the subtree rooted at ``item``.
+
+        The traversal follows the tree order so that the first collected
+        spectrum can be used as a stable primary selection.
+
+        Parameters
+        ----------
+        item : SpectrumTreeItem
+            Tree item whose subtree should be traversed.
+        acc : list[str]
+            List used to accumulate spectrum identifiers in order.
+        seen : set[str]
+            Set of already collected identifiers used to preserve uniqueness.
+        """
+        if item.kind == "spectrum" and item.spectrum_id is not None and item.spectrum_id not in seen:
+            seen.add(item.spectrum_id)
+            acc.append(item.spectrum_id)
+        for child in item.children:
+            self._collect_spectra_in_subtree(child, acc, seen)
+
     def get_selected_items(self) -> list[SpectrumTreeItem]:
         """
         Return unique tree items corresponding to the current selection.
@@ -280,26 +302,38 @@ class SpectrumTreeWidget(QTreeView):
         Returns
         -------
         list[str]
-            Unique spectrum identifiers covered by the selection.
+            Unique spectrum identifiers covered by the selection, in a stable
+            tree order suitable for determining a primary spectrum.
         """
-
-        def collect_spectra(item: SpectrumTreeItem, acc: set[str]) -> None:
-            if item.kind == "spectrum" and item.spectrum_id is not None:
-                acc.add(item.spectrum_id)
-            for child in item.children:
-                collect_spectra(child, acc)
-
         selected_items = self.get_selected_items()
-        spectrum_ids: set[str] = set()
+        spectrum_ids: list[str] = []
+        seen: set[str] = set()
         for item in selected_items:
-            collect_spectra(item, spectrum_ids)
-        return sorted(spectrum_ids)
+            self._collect_spectra_in_subtree(item, spectrum_ids, seen)
+        return spectrum_ids
+
+    def get_primary_spectrum_id(self) -> str | None:
+        """
+        Return the primary spectrum identifier for the current selection.
+
+        The primary spectrum is defined as the first spectrum identifier in the
+        ordered list returned by :meth:`get_selected_spectrum_ids`.
+
+        Returns
+        -------
+        str or None
+            Primary spectrum identifier or None if no spectra are selected.
+        """
+        spectrum_ids = self.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            return None
+        return spectrum_ids[0]
 
     # ------------------------------------------------------------------
     # Slots
     # ------------------------------------------------------------------
 
-    def _on_selection_changed(self, selected: Any, _deselected: Any) -> None:
+    def _on_selection_changed(self, _selected: Any, _deselected: Any) -> None:
         """
         Forward spectrum selection to the controller wrapper.
 
@@ -310,22 +344,13 @@ class SpectrumTreeWidget(QTreeView):
         _deselected : QItemSelection
             No longer selected indexes (unused).
         """
-        del _deselected
+        del _selected, _deselected
 
-        indexes = selected.indexes()
-        if not indexes:
-            self._controller.set_selection(None, None)
-            return
-
-        # Preserve single-selection semantics for the rest of the UI by
-        # forwarding only the first spectrum in the current selection.
-        index = indexes[0]
-        item = self._model.item_from_index(index)
-        if item is None or item.kind != "spectrum" or item.spectrum_id is None:
-            self._controller.set_selection(None, None)
-            return
-
-        self._controller.set_selection(item.spectrum_id, None)
+        # Preserve single-spectrum semantics for the rest of the UI by
+        # forwarding only the primary spectrum from the current (possibly
+        # multi-)selection.
+        primary_spectrum_id = self.get_primary_spectrum_id()
+        self._controller.set_selection(primary_spectrum_id, None)
 
     def _on_context_menu_requested(self, pos: QPoint) -> None:
         """
