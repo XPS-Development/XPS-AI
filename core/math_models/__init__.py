@@ -16,6 +16,16 @@ class ModelRegistry:
     def get(cls, name: str) -> ParametricModelLike:
         return cls._registry[name]
 
+    @classmethod
+    def get_peak_model_names(cls) -> list[str]:
+        """Return names of all registered peak models."""
+        return [n for n, m in cls._registry.items() if isinstance(m, BasePeakModel)]
+
+    @classmethod
+    def get_background_model_names(cls) -> list[str]:
+        """Return names of all registered background models."""
+        return [n for n, m in cls._registry.items() if isinstance(m, BaseBackgroundModel)]
+
 
 from .models import (
     PseudoVoigtPeakModel,
