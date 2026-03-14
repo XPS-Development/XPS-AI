@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 from PySide6.QtCore import QObject, Signal
 
@@ -334,7 +334,7 @@ class ControllerWrapper(QObject):
         component_id: str,
         name: str,
         parameter_field: ParameterField,
-        new_value: str | bool | float,
+        new_value: str | bool | float | None,
         *,
         normalized: bool = False,
     ) -> None:
@@ -389,20 +389,75 @@ class ControllerWrapper(QObject):
         )
         self._emit_collection_and_undo_redo()
 
-    def update_region_slice(self, region_id: str, start: int, stop: int) -> None:
+    def update_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        mode: Literal["value", "index"] = "index",
+    ) -> None:
         """
-        Update the index slice of a region and emit signals.
+        Update the slice of a region and emit signals.
 
         Parameters
         ----------
         region_id : str
             Region identifier.
-        start : int
-            Start index of the slice (inclusive).
-        stop : int
-            Stop index of the slice (exclusive).
+        start : int or float
+            Start of the slice (index or x value depending on mode).
+        stop : int or float
+            Stop of the slice (index or x value depending on mode).
+        mode : Literal["value", "index"], default="index"
+            Whether start/stop are indices or x-axis values.
         """
-        self._orchestrator.update_region_slice(region_id, start, stop)
+        self._orchestrator.update_region_slice(region_id, start, stop, mode=mode)
+        self._emit_collection_and_undo_redo()
+
+    def replace_peak_model(
+        self,
+        peak_id: str,
+        new_model_name: str,
+        parameters: dict[str, float] | None = None,
+    ) -> None:
+        """
+        Replace a peak's model and emit signals.
+
+        Parameters
+        ----------
+        peak_id : str
+            Identifier of the peak component.
+        new_model_name : str
+            Name of the new registered peak model.
+        parameters : dict[str, float] or None, optional
+            Optional initial parameter values for the new model.
+        """
+        self._orchestrator.replace_peak_model(peak_id, new_model_name, parameters=parameters)
+        self._emit_collection_and_undo_redo()
+
+    def replace_background_model(
+        self,
+        region_id: str,
+        new_model_name: str,
+        parameters: dict[str, float] | None = None,
+        background_id: str | None = None,
+    ) -> None:
+        """
+        Replace the background model for a region and emit signals.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+        new_model_name : str
+            Name of the new registered background model.
+        parameters : dict[str, float] or None, optional
+            Optional initial parameter values for the new model.
+        background_id : str or None, optional
+            Identifier of the background to replace; if None, the region's current background is used.
+        """
+        self._orchestrator.replace_background_model(
+            region_id, new_model_name, parameters=parameters, background_id=background_id
+        )
         self._emit_collection_and_undo_redo()
 
     def create_spectrum(

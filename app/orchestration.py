@@ -56,6 +56,8 @@ class AppParameters:
 
     # ---- UI parameters ----
     show_spectrum_id_in_tree: bool = True
+    region_slice_display_mode: Literal["value", "index"] = "value"
+    show_id_in_properties_tree: bool = True
 
     # ---- Import service parameters ----
     import_use_binding_energy: bool = True
@@ -648,7 +650,7 @@ class AppOrchestrator:
         component_id: str,
         name: str,
         parameter_field: ParameterField,
-        new_value: str | bool | float,
+        new_value: str | bool | float | None,
         *,
         normalized: bool = False,
     ) -> None:
