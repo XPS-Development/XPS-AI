@@ -8,6 +8,8 @@ from .math_models import NormalizationContext, BasePeakModel, BaseBackgroundMode
 from typing import Protocol, Dict, Any, Optional, runtime_checkable
 from numpy.typing import NDArray
 
+_EXPR_MISSING: object = object()
+
 
 @dataclass
 class RuntimeParameter:
@@ -98,7 +100,7 @@ class RuntimeParameter:
         lower: Optional[float] = None,
         upper: Optional[float] = None,
         vary: Optional[bool] = None,
-        expr: Optional[str] = None,
+        expr: Optional[str] = _EXPR_MISSING,
     ) -> None:
         """
         Mutate parameter attributes while preserving invariants.
@@ -129,7 +131,8 @@ class RuntimeParameter:
 
         if vary is not None:
             self.vary = bool(vary)
-        if expr is not None:
+
+        if expr is not _EXPR_MISSING:
             self.expr = expr
 
     def clone(self, **overrides: str | float | bool) -> "RuntimeParameter":

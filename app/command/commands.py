@@ -53,7 +53,7 @@ class UpdateParameterCommand(Command):
         component_id: str,
         name: str,
         parameter_field: str,
-        new_value: str | bool | float,
+        new_value: str | bool | float | None,
         old_value: str | bool | float | None = None,
         normalized: bool = False,
     ) -> None:

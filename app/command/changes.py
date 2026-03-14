@@ -30,7 +30,7 @@ class UpdateParameter:
     component_id: str
     name: str
     parameter_field: ParameterField
-    new_value: str | bool | float
+    new_value: str | bool | float | None
     normalized: bool = False
 
 
