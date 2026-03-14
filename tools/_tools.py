@@ -24,7 +24,7 @@ def interpolate(x: NDArray, y: NDArray, num: int = 256) -> tuple[NDArray, NDArra
         new_y : NDArray
             Interpolated y-values.
     """
-    f = interp1d(x, y, kind="linear")
+    f = interp1d(x, y, kind="linear", fill_value="extrapolate")
     new_x = np.linspace(x[0], x[-1], num, dtype=np.float32)
     new_y = f(new_x)
     return new_x, new_y
