@@ -689,27 +689,24 @@ class AppOrchestrator:
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """Update the index slice of an existing region; executed as a command."""
+        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
+
         if self._params.automatic_methods:
             background_id = self._query.get_background_id(region_id)
             if background_id is not None:
                 background_dto = self._query.get_component_dto(background_id)
-                background_model_name = background_dto.model.name
                 spectrum_id = self._query.get_parent_id(region_id)
                 spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-                change = self._automatization.update_slice_with_intensities(
-                    region_id=region_id,
-                    background_id=background_id,
-                    background_model_name=background_model_name,
-                    spectrum_x=spectrum.x,
-                    spectrum_y=spectrum.y,
-                    start=start,
-                    stop=stop,
-                    mode=mode,
+                bg_change = self._automatization.update_intensities(
+                    background_dto=background_dto,
+                    spectrum_dto=spectrum,
+                    new_slice=(start, stop),
+                    slice_mode=mode,
                 )
-                self.execute(change)
+                self.execute(CompositeChange(changes=[change, bg_change]))
                 return
 
-        self.execute(UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode))
+        self.execute(change)
 
     def replace_peak_model(
         self,
@@ -734,6 +731,18 @@ class AppOrchestrator:
         background_id: str | None = None,
     ) -> None:
         """Replace a background's model; executed as a command."""
+        if self._params.automatic_methods and parameters is None:
+            spectrum_dto = self._query.get_spectrum_dto(
+                self._query.get_parent_id(region_id),
+                normalized=False,
+            )
+            reg_slice = self._query.get_region_slice(region_id, mode="index")
+            parameters = self._automatization.get_bg_parameters(
+                new_model_name,
+                spectrum_dto,
+                reg_slice,
+                "index",
+            )
         self.execute(
             ReplaceBackgroundModel(
                 region_id=region_id,
@@ -809,20 +818,12 @@ class AppOrchestrator:
             start, stop = self._query.get_region_slice(region_id, mode="index")
             change = self._automatization.create_background(
                 region_id=region_id,
-                spectrum_x=spectrum.x,
-                spectrum_y=spectrum.y,
-                start=start,
-                stop=stop,
-                mode="index",
+                spectrum_dto=spectrum,
+                new_slice=(start, stop),
+                slice_mode="index",
                 model_name=model_name,
+                background_id=background_id,
             )
-            if background_id is not None:
-                change = CreateBackground(
-                    region_id=change.region_id,
-                    model_name=change.model_name,
-                    parameters=change.parameters,
-                    background_id=background_id,
-                )
             self.execute(change)
         else:
             self.execute(

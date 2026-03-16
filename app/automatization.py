@@ -6,20 +6,16 @@ Provides services for routine tasks.
 
 from typing import Literal
 
-from numpy.typing import NDArray
-
 from tools.automatization import (
     calculate_background_intensities,
     create_pseudo_voigt_peak_parameters,
 )
-from tools.dto import ComponentDTO, RegionDTO
+from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO
 
 from .command.changes import (
-    CompositeChange,
     CreateBackground,
     CreatePeak,
     UpdateMultipleParameterValues,
-    UpdateRegionSlice,
 )
 
 
@@ -31,38 +27,41 @@ class AutomatizationAdapter:
     """
 
     @staticmethod
-    def _bg_parameters_adapter(model_name: str, params: dict[str, float]) -> dict[str, float]:
-        if model_name == "constant":
-            return {"const": min(params["i1"], params["i2"])}
-        return params
+    def _i1_i2_to_const(params: dict[str, float]) -> dict[str, float]:
+        return {"const": min(params["i1"], params["i2"])}
 
-    def update_slice_with_intensities(
+    def update_intensities(
+        self,
+        background_dto: ComponentDTO,
+        spectrum_dto: SpectrumDTO,
+        new_slice: tuple[int | float, int | float],
+        slice_mode: Literal["value", "index"] = "index",
+        avg_on: int = 3,
+    ):
+        bg_model_name = background_dto.model.name
+        params = self.get_bg_parameters(bg_model_name, spectrum_dto, new_slice, slice_mode, avg_on)
+        return UpdateMultipleParameterValues(component_id=background_dto.id_, parameters=params)
+
+    def create_background(
         self,
         region_id: str,
-        background_id: str,
-        background_model_name: str,
-        spectrum_x: NDArray,
-        spectrum_y: NDArray,
-        start: int | float,
-        stop: int | float,
-        mode: Literal["value", "index"] = "index",
+        spectrum_dto: SpectrumDTO,
+        new_slice: tuple[int | float, int | float],
+        slice_mode: Literal["value", "index"] = "index",
+        model_name: str = "shirley",
+        background_id: str | None = None,
         avg_on: int = 3,
-    ) -> CompositeChange:
+    ) -> CreateBackground:
+        """Create linear background parameters for a region."""
 
-        slice_change = UpdateRegionSlice(region_id, start, stop, mode)
-        bg_params = calculate_background_intensities(
-            spectrum_x,
-            spectrum_y,
-            start,
-            stop,
-            mode,
-            avg_on,
+        params = self.get_bg_parameters(model_name, spectrum_dto, new_slice, slice_mode, avg_on)
+
+        return CreateBackground(
+            region_id=region_id,
+            model_name=model_name,
+            parameters=params,
+            background_id=background_id,
         )
-        bg_change = UpdateMultipleParameterValues(
-            component_id=background_id,
-            parameters=self._bg_parameters_adapter(background_model_name, bg_params),
-        )
-        return CompositeChange(changes=[slice_change, bg_change])
 
     def create_pseudo_voigt_peak(
         self, region: RegionDTO, components: tuple[ComponentDTO, ...]
@@ -74,31 +73,25 @@ class AutomatizationAdapter:
             parameters=create_pseudo_voigt_peak_parameters(region, components),
         )
 
-    def create_background(
+    def get_bg_parameters(
         self,
-        region_id: str,
-        spectrum_x: NDArray,
-        spectrum_y: NDArray,
-        start: int | float,
-        stop: int | float,
-        mode: Literal["value", "index"] = "index",
-        model_name: str = "shirley",
+        model_name: str,
+        spectrum_dto: SpectrumDTO,
+        reg_slice: tuple[int | float, int | float],
+        slice_mode: Literal["value", "index"] = "index",
         avg_on: int = 3,
-    ) -> CreateBackground:
-        """Create linear background parameters for a region."""
-
-        parameters = calculate_background_intensities(
-            spectrum_x,
-            spectrum_y,
-            start,
-            stop,
-            mode,
+    ) -> dict[str, float]:
+        """Get parameters for background replacement."""
+        params = calculate_background_intensities(
+            spectrum_dto.x,
+            spectrum_dto.y,
+            reg_slice[0],
+            reg_slice[1],
+            slice_mode,
             avg_on,
         )
-        parameters = self._bg_parameters_adapter(model_name, parameters)
 
-        return CreateBackground(
-            region_id=region_id,
-            model_name=model_name,
-            parameters=parameters,
-        )
+        if model_name == "constant":
+            return self._i1_i2_to_const(params)
+
+        return params
