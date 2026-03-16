@@ -485,9 +485,10 @@ class ControllerWrapper(QObject):
     def create_region(
         self,
         spectrum_id: str,
-        start: int,
-        stop: int,
+        start: int | float,
+        stop: int | float,
         region_id: str | None = None,
+        mode: Literal["value", "index"] = "index",
     ) -> None:
         """
         Create a new region and emit signals.
@@ -496,18 +497,21 @@ class ControllerWrapper(QObject):
         ----------
         spectrum_id : str
             Parent spectrum identifier.
-        start : int
-            Start index (inclusive).
-        stop : int
-            Stop index (exclusive).
+        start : int or float
+            Start index (inclusive) or x-axis value depending on mode.
+        stop : int or float
+            Stop index (exclusive) or x-axis value depending on mode.
         region_id : str or None, optional
             Explicit region identifier.
+        mode : Literal["value", "index"], default="index"
+            Whether start/stop are indices or x-axis values.
         """
         self._orchestrator.create_region(
             spectrum_id=spectrum_id,
             start=start,
             stop=stop,
             region_id=region_id,
+            mode=mode,
         )
         self._emit_collection_and_undo_redo()
 
