@@ -58,6 +58,7 @@ class AppParameters:
     show_spectrum_id_in_tree: bool = True
     region_slice_display_mode: Literal["value", "index"] = "value"
     show_id_in_properties_tree: bool = True
+    show_residuals_plot: bool = True
 
     # ---- Import service parameters ----
     import_use_binding_energy: bool = True

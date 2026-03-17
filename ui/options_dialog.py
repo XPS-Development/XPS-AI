@@ -38,6 +38,7 @@ class OptionsDialog(QDialog):
         self._automatic_methods_cb = QCheckBox()
         self._default_bg_model_edit = QLineEdit()
         self._show_spectrum_id_in_tree_cb = QCheckBox()
+        self._show_residuals_plot_cb = QCheckBox()
         self._region_slice_display_mode_combo = QComboBox()
         self._show_id_in_properties_tree_cb = QCheckBox()
 
@@ -81,6 +82,7 @@ class OptionsDialog(QDialog):
         core_layout.addRow("Automatic methods", self._automatic_methods_cb)
         core_layout.addRow("Default background model", self._default_bg_model_edit)
         core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
+        core_layout.addRow("Show residuals plot", self._show_residuals_plot_cb)
         core_layout.addRow("Region slice in properties", self._region_slice_display_mode_combo)
         core_layout.addRow("Show object ID in properties tree", self._show_id_in_properties_tree_cb)
 
@@ -137,6 +139,7 @@ class OptionsDialog(QDialog):
         self._automatic_methods_cb.setChecked(params.automatic_methods)
         self._default_bg_model_edit.setText(params.default_background_model_for_auto_methods)
         self._show_spectrum_id_in_tree_cb.setChecked(params.show_spectrum_id_in_tree)
+        self._show_residuals_plot_cb.setChecked(params.show_residuals_plot)
         idx = self._region_slice_display_mode_combo.findData(params.region_slice_display_mode)
         if idx >= 0:
             self._region_slice_display_mode_combo.setCurrentIndex(idx)
@@ -176,6 +179,7 @@ class OptionsDialog(QDialog):
         params.automatic_methods = self._automatic_methods_cb.isChecked()
         params.default_background_model_for_auto_methods = self._default_bg_model_edit.text()
         params.show_spectrum_id_in_tree = self._show_spectrum_id_in_tree_cb.isChecked()
+        params.show_residuals_plot = self._show_residuals_plot_cb.isChecked()
         mode_data = self._region_slice_display_mode_combo.currentData()
         params.region_slice_display_mode = mode_data if mode_data is not None else "index"
         params.show_id_in_properties_tree = self._show_id_in_properties_tree_cb.isChecked()
