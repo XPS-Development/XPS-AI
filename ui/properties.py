@@ -75,7 +75,14 @@ class PropertyItem:
 
     def row(self) -> int:
         """Return the index of this item within its parent."""
-        return self.parent.children.index(self) if self.parent else 0
+        if self.parent is None:
+            return 0
+        try:
+            return self.parent.children.index(self)
+        except ValueError:
+            # This can happen if Qt holds a stale QModelIndex whose internalPointer()
+            # refers to an item that was removed during a model reset/rebuild.
+            return -1
 
     def append_child(self, item: "PropertyItem") -> None:
         """Append a child item to this node."""
@@ -98,7 +105,10 @@ class PropertiesModel(QAbstractItemModel):
 
     def _item(self, index: QModelIndex) -> Optional[PropertyItem]:
         """Return the item for the given index, or None if invalid."""
-        return index.internalPointer() if index.isValid() else None
+        if not index.isValid():
+            return None
+        ptr = index.internalPointer()
+        return ptr if isinstance(ptr, PropertyItem) else None
 
     # ------------------------------------------------------------------
     # Required model API
@@ -139,7 +149,10 @@ class PropertiesModel(QAbstractItemModel):
         if parent_item is None or parent_item is self._root_item:
             return QModelIndex()
 
-        return self.createIndex(parent_item.row(), 0, parent_item)
+        row = parent_item.row()
+        if row < 0:
+            return QModelIndex()
+        return self.createIndex(row, 0, parent_item)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # noqa: N802
         item = self._item(index)
@@ -249,16 +262,13 @@ class PropertiesModel(QAbstractItemModel):
                 and item.parameter_name is not None
             ):
                 coerced = value == Qt.Checked.value
-                try:
-                    self._controller.update_parameter(
-                        item.component_id,
-                        item.parameter_name,
-                        "vary",
-                        coerced,
-                        normalized=False,
-                    )
-                except Exception:  # noqa: BLE001
-                    return False
+                self._controller.update_parameter(
+                    item.component_id,
+                    item.parameter_name,
+                    "vary",
+                    coerced,
+                    normalized=False,
+                )
                 self.dataChanged.emit(index, index, [Qt.CheckStateRole])
                 return True
             return False
@@ -268,10 +278,7 @@ class PropertiesModel(QAbstractItemModel):
 
         if item.kind == ItemKind.REGION_SLICE and item.region_id is not None:
             slice_mode = self._controller.get_app_parameters().region_slice_display_mode
-            try:
-                new_bound = int(value) if slice_mode == "index" else float(value)
-            except (TypeError, ValueError):
-                return False
+            new_bound = int(value) if slice_mode == "index" else float(value)
 
             start, stop = self._controller.query.get_region_slice(item.region_id, mode=slice_mode)
             start = start if start is not None else (0 if slice_mode == "index" else 0.0)
@@ -284,10 +291,7 @@ class PropertiesModel(QAbstractItemModel):
             else:
                 return False
 
-            try:
-                self._controller.update_region_slice(item.region_id, start, stop, mode=slice_mode)
-            except Exception:  # noqa: BLE001
-                return False
+            self._controller.update_region_slice(item.region_id, start, stop, mode=slice_mode)
 
             item.value = new_bound
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
@@ -304,13 +308,10 @@ class PropertiesModel(QAbstractItemModel):
                 return False
             if new_model_name == item.value:
                 return True  # no-op: model unchanged
-            try:
-                if item.component_kind == "peak":
-                    self._controller.replace_peak_model(item.component_id, new_model_name)
-                else:
-                    self._controller.replace_background_model(item.region_id, new_model_name)
-            except Exception:  # noqa: BLE001
-                return False
+            if item.component_kind == "peak":
+                self._controller.replace_peak_model(item.component_id, new_model_name)
+            else:
+                self._controller.replace_background_model(item.region_id, new_model_name)
             item.value = new_model_name
             self.refresh()
             return True
@@ -324,31 +325,23 @@ class PropertiesModel(QAbstractItemModel):
             if field is None or field == "vary":
                 return False  # vary is edited via checkbox only
 
-            try:
-                coerced: str | bool | float | None
-                text = str(value)
-                if field in {"value", "lower", "upper"}:
-                    coerced = float(text)
-                elif field == "expr":
-                    coerced = text.strip() if text.strip() else None
-                elif field == "name":
-                    coerced = text
-                else:
-                    return False
-            except (TypeError, ValueError):
+            coerced: str | bool | float | None
+            text = str(value)
+            if field in {"value", "lower", "upper"}:
+                coerced = float(text)
+            elif field == "expr":
+                coerced = text.strip() if text.strip() else None
+            elif field == "name":
+                coerced = text
+            else:
                 return False
-
-            try:
-                self._controller.update_parameter(
-                    item.component_id,
-                    item.parameter_name,
-                    field,
-                    coerced,
-                    normalized=False,
-                )
-            except Exception:  # noqa: BLE001
-                return False
-
+            self._controller.update_parameter(
+                item.component_id,
+                item.parameter_name,
+                field,
+                coerced,
+                normalized=False,
+            )
             item.value = coerced
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
             return True
@@ -650,19 +643,13 @@ class PropertiesView(QTreeView):
         if spectrum_id is None:
             return
 
-        try:
-            spectrum_dto = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
-        except Exception:  # noqa: BLE001
-            return
+        spectrum_dto = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
 
         length = len(spectrum_dto.x)
         if length <= 1:
             return
 
-        try:
-            self._controller.create_region(spectrum_id, 0, length)
-        except Exception:  # noqa: BLE001
-            return
+        self._controller.create_region(spectrum_id, 0, length)
 
     def _create_peak_for_region(self, region_id: str) -> None:
         """
@@ -673,10 +660,7 @@ class PropertiesView(QTreeView):
         region_id : str
             Identifier of the parent region.
         """
-        try:
-            self._controller.create_peak(region_id, "pseudo-voigt", parameters=None)
-        except Exception:  # noqa: BLE001
-            return
+        self._controller.create_peak(region_id, "pseudo-voigt", parameters=None)
 
     def _set_background_for_region(self, region_id: str) -> None:
         """
@@ -687,10 +671,7 @@ class PropertiesView(QTreeView):
         region_id : str
             Identifier of the parent region.
         """
-        try:
-            self._controller.create_background(region_id, "shirley", parameters=None)
-        except Exception:  # noqa: BLE001
-            return
+        self._controller.create_background(region_id, "shirley", parameters=None)
 
     def _delete_region(self, region_id: str) -> None:
         """
@@ -701,13 +682,10 @@ class PropertiesView(QTreeView):
         region_id : str
             Identifier of the region to remove.
         """
-        try:
-            if self._controller.selected_region_id == region_id:
-                self._controller.set_selection(self._controller.selected_spectrum_id, None)
-            self._controller.full_remove_object(region_id)
-            self.refresh()
-        except Exception:  # noqa: BLE001
-            return
+        if self._controller.selected_region_id == region_id:
+            self._controller.set_selection(self._controller.selected_spectrum_id, None)
+        self._controller.full_remove_object(region_id)
+        self.refresh()
 
     def _delete_component(self, component_id: str) -> None:
         """
@@ -718,8 +696,5 @@ class PropertiesView(QTreeView):
         component_id : str
             Identifier of the component to remove.
         """
-        try:
-            self._controller.full_remove_object(component_id)
-            self.refresh()
-        except Exception:  # noqa: BLE001
-            return
+        self._controller.full_remove_object(component_id)
+        self.refresh()
