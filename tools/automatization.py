@@ -100,11 +100,15 @@ def calculate_background_intensities(
     """
 
     if mode == "value":
-        start = np.searchsorted(x, start)
-        stop = np.searchsorted(x, stop)
+        start = min(max(0, np.searchsorted(x, start)), len(x) - 1)
+        stop = min(max(0, np.searchsorted(x, stop)), len(x) - 1)
 
-    i1 = np.mean(y[max(start - avg_on, 0) : start])
-    i2 = np.mean(y[stop : min(stop + avg_on, len(y))])
+    i1_arr = y[max(start - avg_on, 0) : start]
+    i2_arr = y[stop : min(stop + avg_on, len(y))]
+
+    i1 = np.mean(i1_arr) if len(i1_arr) > 0 else y[start]
+    i2 = np.mean(i2_arr) if len(i2_arr) > 0 else y[stop - 1]
+
     return dict(i1=i1, i2=i2)
 
 

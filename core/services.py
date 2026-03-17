@@ -370,7 +370,10 @@ class RegionService(BaseCoreService):
         """
         Convert a value to an index.
         """
-        return np.searchsorted(self._get_typed(spectrum_id, Spectrum).x, value)
+        return min(
+            max(0, np.searchsorted(self._get_typed(spectrum_id, Spectrum).x, value)),
+            len(self._get_typed(spectrum_id, Spectrum).x) - 1,
+        )
 
     def _check_slice(
         self,
