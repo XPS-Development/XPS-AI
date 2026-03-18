@@ -366,32 +366,42 @@ class RegionService(BaseCoreService):
         """
         return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
 
-    def _convert_value_to_index(self, spectrum_id: str, value: float) -> int:
+    def _get_bound_indices(self, spectrum_id: str) -> tuple[int, int]:
+        """
+        Get the bound indices of a spectrum.
+        """
+        spectrum = self._get_typed(spectrum_id, Spectrum)
+        return 0, len(spectrum.x)
+
+    def _convert_value_to_index(self, spectrum_id: str, value: float | None = None) -> int:
         """
         Convert a value to an index.
         """
+        if value is None:
+            return None
+
         return min(
             max(0, np.searchsorted(self._get_typed(spectrum_id, Spectrum).x, value)),
-            len(self._get_typed(spectrum_id, Spectrum).x) - 1,
+            len(self._get_typed(spectrum_id, Spectrum).x),
         )
 
     def _check_slice(
         self,
         spectrum_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | None = None,
+        stop: int | None = None,
     ) -> bool:
         """
         Check if a slice is valid.
         """
         spectrum = self._get_typed(spectrum_id, Spectrum)
-        return 0 <= start < stop <= len(spectrum.x)
+        return start is not None and stop is not None and 0 <= start < stop <= len(spectrum.x)
 
     def create_region(
         self,
         spectrum_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         region_id: Optional[str] = None,
         mode: Literal["value", "index"] = "index",
     ) -> str:
@@ -402,9 +412,9 @@ class RegionService(BaseCoreService):
         ----------
         spectrum_id : str
             Identifier of the parent spectrum.
-        start : int or float
+        start : int or float or None, default=None
             Start index (inclusive).
-        stop : int or float
+        stop : int or float or None, default=None
             Stop index (exclusive).
         region_id : str, optional
             Explicit region identifier.
@@ -426,7 +436,7 @@ class RegionService(BaseCoreService):
             stop = self._convert_value_to_index(spectrum_id, stop)
 
         if not self._check_slice(spectrum_id, start, stop):
-            raise ValueError("Invalid region slice")
+            start, stop = self._get_bound_indices(spectrum_id)
 
         region = self._create_region_obj(spectrum_id, start, stop, region_id)
         self.attach(region)
@@ -435,8 +445,8 @@ class RegionService(BaseCoreService):
     def update_slice(
         self,
         region_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """
@@ -446,9 +456,9 @@ class RegionService(BaseCoreService):
         ----------
         region_id : str
             Identifier of the region.
-        start : int or float
+        start : int or float or None, default=None
             New start index or value of x-axis.
-        stop : int or float
+        stop : int or float or None, default=None
             New stop index or value of x-axis.
         mode : Literal["value", "index"], default="index"
             Mode of the slice update.
@@ -465,7 +475,7 @@ class RegionService(BaseCoreService):
             stop = self._convert_value_to_index(region.parent_id, stop)
 
         if not self._check_slice(region.parent_id, start, stop):
-            raise ValueError("Invalid region slice")
+            start, stop = self._get_bound_indices(region.parent_id)
 
         region.slice_ = slice(start, stop)
 

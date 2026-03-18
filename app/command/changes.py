@@ -39,8 +39,8 @@ class UpdateRegionSlice:
     """Change to update the index slice of an existing region."""
 
     region_id: str
-    start: int | float
-    stop: int | float
+    start: int | float | None = None
+    stop: int | float | None = None
     mode: Literal["value", "index"] = "index"
 
 
@@ -110,8 +110,8 @@ class CreateRegion:
     """
 
     spectrum_id: str
-    start: int | float
-    stop: int | float
+    start: int | float | None = None
+    stop: int | float | None = None
     region_id: Optional[str] = None
     mode: Literal["value", "index"] = "index"
 

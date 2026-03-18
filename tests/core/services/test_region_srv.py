@@ -28,13 +28,10 @@ def test_create_region(srv: RegionService, spectrum_id: str) -> None:
 def test_create_region_out_of_bounds(
     srv: RegionService, spectrum_id: str, start: int | float, stop: int | float
 ) -> None:
-    with pytest.raises(ValueError):
-        srv.create_region(spectrum_id, start, stop)
-
-
-def test_create_region_invalid_slice(srv: RegionService, spectrum_id: str) -> None:
-    with pytest.raises(ValueError):
-        srv.create_region(spectrum_id, start=5, stop=5)
+    rid = srv.create_region(spectrum_id, start, stop)
+    region = srv.collection.get_typed(rid, Region)
+    assert region.slice_.start == 0
+    assert region.slice_.stop == 200
 
 
 def test_update_slice(srv: RegionService) -> None:
@@ -47,9 +44,9 @@ def test_update_slice(srv: RegionService) -> None:
 
 def test_update_slice_invalid(srv):
     region = next(obj for obj in srv.collection.objects_index.values() if isinstance(obj, Region))
-
-    with pytest.raises(ValueError):
-        srv.update_slice(region.id_, start=-1, stop=5)
+    srv.update_slice(region.id_, start=-1, stop=5)
+    assert region.slice_.start == 0
+    assert region.slice_.stop == 200
 
 
 def test_remove_region(srv):
@@ -90,12 +87,6 @@ def test_create_region_value_mode(srv: RegionService, spectrum_id: str) -> None:
     assert stop_val >= 4.9
 
 
-def test_create_region_value_mode_invalid_slice(srv: RegionService, spectrum_id: str) -> None:
-    """create_region with mode='value' raises when resulting slice is invalid (start >= stop)."""
-    with pytest.raises(ValueError, match="Invalid region slice"):
-        srv.create_region(spectrum_id, start=5.0, stop=-5.0, mode="value")
-
-
 def test_create_region_value_mode_extreme_values_clamped(srv: RegionService, spectrum_id: str) -> None:
     """create_region with mode='value' and values outside x range uses searchsorted; valid region created."""
     # Values beyond x range yield indices at 0 and len(x); slice is still valid (0 < 200 <= 200)
@@ -111,12 +102,6 @@ def test_update_slice_value_mode(srv: RegionService, region_id: str) -> None:
     start_val, stop_val = srv.get_slice(region_id, mode="value")
     assert start_val <= -2.9
     assert stop_val >= 2.9
-
-
-def test_update_slice_value_mode_invalid(srv: RegionService, region_id: str) -> None:
-    """update_slice with mode='value' raises when slice is invalid."""
-    with pytest.raises(ValueError, match="Invalid region slice"):
-        srv.update_slice(region_id, start=10.0, stop=-10.0, mode="value")
 
 
 def test_get_slice_index_mode(srv: RegionService, region_id: str) -> None:

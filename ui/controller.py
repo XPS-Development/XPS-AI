@@ -392,8 +392,8 @@ class ControllerWrapper(QObject):
     def update_region_slice(
         self,
         region_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """
@@ -403,9 +403,9 @@ class ControllerWrapper(QObject):
         ----------
         region_id : str
             Region identifier.
-        start : int or float
+        start : int or float or None, default=None
             Start of the slice (index or x value depending on mode).
-        stop : int or float
+        stop : int or float or None, default=None
             Stop of the slice (index or x value depending on mode).
         mode : Literal["value", "index"], default="index"
             Whether start/stop are indices or x-axis values.
@@ -485,8 +485,8 @@ class ControllerWrapper(QObject):
     def create_region(
         self,
         spectrum_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         region_id: str | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> None:
@@ -497,9 +497,9 @@ class ControllerWrapper(QObject):
         ----------
         spectrum_id : str
             Parent spectrum identifier.
-        start : int or float
+        start : int or float or None, default=None
             Start index (inclusive) or x-axis value depending on mode.
-        stop : int or float
+        stop : int or float or None, default=None
             Stop index (exclusive) or x-axis value depending on mode.
         region_id : str or None, optional
             Explicit region identifier.

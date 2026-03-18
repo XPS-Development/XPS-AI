@@ -180,11 +180,11 @@ class UpdateRegionSliceCommand(Command):
             new_start = ctx.region._convert_value_to_index(spectrum_id, change.start)
             new_stop = ctx.region._convert_value_to_index(spectrum_id, change.stop)
         else:
-            new_start = int(change.start)
-            new_stop = int(change.stop)
+            new_start = change.start
+            new_stop = change.stop
 
         if not ctx.region._check_slice(spectrum_id, new_start, new_stop):
-            raise ValueError("Invalid region slice")
+            new_start, new_stop = ctx.region._get_bound_indices(spectrum_id)
 
         return cls(
             region_id=change.region_id,
@@ -491,11 +491,6 @@ class CreateRegionCommand(CreateObjectCommand):
         -------
         CreateRegionCommand
             Command instance.
-
-        Raises
-        ------
-        ValueError
-            If the region slice is out of bounds.
         """
         if change.mode == "value":
             start = ctx.region._convert_value_to_index(change.spectrum_id, change.start)
@@ -505,7 +500,7 @@ class CreateRegionCommand(CreateObjectCommand):
             stop = change.stop
 
         if not ctx.region._check_slice(change.spectrum_id, start, stop):
-            raise ValueError("Invalid region slice")
+            start, stop = ctx.region._get_bound_indices(change.spectrum_id)
 
         # Command works with indices only; pass converted start/stop, drop mode.
         d = asdict(change)

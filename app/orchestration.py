@@ -685,8 +685,8 @@ class AppOrchestrator:
     def update_region_slice(
         self,
         region_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """Update the index slice of an existing region; executed as a command."""
@@ -767,8 +767,8 @@ class AppOrchestrator:
     def create_region(
         self,
         spectrum_id: str,
-        start: int | float,
-        stop: int | float,
+        start: int | float | None = None,
+        stop: int | float | None = None,
         region_id: str | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> None:
