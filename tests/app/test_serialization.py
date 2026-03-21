@@ -34,6 +34,34 @@ def test_dump_clears_dirty_and_writes_file(simple_collection, tmp_path):
     assert service.is_dirty is False
 
 
+def test_dump_gzip_roundtrip(simple_collection, tmp_path):
+    """dump with use_gzip writes gzip JSON; load restores collection."""
+    metadata_service = MetadataService(simple_collection)
+    service = SerializationService()
+    path = tmp_path / "out.json.gz"
+
+    service.dump(
+        path=path,
+        collection=simple_collection,
+        metadata_service=metadata_service,
+        use_gzip=True,
+        compresslevel=3,
+    )
+    assert path.exists()
+    with path.open("rb") as f:
+        assert f.read(2) == b"\x1f\x8b"
+
+    target_collection = CoreCollection()
+    target_metadata = MetadataService(target_collection)
+    service.load(
+        path=path,
+        collection=target_collection,
+        metadata_service=target_metadata,
+        mode="replace",
+    )
+    assert len(target_collection.objects_index) == len(simple_collection.objects_index)
+
+
 def test_load_replace_clears_dirty(simple_collection, tmp_path):
     """load with replace loads data and clears dirty flag."""
     metadata_service = MetadataService(simple_collection)

@@ -184,6 +184,33 @@ def test_dump_and_load_file(simple_collection, tmp_path):
         assert original_obj.id_ == restored_obj.id_
 
 
+def test_dump_and_load_gzip(simple_collection, tmp_path):
+    """
+    Test gzip-compressed JSON round-trip (``.json.gz`` suffix).
+    """
+    file_path = tmp_path / "test_collection.json.gz"
+    dump(simple_collection, file_path, use_gzip=True, compresslevel=6)
+    assert file_path.exists()
+
+    result = load(file_path, mode="new")
+    restored_collection = result[0]
+    assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
+
+
+def test_load_auto_detects_gzip_magic_without_gz_suffix(simple_collection, tmp_path):
+    """
+    When ``use_gzip`` is None, gzip is detected from magic bytes even without ``.gz``.
+    """
+    file_path = tmp_path / "data.bin"
+    dump(simple_collection, file_path, use_gzip=True)
+    with file_path.open("rb") as f:
+        assert f.read(2) == b"\x1f\x8b"
+
+    result = load(file_path, mode="new", use_gzip=None)
+    restored_collection = result[0]
+    assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
+
+
 def test_dump_and_load_with_metadata(simple_collection, tmp_path):
     """
     Test serialization to file and loading from file with metadata.

@@ -77,6 +77,8 @@ class AppParameters:
     default_serialization_mode: Literal["append", "replace", "new"] = "replace"
     default_serialization_path: str | Path | None = None
     default_serialization_indent: int | None = None
+    default_serialization_use_gzip: bool = True
+    default_serialization_compresslevel: int = 9
 
 
 class QueryService:
@@ -989,6 +991,9 @@ class AppOrchestrator:
         Save collection and metadata to a JSON file.
 
         If path or indent are omitted, AppParameters defaults are used.
+        Gzip output and compression level are controlled only by
+        ``AppParameters.default_serialization_use_gzip`` and
+        ``AppParameters.default_serialization_compresslevel``.
 
         Parameters
         ----------
@@ -1011,6 +1016,8 @@ class AppOrchestrator:
             collection=self._core_collection,
             metadata_service=self.__ctx.metadata,
             indent=resolved_indent,
+            use_gzip=self._params.default_serialization_use_gzip,
+            compresslevel=self._params.default_serialization_compresslevel,
         )
 
     def load_collection(
@@ -1024,11 +1031,12 @@ class AppOrchestrator:
 
         If mode is omitted, AppParameters.default_serialization_mode is used.
         For replace mode, the undo/redo stack is cleared.
+        Plain vs gzip input is auto-detected (``.gz`` suffix or gzip magic bytes).
 
         Parameters
         ----------
         path : str or Path
-            Path to the JSON file.
+            Path to the JSON file (plain or gzip-compressed).
         mode : {"append", "replace"} or None, optional
             - append: add loaded objects to the current collection/metadata.
             - replace: clear current collection/metadata in-place, then load.

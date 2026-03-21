@@ -55,6 +55,8 @@ class OptionsDialog(QDialog):
         self._serialization_mode_edit = QLineEdit()
         self._serialization_path_edit = QLineEdit()
         self._serialization_indent_sb = QSpinBox()
+        self._serialization_use_gzip_cb = QCheckBox()
+        self._serialization_compresslevel_sb = QSpinBox()
 
         self._setup_widgets()
         self._build_layout()
@@ -69,6 +71,8 @@ class OptionsDialog(QDialog):
 
         self._serialization_indent_sb.setRange(0, 16)
         self._serialization_indent_sb.setSpecialValueText("None")
+
+        self._serialization_compresslevel_sb.setRange(0, 9)
 
         self._region_slice_display_mode_combo.addItem("Indices", "index")
         self._region_slice_display_mode_combo.addItem("X values", "value")
@@ -107,6 +111,8 @@ class OptionsDialog(QDialog):
         ser_layout.addRow("Default mode", self._serialization_mode_edit)
         ser_layout.addRow("Default path", self._serialization_path_edit)
         ser_layout.addRow("Indent (0 = None)", self._serialization_indent_sb)
+        ser_layout.addRow("Save as gzip", self._serialization_use_gzip_cb)
+        ser_layout.addRow("Gzip compression level", self._serialization_compresslevel_sb)
 
         groups_grid = QGridLayout()
         groups_grid.addWidget(core_group, 0, 0)
@@ -162,6 +168,9 @@ class OptionsDialog(QDialog):
         else:
             self._serialization_indent_sb.setValue(params.default_serialization_indent)
 
+        self._serialization_use_gzip_cb.setChecked(params.default_serialization_use_gzip)
+        self._serialization_compresslevel_sb.setValue(int(params.default_serialization_compresslevel))
+
     def apply_to_params(self, params: AppParameters) -> None:
         """
         Apply current widget values to an AppParameters instance.
@@ -205,6 +214,9 @@ class OptionsDialog(QDialog):
 
         indent_value = int(self._serialization_indent_sb.value())
         params.default_serialization_indent = None if indent_value == 0 else indent_value
+
+        params.default_serialization_use_gzip = self._serialization_use_gzip_cb.isChecked()
+        params.default_serialization_compresslevel = int(self._serialization_compresslevel_sb.value())
 
     def validate_and_apply(self, params: AppParameters) -> bool:
         """

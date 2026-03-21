@@ -722,6 +722,8 @@ class ControllerWrapper(QObject):
         """
         Persist the collection and metadata to disk and emit signals.
 
+        Gzip and compression level follow ``AppParameters`` (see options dialog).
+
         Parameters
         ----------
         path : str or Path or None, optional
@@ -742,6 +744,8 @@ class ControllerWrapper(QObject):
     ) -> None:
         """
         Load collection and metadata from disk and emit signals.
+
+        Plain vs gzip is auto-detected from the path or file header.
 
         Parameters
         ----------

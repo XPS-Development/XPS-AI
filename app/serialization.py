@@ -45,6 +45,8 @@ class SerializationService:
         metadata_service: MetadataService,
         *,
         indent: int | None = None,
+        use_gzip: bool = False,
+        compresslevel: int = 9,
     ) -> None:
         """
         Serialize collection and metadata to a JSON file.
@@ -59,6 +61,10 @@ class SerializationService:
             Metadata service for the collection.
         indent : int or None, optional
             JSON indentation level.
+        use_gzip : bool, optional
+            If True, write gzip-compressed JSON.
+        compresslevel : int, optional
+            Gzip compression level (0--9) when ``use_gzip`` is True.
 
         """
         dump_collection(
@@ -66,6 +72,8 @@ class SerializationService:
             fp=path,
             metadata_service=metadata_service,
             indent=indent,
+            use_gzip=use_gzip,
+            compresslevel=compresslevel,
         )
         self._dirty = False
 
@@ -76,6 +84,7 @@ class SerializationService:
         metadata_service: MetadataService,
         *,
         mode: Literal["append", "replace"] = "replace",  # "new" is not supported
+        use_gzip: bool | None = None,
     ) -> None:
         """
         Load collection and metadata from a JSON file.
@@ -83,7 +92,7 @@ class SerializationService:
         Parameters
         ----------
         path : str or Path
-            Path to the JSON file.
+            Path to the JSON file (plain or gzip-compressed).
         collection : CoreCollection
             Collection to load into.
         metadata_service : MetadataService
@@ -91,6 +100,9 @@ class SerializationService:
         mode : {"append", "replace"}, optional
             - append: add loaded objects to existing collection/metadata.
             - replace: clear then fill existing collection/metadata in-place.
+        use_gzip : bool or None, optional
+            If True, read as gzip. If False, plain text. If None, detect from
+            path suffix or file magic bytes.
 
         Note: new mode is not supported.
 
@@ -104,5 +116,6 @@ class SerializationService:
             collection=collection,
             metadata_service=metadata_service,
             mode=mode,
+            use_gzip=use_gzip,
         )
         self._dirty = False

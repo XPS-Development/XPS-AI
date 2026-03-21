@@ -5,6 +5,7 @@ Provides functionality to serialize CoreCollection instances to JSON format,
 preserving object relationships, metadata, and data in a compact representation.
 """
 
+import gzip
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -259,11 +260,42 @@ def serialize(
     }
 
 
+def _resolve_load_use_gzip(path: Path, use_gzip: Optional[bool]) -> bool:
+    """
+    Decide whether to read the file as gzip-compressed JSON.
+
+    Parameters
+    ----------
+    path : Path
+        File path.
+    use_gzip : bool or None
+        If True, read as gzip. If False, read as plain text. If None, detect
+        from the ``.gz`` suffix or gzip magic bytes (0x1f 0x8b).
+
+    Returns
+    -------
+    bool
+        Whether to open with gzip.
+    """
+    if use_gzip is True:
+        return True
+    if use_gzip is False:
+        return False
+    if path.suffix.lower() == ".gz":
+        return True
+    with path.open("rb") as f:
+        magic = f.read(2)
+    return magic == b"\x1f\x8b"
+
+
 def dump(
     collection: CoreCollection,
     fp: str | Path,
     metadata_service: Optional[MetadataService] = None,
     indent: int | None = None,
+    *,
+    use_gzip: bool = False,
+    compresslevel: int = 9,
 ) -> None:
     """
     Serialize a CoreCollection to JSON and save it to a file.
@@ -278,12 +310,20 @@ def dump(
         Service providing metadata for objects.
     indent : int or None, optional
         JSON indentation level.
+    use_gzip : bool, optional
+        If True, write gzip-compressed JSON (default False).
+    compresslevel : int, optional
+        Gzip compression level (0--9), used when ``use_gzip`` is True.
     """
     path = Path(fp)
     data = serialize(collection, metadata_service)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as f:
-        json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
+    if use_gzip:
+        with gzip.open(path, "wt", encoding="utf-8", compresslevel=compresslevel) as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
+    else:
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
 
 
 def _convert_json_value(value: Any) -> Any:
@@ -579,6 +619,7 @@ def load(
     metadata_service: Optional[MetadataService] = None,
     *,
     mode: LoadMode = "replace",
+    use_gzip: Optional[bool] = None,
 ) -> DeserializeResult:
     """
     Deserialize a JSON file to a CoreCollection (and optionally metadata).
@@ -586,13 +627,16 @@ def load(
     Parameters
     ----------
     fp : str or Path
-        Path to JSON file.
+        Path to JSON file (plain or gzip-compressed).
     collection : CoreCollection, optional
         Existing collection. Semantics as in deserialize (see mode).
     metadata_service : MetadataService, optional
         Service for storing metadata. Semantics as in deserialize (see mode).
     mode : {\"append\", \"replace\", \"new\"}, optional
         Same as deserialize: append, replace (default), or new.
+    use_gzip : bool or None, optional
+        If True, read as gzip. If False, read as plain text. If None (default),
+        detect from the ``.gz`` suffix or gzip magic bytes.
 
     Returns
     -------
@@ -600,7 +644,11 @@ def load(
         For append/replace: the collection. For new: (collection, metadata_service).
     """
     path = Path(fp)
-    with path.open("r") as f:
-        data = json.load(f)
-    return deserialize(data, collection, metadata_service, mode=mode)
+    gz = _resolve_load_use_gzip(path, use_gzip)
+    if gz:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
     return deserialize(data, collection, metadata_service, mode=mode)
