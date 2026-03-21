@@ -1,7 +1,7 @@
 import pytest
 
-from core.services import RegionService
 from core.objects import Region, Spectrum
+from core.services import RegionService
 
 
 @pytest.fixture
@@ -67,10 +67,10 @@ def test_remove_region(srv):
 
 def test_convert_value_to_index(srv: RegionService, spectrum_id: str) -> None:
     """_convert_value_to_index maps x-axis values to indices via searchsorted."""
-    # x_axis is np.linspace(-10, 10, 200); value -10 -> 0, 10 -> last index (199), 0 -> 100
+    # x_axis is np.linspace(-10, 10, 200); value -10 -> 0, 10 -> last index (199), 0 -> 99
     assert srv._convert_value_to_index(spectrum_id, -10.0) == 0
     assert srv._convert_value_to_index(spectrum_id, 10.0) == 199
-    assert srv._convert_value_to_index(spectrum_id, 0.0) == 100
+    assert srv._convert_value_to_index(spectrum_id, 0.0) == 99
 
 
 def test_create_region_value_mode(srv: RegionService, spectrum_id: str) -> None:

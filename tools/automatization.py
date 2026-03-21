@@ -10,6 +10,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from core.types import ComponentLike, RegionLike
+from tools._tools import find_closest_index
 
 from .evaluation import region_bundle
 
@@ -100,8 +101,8 @@ def calculate_background_intensities(
     """
 
     if mode == "value":
-        start = min(max(0, np.searchsorted(x, start)), len(x) - 1)
-        stop = min(max(0, np.searchsorted(x, stop)), len(x) - 1)
+        start = find_closest_index(start, x)
+        stop = find_closest_index(stop, x)
 
     i1_arr = y[max(start - avg_on, 0) : start]
     i2_arr = y[stop : min(stop + avg_on, len(y))]

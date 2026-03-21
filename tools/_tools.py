@@ -51,3 +51,22 @@ def recalculate_idx(idx: int, array_1: NDArray, array_2: NDArray) -> int:
         return len(array_2)
     val = array_1[idx]
     return int(np.abs(array_2 - val).argmin())
+
+
+def find_closest_index(value: float, array: NDArray) -> int:
+    """Find the closest index to a value in an array.
+    Works for sorted arrays.
+
+    Parameters
+    ----------
+    value : float
+        Value to find the closest index to.
+    array : NDArray
+        Array to find the closest index in.
+
+    Returns
+    -------
+    int
+        Index of the closest value in the array.
+    """
+    return int(np.abs(array - value).argmin())

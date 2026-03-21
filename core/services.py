@@ -1,8 +1,9 @@
 from dataclasses import asdict, dataclass
 from typing import Literal, Optional, TypeVar
 
-import numpy as np
 from numpy.typing import NDArray
+
+from tools._tools import find_closest_index
 
 from .collection import CoreCollection
 from .math_models import (
@@ -381,10 +382,7 @@ class RegionService(BaseCoreService):
         if value is None:
             return None
 
-        return min(
-            max(0, np.searchsorted(self._get_typed(spectrum_id, Spectrum).x, value)),
-            len(self._get_typed(spectrum_id, Spectrum).x),
-        )
+        return find_closest_index(value, self._get_typed(spectrum_id, Spectrum).x)
 
     def _check_slice(
         self,
@@ -434,7 +432,7 @@ class RegionService(BaseCoreService):
         """
         if mode == "value":
             start = self._convert_value_to_index(spectrum_id, start)
-            stop = self._convert_value_to_index(spectrum_id, stop)
+            stop = self._convert_value_to_index(spectrum_id, stop) + 1
 
         if not self._check_slice(spectrum_id, start, stop):
             start, stop = self._get_bound_indices(spectrum_id)
@@ -473,7 +471,7 @@ class RegionService(BaseCoreService):
 
         if mode == "value":
             start = self._convert_value_to_index(region.parent_id, start)
-            stop = self._convert_value_to_index(region.parent_id, stop)
+            stop = self._convert_value_to_index(region.parent_id, stop) + 1
 
         if not self._check_slice(region.parent_id, start, stop):
             start, stop = self._get_bound_indices(region.parent_id)

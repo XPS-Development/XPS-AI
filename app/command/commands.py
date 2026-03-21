@@ -178,10 +178,10 @@ class UpdateRegionSliceCommand(Command):
 
         if change.mode == "value":
             new_start = ctx.region._convert_value_to_index(spectrum_id, change.start)
-            new_stop = ctx.region._convert_value_to_index(spectrum_id, change.stop)
+            new_stop = ctx.region._convert_value_to_index(spectrum_id, change.stop) + 1
         else:
-            new_start = change.start
-            new_stop = change.stop
+            new_start = int(change.start) if change.start is not None else None
+            new_stop = int(change.stop) if change.stop is not None else None
 
         if not ctx.region._check_slice(spectrum_id, new_start, new_stop):
             new_start, new_stop = ctx.region._get_bound_indices(spectrum_id)
@@ -494,10 +494,10 @@ class CreateRegionCommand(CreateObjectCommand):
         """
         if change.mode == "value":
             start = ctx.region._convert_value_to_index(change.spectrum_id, change.start)
-            stop = ctx.region._convert_value_to_index(change.spectrum_id, change.stop)
+            stop = ctx.region._convert_value_to_index(change.spectrum_id, change.stop) + 1
         else:
-            start = change.start
-            stop = change.stop
+            start = int(change.start) if change.start is not None else None
+            stop = int(change.stop) if change.stop is not None else None
 
         if not ctx.region._check_slice(change.spectrum_id, start, stop):
             start, stop = ctx.region._get_bound_indices(change.spectrum_id)
