@@ -56,12 +56,12 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Optional[Metadata] = None)
         x_step = 0.0
         x_num_points = 0
     elif len(x) == 1:
-        x_start = float(x[0])
+        x_start = round(x[0], 3)
         x_step = 0.0
         x_num_points = 1
     else:
-        x_start = float(x[0])
-        x_step = float(x[1] - x[0])
+        x_start = round(x[0], 3)
+        x_step = round(x[1] - x[0], 3)
         x_num_points = len(x)
 
     # Convert y array to list
@@ -148,8 +148,8 @@ def _serialize_component(component: Component, metadata: Optional[Metadata] = No
     for param_name, param in component.parameters.items():
         param_dict: dict[str, Any] = {
             "value": param.value,
-            "lower": param.lower,
-            "upper": param.upper,
+            "lower": _inf_cast(param.lower),
+            "upper": _inf_cast(param.upper),
             "vary": param.vary,
             "expr": param.expr,
         }
@@ -170,6 +170,17 @@ def _serialize_component(component: Component, metadata: Optional[Metadata] = No
         result["metadata"] = None
 
     return result
+
+
+def _inf_cast(value: float) -> str | float:
+    """
+    Cast a float to a string representation of infinity.
+    """
+    if value == np.inf:
+        return "inf"
+    if value == -np.inf:
+        return "-inf"
+    return value
 
 
 def _json_default(obj: Any) -> Any:
@@ -591,4 +602,5 @@ def load(
     path = Path(fp)
     with path.open("r") as f:
         data = json.load(f)
+    return deserialize(data, collection, metadata_service, mode=mode)
     return deserialize(data, collection, metadata_service, mode=mode)
