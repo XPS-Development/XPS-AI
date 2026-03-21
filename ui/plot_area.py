@@ -23,7 +23,7 @@ from .controller import ControllerWrapper
 PEN_RAW = pg.mkPen(color="k", width=1)
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
 PEN_MODEL = pg.mkPen(color="r", width=1.5)
-PEN_RESIDUALS = pg.mkPen(color="#808080", width=1)
+PEN_RESIDUALS = pg.mkPen(color="#808080", width=2)
 
 REGION_BOUNDS_PEN = pg.mkPen(color="#000000", width=3)
 REGION_BOUNDS_HOVER_PEN = pg.mkPen(color="#000000", width=4)
@@ -205,6 +205,10 @@ class InteractiveRegion(pg.LinearRegionItem):
             self.sigClickedRegion.emit(self.region_id)
             if ev.button() == Qt.MouseButton.RightButton:
                 self.raiseContextMenu(ev)
+
+    def mouseDragEvent(self, ev):
+        """Ignore mouse drag events."""
+        pass
 
     def _update_menu_enabled_state(self) -> None:
         """Enable/disable ROI actions based on current region state."""
@@ -487,7 +491,7 @@ class PlotAreaWidget(QWidget):
             # Peaks (background + peak contribution)
             for idx, peak in enumerate(region.peaks):
                 color = PEAK_COLORS[idx % len(PEAK_COLORS)]
-                pen = pg.mkPen(color=color, width=1)
+                pen = pg.mkPen(color=color, width=2.5)
                 self._main_plot.plot(x, bg_y + peak.y, pen=pen)
                 # bg_y = bg_y + peak.y
 
