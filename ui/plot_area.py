@@ -6,6 +6,8 @@ and optional residuals. Driven by ControllerWrapper selection and signals,
 using ViewerDataProvider protocol and tools.evaluation.spectrum_bundle.
 """
 
+from collections.abc import Iterable
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 import numpy as np
@@ -13,6 +15,7 @@ import pyqtgraph as pg
 
 from tools.evaluation import SpectrumEvaluationResult, spectrum_bundle
 
+from .component_creation_dialog import ComponentCreationDialog
 from .controller import ControllerWrapper
 
 
@@ -22,11 +25,138 @@ PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
 PEN_MODEL = pg.mkPen(color="r", width=1.5)
 PEN_RESIDUALS = pg.mkPen(color="#808080", width=1)
 
+REGION_BOUNDS_PEN = pg.mkPen(color="#000000", width=3)
+REGION_BOUNDS_HOVER_PEN = pg.mkPen(color="#000000", width=4)
+REGION_BOUNDS_BRUSH = pg.mkBrush(0, 0, 0, 0)
+REGION_BOUNDS_HOVER_BRUSH = pg.mkBrush(0, 0, 255, 10)
+
 # Peak colors (cycled per peak)
 PEAK_COLORS = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 
 
-class RegionLinearROI(pg.LinearRegionItem):
+class VieBoxCustomContextMenu(pg.ViewBox):
+    """
+    ViewBox with a custom context menu.
+    """
+
+    def __init__(
+        self,
+        *,
+        controller: ControllerWrapper,
+        **kwargs,
+    ) -> None:
+        self._controller = controller
+
+        super().__init__(**kwargs)
+        self._action_add_region = None
+        self._action_optimize_regions = None
+        self._action_run_segmenter = None
+
+    def _create_menu(self):
+        menu = QMenu()
+
+        self._action_add_region = menu.addAction("Add region")
+        self._action_optimize_regions = menu.addAction("Optimize regions")
+        self._action_run_segmenter = menu.addAction("Run segmenter")
+
+        # Use lambdas to ignore the boolean checked parameter.
+        self._action_add_region.triggered.connect(lambda _checked=False: self._on_add_region())
+        self._action_optimize_regions.triggered.connect(lambda _checked=False: self._on_optimize_regions())
+        self._action_run_segmenter.triggered.connect(lambda _checked=False: self._on_run_segmenter())
+
+        return menu
+
+    def _applyMenuEnabled(self):
+        enableMenu = self.state.get("enableMenu", True)
+
+        if enableMenu and self.menu is None:
+            self.menu = self._create_menu()
+
+        elif not enableMenu and self.menu is not None:
+            self.menu.setParent(None)
+            self.menu = None
+
+    def _update_menu_enabled_state(self) -> None:
+        """Enable/disable spectrum-level actions based on current selection."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            self._action_add_region.setEnabled(False)
+            self._action_optimize_regions.setEnabled(False)
+            self._action_run_segmenter.setEnabled(False)
+            return
+
+        has_regions = bool(self._controller.query.get_regions_ids(spectrum_id))
+
+        self._action_add_region.setEnabled(True)
+        self._action_optimize_regions.setEnabled(has_regions)
+        self._action_run_segmenter.setEnabled(not has_regions)
+
+    def _on_add_region(self) -> None:
+        """Create a new region over the full spectrum."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            return
+
+        self._controller.create_region(spectrum_id)
+
+    def _on_optimize_regions(self) -> None:
+        """Optimize regions only in the current spectrum."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            return
+
+        self._controller.optimize_regions(spectrum_ids=[spectrum_id])
+
+    def _on_run_segmenter(self) -> None:
+        """Run the NN segmenter for the current spectrum only."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            return
+
+        self._controller.run_segmenter([spectrum_id])
+
+    def raiseContextMenu(self, ev):
+        """Raise the context menu for the view box without attaching scene menus."""
+        menu = self.getMenu(ev)
+        if menu is not None:
+            self._update_menu_enabled_state()
+            menu.popup(ev.screenPos().toPoint())
+
+
+class RegionContextPlotWidget(pg.PlotWidget):
+    """
+    Plot widget with a region-aware context menu.
+
+    The context menu changes depending on whether the click occurs inside an ROI:
+
+    - Inside an ROI: select that region and show region actions.
+    - Outside all ROIs: show spectrum-level actions.
+    """
+
+    def __init__(
+        self,
+        *,
+        controller: ControllerWrapper,
+        parent: QWidget | None = None,
+    ) -> None:
+        self.menu = None
+        self._controller = controller
+
+        # create view box with custom context menu and disable all default menus
+        super().__init__(
+            parent=parent,
+            viewBox=VieBoxCustomContextMenu(
+                controller=controller,
+                enableMenu=False,
+            ),
+            enableMenu=False,
+        )
+
+        vb = self.plotItem.getViewBox()
+        vb.setMenuEnabled(True)
+
+
+class InteractiveRegion(pg.LinearRegionItem):
     """
     LinearRegionItem carrying a region_id and emitting a click signal.
 
@@ -40,16 +170,78 @@ class RegionLinearROI(pg.LinearRegionItem):
 
     sigClickedRegion: Signal = Signal(str)
 
-    def __init__(self, region_id: str, values: tuple[float, float], **kwargs) -> None:
+    def __init__(
+        self,
+        region_id: str,
+        values: tuple[float, float],
+        *,
+        controller: ControllerWrapper,
+        dialog_parent: QWidget,
+        **kwargs,
+    ) -> None:
         super().__init__(values=values, **kwargs)
         self.region_id = region_id
+        self._controller = controller
+        self._dialog_parent = dialog_parent
+
+        self.menu = QMenu()
+        self._action_add_peak = self.menu.addAction("Add peak (fast)")
+        self._action_set_background = self.menu.addAction("Set background (fast)")
+        self._action_add_component = self.menu.addAction("Add component...")
+        self._action_optimize_region = self.menu.addAction("Optimize region")
+        self._action_delete_region = self.menu.addAction("Delete region")
+
+        self._action_add_peak.triggered.connect(lambda _checked=False: self._on_add_peak())
+        self._action_set_background.triggered.connect(lambda _checked=False: self._on_set_background())
+        self._action_add_component.triggered.connect(lambda _checked=False: self._on_add_component())
+        self._action_optimize_region.triggered.connect(lambda _checked=False: self._on_optimize_region())
+        self._action_delete_region.triggered.connect(lambda _checked=False: self._on_delete_region())
+
+        self._update_menu_enabled_state()
 
     def mouseClickEvent(self, ev) -> None:  # noqa: ANN001
         if ev.button() == Qt.MouseButton.LeftButton or ev.button() == Qt.MouseButton.RightButton:
             ev.accept()
             self.sigClickedRegion.emit(self.region_id)
-            return
-        super().mouseClickEvent(ev)
+            if ev.button() == Qt.MouseButton.RightButton:
+                self.raiseContextMenu(ev)
+
+    def _update_menu_enabled_state(self) -> None:
+        """Enable/disable ROI actions based on current region state."""
+        has_background = self._controller.query.get_background_id(self.region_id) is not None
+        self._action_set_background.setEnabled(not has_background)
+
+    def raiseContextMenu(self, ev):
+        self._update_menu_enabled_state()
+        self.menu.popup(ev.screenPos().toPoint())
+        return True
+
+    def _on_add_peak(self) -> None:
+        """Create a new peak for this region (fast)."""
+        self._controller.create_peak(self.region_id, "pseudo-voigt", parameters=None)
+
+    def _on_set_background(self) -> None:
+        """Create/replace background for this region (fast)."""
+        self._controller.create_background(self.region_id, "shirley", parameters=None)
+
+    def _on_add_component(self) -> None:
+        """Open the shared component creation dialog for this region."""
+        dialog = ComponentCreationDialog(
+            self._controller,
+            region_id=self.region_id,
+            parent=self._dialog_parent,
+        )
+        dialog.exec()
+
+    def _on_optimize_region(self) -> None:
+        """Optimize only this region."""
+        self._controller.optimize_regions(region_ids=[self.region_id])
+
+    def _on_delete_region(self) -> None:
+        """Delete this region and clear selection if needed."""
+        if self._controller.selected_region_id == self.region_id:
+            self._controller.set_selection(self._controller.selected_spectrum_id, None)
+        self._controller.full_remove_object(self.region_id)
 
 
 class PlotAreaWidget(QWidget):
@@ -59,8 +251,8 @@ class PlotAreaWidget(QWidget):
     Shows main plot (raw spectrum, background, peaks, model), a separate
     residuals subplot with shared x-axis and locked y-axis, optional ROI
     for the selected region, cursor (x, y) overlay, and context menu for
-    Add region / Add peak / Set background. Refreshes on collection or
-    selection changes via the connected controller signals.
+    region-aware actions. Refreshes on collection or selection changes via
+    the connected controller signals.
 
     Parameters
     ----------
@@ -78,7 +270,7 @@ class PlotAreaWidget(QWidget):
         super().__init__(parent)
         pg.setConfigOption("leftButtonPan", True)
         self._controller = controller
-        self._roi_items_by_region: dict[str, RegionLinearROI] = {}
+        self._roi_items_by_region: dict[str, InteractiveRegion] = {}
         self._roi_region_ids_in_plot: set[str] = set()
         self._cursor_label: QLabel | None = None
         self._last_result: SpectrumEvaluationResult | None = None
@@ -89,20 +281,18 @@ class PlotAreaWidget(QWidget):
         layout.setSpacing(0)
 
         # Main plot (spectrum, background, peaks, model)
-        self._main_plot = pg.PlotWidget(parent=self)
+        self._main_plot = RegionContextPlotWidget(controller=self._controller)
         self._main_plot.setBackground("w")
         self._main_plot.showGrid(x=True, y=True, alpha=0.3)
-        self._main_plot.getViewBox().setMouseMode(pg.ViewBox.RectMode)
         layout.addWidget(self._main_plot, stretch=1)
 
         # Residuals plot (shared x-axis, locked y)
-        self._res_plot = pg.PlotWidget(parent=self)
+        self._res_plot = pg.PlotWidget(parent=self, enableMenu=False)
         self._res_plot.setBackground("w")
         self._res_plot.showGrid(x=True, y=True, alpha=0.3)
         self._res_plot.setMinimumHeight(80)
         self._res_plot.getViewBox().setXLink(self._main_plot.getViewBox())
         self._res_plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
-        self._res_plot.getViewBox().setMouseMode(pg.ViewBox.RectMode)
         layout.addWidget(self._res_plot, stretch=0)
 
         # Cursor (x, y) overlay on main plot
@@ -220,21 +410,19 @@ class PlotAreaWidget(QWidget):
                 roi.setRegion((float(start_val), float(stop_val)))
                 roi.blockSignals(False)
 
-    def _create_region_roi(self, *, region_id: str, start: float, stop: float) -> RegionLinearROI:
+    def _create_region_roi(self, *, region_id: str, start: float, stop: float) -> InteractiveRegion:
         """Create a styled ROI bound to a region id."""
-        pen = pg.mkPen(color="#000000", width=3)
-        hover_pen = pg.mkPen(color="#000000", width=4)
-        brush = pg.mkBrush(0, 0, 255, 25)
-        hover_brush = pg.mkBrush(0, 0, 255, 45)
-        roi = RegionLinearROI(
+        roi = InteractiveRegion(
             region_id,
             values=(start, stop),
             movable=True,
             swapMode="block",
-            pen=pen,
-            hoverPen=hover_pen,
-            brush=brush,
-            hoverBrush=hover_brush,
+            pen=REGION_BOUNDS_PEN,
+            hoverPen=REGION_BOUNDS_HOVER_PEN,
+            brush=REGION_BOUNDS_BRUSH,
+            hoverBrush=REGION_BOUNDS_HOVER_BRUSH,
+            controller=self._controller,
+            dialog_parent=self,
         )
         roi.sigRegionChangeFinished.connect(lambda _roi=roi: self._on_roi_region_change_finished(_roi))
         roi.sigClickedRegion.connect(self._on_roi_clicked)
@@ -247,7 +435,18 @@ class PlotAreaWidget(QWidget):
             return
         self._controller.set_selection(spectrum_id, region_id)
 
-    def _on_roi_region_change_finished(self, roi: RegionLinearROI) -> None:
+    def _iter_rois(self) -> Iterable[InteractiveRegion]:
+        """
+        Return the current ROI items.
+
+        Returns
+        -------
+        Iterable[RegionLinearROI]
+            Current ROI items attached to regions.
+        """
+        return self._roi_items_by_region.values()
+
+    def _on_roi_region_change_finished(self, roi: InteractiveRegion) -> None:
         """Apply ROI bounds to region slice (value mode)."""
         low, high = roi.getRegion()
         try:
@@ -290,7 +489,7 @@ class PlotAreaWidget(QWidget):
                 color = PEAK_COLORS[idx % len(PEAK_COLORS)]
                 pen = pg.mkPen(color=color, width=1)
                 self._main_plot.plot(x, bg_y + peak.y, pen=pen)
-                bg_y = bg_y + peak.y
+                # bg_y = bg_y + peak.y
 
             # Model
             self._main_plot.plot(x, region.model, pen=PEN_MODEL)
@@ -314,47 +513,3 @@ class PlotAreaWidget(QWidget):
                 self._res_plot.setYRange(r_min - margin, r_max + margin)
             else:
                 self._res_plot.setYRange(-1, 1)
-
-    def contextMenuEvent(self, event) -> None:
-        """Show custom context menu: Add region, Add peak, Set background."""
-        menu = QMenu(self)
-        spectrum_id = self._controller.selected_spectrum_id
-        region_id = self._controller.selected_region_id
-
-        add_region = menu.addAction("Add region")
-        add_region.setEnabled(spectrum_id is not None)
-        if spectrum_id is not None:
-            add_region.triggered.connect(self._on_add_region)
-
-        add_peak = menu.addAction("Add peak")
-        add_peak.setEnabled(region_id is not None)
-        if region_id is not None:
-            add_peak.triggered.connect(lambda checked=False, rid=region_id: self._on_add_peak(rid))
-
-        set_bg = menu.addAction("Set background")
-        set_bg.setEnabled(region_id is not None)
-        if region_id is not None:
-            set_bg.triggered.connect(lambda checked=False, rid=region_id: self._on_set_background(rid))
-
-        if menu.actions():
-            menu.exec(event.globalPos())
-        event.accept()
-
-    def _on_add_region(self) -> None:
-        """Create a new region over the full spectrum for the current selection."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            return
-        spectrum_dto = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
-        length = len(spectrum_dto.x)
-        if length <= 1:
-            return
-        self._controller.create_region(spectrum_id, 0, length)
-
-    def _on_add_peak(self, region_id: str) -> None:
-        """Create a new peak for the given region."""
-        self._controller.create_peak(region_id, "pseudo-voigt", parameters=None)
-
-    def _on_set_background(self, region_id: str) -> None:
-        """Set or replace background for the given region."""
-        self._controller.create_background(region_id, "shirley", parameters=None)

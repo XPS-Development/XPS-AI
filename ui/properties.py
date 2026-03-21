@@ -9,6 +9,7 @@ from app.command.changes import ParameterField
 from core.math_models import ModelRegistry
 
 from .controller import ControllerWrapper
+from .component_creation_dialog import ComponentCreationDialog
 
 
 class ItemKind(Enum):
@@ -608,6 +609,9 @@ class PropertiesView(QTreeView):
 
         region_id = region_item.region_id if region_item is not None else None
         spectrum_id = self._controller.selected_spectrum_id
+        background_id = (
+            self._controller.query.get_background_id(region_id) if region_id is not None else None
+        )
 
         # Resolve component from clicked item (e.g. Background or Peak node).
         component_item = item
@@ -622,7 +626,15 @@ class PropertiesView(QTreeView):
 
         if region_id is not None:
             menu.addAction("Add peak", lambda rid=region_id: self._create_peak_for_region(rid))
-            menu.addAction("Set background", lambda rid=region_id: self._set_background_for_region(rid))
+            set_bg_action = menu.addAction(
+                "Set background", lambda rid=region_id: self._set_background_for_region(rid)
+            )
+            set_bg_action.setEnabled(background_id is None)
+
+            menu.addAction(
+                "Add component...",
+                lambda rid=region_id: self._add_component_for_region(rid),
+            )
 
         if region_id is not None and item is not None:
             menu.addAction("Delete region", lambda rid=region_id: self._delete_region(rid))
@@ -634,6 +646,18 @@ class PropertiesView(QTreeView):
             return
 
         menu.exec(self.viewport().mapToGlobal(pos))
+
+    def _add_component_for_region(self, region_id: str) -> None:
+        """
+        Open the shared component creation dialog for the given region.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the parent region.
+        """
+        dialog = ComponentCreationDialog(self._controller, region_id=region_id, parent=self)
+        dialog.exec()
 
     def _create_full_region_for_spectrum(self) -> None:
         """
