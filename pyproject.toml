@@ -19,8 +19,23 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-benchmark>=5.2.3",
+    "qt-material>=2.17",
+    "viztracer>=1.1.1",
 ]
 interactive = [
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
 ]
+
+[tool.pytest]
+testpaths = [
+    "tests",
+]
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+lines_after_imports = 2
+line_length = 100

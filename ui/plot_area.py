@@ -8,10 +8,10 @@ using ViewerDataProvider protocol and tools.evaluation.spectrum_bundle.
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 import numpy as np
 import pyqtgraph as pg
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
 from tools.evaluation import SpectrumEvaluationResult, spectrum_bundle
 

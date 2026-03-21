@@ -15,6 +15,7 @@ from .math_models import (
 from .metadata import Metadata
 from .objects import Background, Component, CoreObject, Peak, Region, Spectrum
 
+
 T = TypeVar("T")
 
 

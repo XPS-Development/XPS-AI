@@ -2,35 +2,34 @@
 
 import pytest
 
-from core.metadata import SpectrumMetadata
-
 from app.command.changes import (
+    CreateBackground,
+    CreatePeak,
+    CreateRegion,
+    CreateSpectrum,
+    RemoveObject,
+    ReplaceBackgroundModel,
+    ReplacePeakModel,
+    SetMetadata,
+    UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
-    UpdateMultipleParameterValues,
-    RemoveObject,
-    CreateSpectrum,
-    CreateRegion,
-    CreatePeak,
-    CreateBackground,
-    ReplacePeakModel,
-    ReplaceBackgroundModel,
-    SetMetadata,
 )
 from app.command.commands import (
+    CompositeCommand,
+    CreateBackgroundCommand,
+    CreatePeakCommand,
+    CreateRegionCommand,
+    CreateSpectrumCommand,
+    RemoveObjectCommand,
+    ReplaceBackgroundModelCommand,
+    ReplacePeakModelCommand,
+    SetMetadataCommand,
+    UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
     UpdateRegionSliceCommand,
-    UpdateMultipleParameterValuesCommand,
-    RemoveObjectCommand,
-    CreateSpectrumCommand,
-    CreateRegionCommand,
-    CreatePeakCommand,
-    CreateBackgroundCommand,
-    CompositeCommand,
-    ReplacePeakModelCommand,
-    ReplaceBackgroundModelCommand,
-    SetMetadataCommand,
 )
+from core.metadata import SpectrumMetadata
 
 
 def test_update_parameter_command_from_change_captures_old_value(ctx, peak_id):
@@ -341,8 +340,8 @@ def test_metadata_command_execute_via_executor(ctx, spectrum_id):
 def test_replace_background_model_command_no_existing_background(x_axis, simple_gauss, noise):
     """ReplaceBackgroundModel when region has no existing background (rm_ch is None)."""
     from core.collection import CoreCollection
+    from core.objects import Region, Spectrum
     from core.services import CoreContext
-    from core.objects import Spectrum, Region
 
     col = CoreCollection()
     x, y = x_axis, simple_gauss + noise + 1.0

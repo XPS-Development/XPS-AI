@@ -8,8 +8,8 @@ from PySide6.QtWidgets import QComboBox, QMenu, QStyledItemDelegate, QTreeView, 
 from app.command.changes import ParameterField
 from core.math_models import ModelRegistry
 
-from .controller import ControllerWrapper
 from .component_creation_dialog import ComponentCreationDialog
+from .controller import ControllerWrapper
 
 
 class ItemKind(Enum):

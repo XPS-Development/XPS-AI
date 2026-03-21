@@ -5,8 +5,8 @@ Provides functionality to serialize CoreCollection instances to JSON format,
 preserving object relationships, metadata, and data in a compact representation.
 """
 
-from dataclasses import asdict
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal, Optional, Union
 
@@ -14,9 +14,16 @@ import numpy as np
 
 from core.collection import CoreCollection
 from core.math_models import ModelRegistry
-from core.metadata import BackgroundMetadata, Metadata, PeakMetadata, RegionMetadata, SpectrumMetadata
+from core.metadata import (
+    BackgroundMetadata,
+    Metadata,
+    PeakMetadata,
+    RegionMetadata,
+    SpectrumMetadata,
+)
 from core.objects import Background, Component, Peak, Region, Spectrum
 from core.services import MetadataService
+
 
 LoadMode = Literal["append", "replace", "new"]
 DeserializeResult = Union[CoreCollection, tuple[CoreCollection, MetadataService]]
@@ -190,7 +197,9 @@ def _json_default(obj: Any) -> Any:
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
-def serialize(collection: CoreCollection, metadata_service: Optional[MetadataService] = None) -> dict[str, Any]:
+def serialize(
+    collection: CoreCollection, metadata_service: Optional[MetadataService] = None
+) -> dict[str, Any]:
     """
     Serialize a CoreCollection to a dictionary.
 
