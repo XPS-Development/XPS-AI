@@ -15,7 +15,11 @@ from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
 from tools.evaluation import SpectrumEvaluationResult, spectrum_bundle
 
-from .component_creation_dialog import ComponentCreationDialog
+from .context_menus import (
+    SpectrumContextMenuActions,
+    attach_region_context_actions,
+    attach_spectrum_context_actions,
+)
 from .controller import ControllerWrapper
 
 
@@ -46,24 +50,13 @@ class VieBoxCustomContextMenu(pg.ViewBox):
         **kwargs,
     ) -> None:
         self._controller = controller
+        self._spectrum_menu_actions: SpectrumContextMenuActions | None = None
 
         super().__init__(**kwargs)
-        self._action_add_region = None
-        self._action_optimize_regions = None
-        self._action_run_segmenter = None
 
-    def _create_menu(self):
+    def _create_menu(self) -> QMenu:
         menu = QMenu()
-
-        self._action_add_region = menu.addAction("Add region")
-        self._action_optimize_regions = menu.addAction("Optimize regions")
-        self._action_run_segmenter = menu.addAction("Run segmenter")
-
-        # Use lambdas to ignore the boolean checked parameter.
-        self._action_add_region.triggered.connect(lambda _checked=False: self._on_add_region())
-        self._action_optimize_regions.triggered.connect(lambda _checked=False: self._on_optimize_regions())
-        self._action_run_segmenter.triggered.connect(lambda _checked=False: self._on_run_segmenter())
-
+        self._spectrum_menu_actions = attach_spectrum_context_actions(menu, self._controller)
         return menu
 
     def _applyMenuEnabled(self):
@@ -75,45 +68,12 @@ class VieBoxCustomContextMenu(pg.ViewBox):
         elif not enableMenu and self.menu is not None:
             self.menu.setParent(None)
             self.menu = None
+            self._spectrum_menu_actions = None
 
     def _update_menu_enabled_state(self) -> None:
         """Enable/disable spectrum-level actions based on current selection."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            self._action_add_region.setEnabled(False)
-            self._action_optimize_regions.setEnabled(False)
-            self._action_run_segmenter.setEnabled(False)
-            return
-
-        has_regions = bool(self._controller.query.get_regions_ids(spectrum_id))
-
-        self._action_add_region.setEnabled(True)
-        self._action_optimize_regions.setEnabled(has_regions)
-        self._action_run_segmenter.setEnabled(not has_regions)
-
-    def _on_add_region(self) -> None:
-        """Create a new region over the full spectrum."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            return
-
-        self._controller.create_region(spectrum_id)
-
-    def _on_optimize_regions(self) -> None:
-        """Optimize regions only in the current spectrum."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            return
-
-        self._controller.optimize_regions(spectrum_ids=[spectrum_id])
-
-    def _on_run_segmenter(self) -> None:
-        """Run the NN segmenter for the current spectrum only."""
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            return
-
-        self._controller.run_segmenter([spectrum_id])
+        if self._spectrum_menu_actions is not None:
+            self._spectrum_menu_actions.update_enabled_state()
 
     def raiseContextMenu(self, ev):
         """Raise the context menu for the view box without attaching scene menus."""
@@ -185,18 +145,12 @@ class InteractiveRegion(pg.LinearRegionItem):
         self._dialog_parent = dialog_parent
 
         self.menu = QMenu()
-        self._action_add_peak = self.menu.addAction("Add peak (fast)")
-        self._action_set_background = self.menu.addAction("Set background (fast)")
-        self._action_add_component = self.menu.addAction("Add component...")
-        self._action_optimize_region = self.menu.addAction("Optimize region")
-        self._action_delete_region = self.menu.addAction("Delete region")
-
-        self._action_add_peak.triggered.connect(lambda _checked=False: self._on_add_peak())
-        self._action_set_background.triggered.connect(lambda _checked=False: self._on_set_background())
-        self._action_add_component.triggered.connect(lambda _checked=False: self._on_add_component())
-        self._action_optimize_region.triggered.connect(lambda _checked=False: self._on_optimize_region())
-        self._action_delete_region.triggered.connect(lambda _checked=False: self._on_delete_region())
-
+        self._region_menu_actions = attach_region_context_actions(
+            self.menu,
+            controller,
+            region_id,
+            dialog_parent,
+        )
         self._update_menu_enabled_state()
 
     def mouseClickEvent(self, ev) -> None:  # noqa: ANN001
@@ -212,40 +166,12 @@ class InteractiveRegion(pg.LinearRegionItem):
 
     def _update_menu_enabled_state(self) -> None:
         """Enable/disable ROI actions based on current region state."""
-        has_background = self._controller.query.get_background_id(self.region_id) is not None
-        self._action_set_background.setEnabled(not has_background)
+        self._region_menu_actions.update_enabled_state()
 
     def raiseContextMenu(self, ev):
         self._update_menu_enabled_state()
         self.menu.popup(ev.screenPos().toPoint())
         return True
-
-    def _on_add_peak(self) -> None:
-        """Create a new peak for this region (fast)."""
-        self._controller.create_peak(self.region_id, "pseudo-voigt", parameters=None)
-
-    def _on_set_background(self) -> None:
-        """Create/replace background for this region (fast)."""
-        self._controller.create_background(self.region_id, "shirley", parameters=None)
-
-    def _on_add_component(self) -> None:
-        """Open the shared component creation dialog for this region."""
-        dialog = ComponentCreationDialog(
-            self._controller,
-            region_id=self.region_id,
-            parent=self._dialog_parent,
-        )
-        dialog.exec()
-
-    def _on_optimize_region(self) -> None:
-        """Optimize only this region."""
-        self._controller.optimize_regions(region_ids=[self.region_id])
-
-    def _on_delete_region(self) -> None:
-        """Delete this region and clear selection if needed."""
-        if self._controller.selected_region_id == self.region_id:
-            self._controller.set_selection(self._controller.selected_spectrum_id, None)
-        self._controller.full_remove_object(self.region_id)
 
 
 class PlotAreaWidget(QWidget):

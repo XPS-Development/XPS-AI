@@ -3,12 +3,18 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
-from PySide6.QtWidgets import QComboBox, QMenu, QStyledItemDelegate, QTreeView, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QMenu,
+    QStyledItemDelegate,
+    QTreeView,
+    QWidget,
+)
 
-from app.command.changes import ParameterField
 from core.math_models import ModelRegistry
 
-from .component_creation_dialog import ComponentCreationDialog
+from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
 
 
@@ -20,8 +26,7 @@ class ItemKind(Enum):
     REGION_SLICE = "region_slice"
     COMPONENT = "component"
     COMPONENT_MODEL = "component_model"
-    PARAMETER = "parameter"
-    PARAMETER_FIELD = "parameter_field"
+    PARAMETER_ROW = "parameter_row"
 
 
 def _format_value(val: Any) -> str:
@@ -44,17 +49,21 @@ class PropertyItem:
     """
     Node used by :class:`PropertiesModel`.
 
-    Each item represents either a logical group (region, background, peak) or a
-    single name/value row. Only leaf nodes carry a non-empty ``value`` field.
+    Each item represents either a logical group (region, background, peak), a
+    slice bound, a model selector row, or one parameter row (value/lower/upper
+    /vary/expr across columns 1–5).
 
     Parameters
     ----------
     name : str
         Display name shown in the first column.
     value : Any, optional
-        Raw value for the second column; display uses _format_value(value).
+        For ``REGION_SLICE`` / ``COMPONENT_MODEL``, the bound or model name.
+        For ``PARAMETER_ROW``, the parameter's value (column 1).
     parent : PropertyItem or None, optional
         Parent item in the tree.
+    param_lower, param_upper, param_vary, param_expr : optional
+        Used when ``kind`` is ``PARAMETER_ROW`` (columns 2–5).
     """
 
     name: str
@@ -65,8 +74,11 @@ class PropertyItem:
     region_id: Optional[str] = None
     component_id: Optional[str] = None
     parameter_name: Optional[str] = None
-    parameter_field: Optional[ParameterField] = None
     component_kind: Optional[Literal["peak", "background"]] = None
+    param_lower: Any = None
+    param_upper: Any = None
+    param_vary: bool = False
+    param_expr: Any = None
 
     def child(self, row: int) -> Optional["PropertyItem"]:
         """Return the child at the given row index."""
@@ -92,12 +104,14 @@ class PropertyItem:
 
 class PropertiesModel(QAbstractItemModel):
     """
-    Read-only tree model for the Properties panel.
+    Tree-table model for the Properties panel (six columns).
 
-    The model presents regions of the currently selected spectrum along with
-    their slices, background component, and peaks. All values are displayed as
-    strings and cannot be edited.
+    Presents regions of the selected spectrum with slice bounds, components,
+    model selection, and one row per fit parameter (value, lower, upper, vary,
+    expr). Slice, model, and parameter cells are editable where applicable.
     """
+
+    _HEADER_LABELS = ("Name", "Value", "Lower", "Upper", "Vary", "Expr")
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -126,7 +140,19 @@ class PropertiesModel(QAbstractItemModel):
 
     def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
         del parent
-        return 2
+        return len(self._HEADER_LABELS)
+
+    def headerData(  # noqa: N802
+        self,
+        section: int,
+        orientation: Qt.Orientation,
+        role: int = Qt.DisplayRole,
+    ) -> Any:
+        if role != Qt.DisplayRole or orientation != Qt.Orientation.Horizontal:
+            return None
+        if 0 <= section < len(self._HEADER_LABELS):
+            return self._HEADER_LABELS[section]
+        return None
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: N802
         if row < 0 or column < 0:
@@ -160,19 +186,28 @@ class PropertiesModel(QAbstractItemModel):
         if not isinstance(item, PropertyItem):
             return None
 
-        if role == Qt.CheckStateRole and index.column() == 1:
-            if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "vary":
-                if item.component_id and item.parameter_name:
-                    dto = self._controller.query.get_component_dto(item.component_id)
-                    param = dto.parameters[item.parameter_name]
-                    return Qt.Checked if param.vary else Qt.Unchecked
+        col = index.column()
+
+        if role == Qt.CheckStateRole and col == 4 and item.kind == ItemKind.PARAMETER_ROW:
+            return Qt.Checked if item.param_vary else Qt.Unchecked
 
         if role in (Qt.DisplayRole, Qt.EditRole):
-            if index.column() == 0:
+            if col == 0:
                 return item.name
-            if index.column() == 1:
-                if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "vary":
-                    return ""  # checkbox only, no text
+            if item.kind == ItemKind.PARAMETER_ROW:
+                if col == 1:
+                    return _format_value(item.value)
+                if col == 2:
+                    return _format_value(item.param_lower)
+                if col == 3:
+                    return _format_value(item.param_upper)
+                if col == 4:
+                    return ""
+                if col == 5:
+                    return "" if item.param_expr is None else str(item.param_expr)
+            if item.kind == ItemKind.REGION_SLICE and col == 1:
+                return _format_value(item.value)
+            if item.kind == ItemKind.COMPONENT_MODEL and col == 1:
                 return _format_value(item.value)
 
         return None
@@ -183,12 +218,16 @@ class PropertiesModel(QAbstractItemModel):
             return Qt.NoItemFlags
 
         base_flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
-        if index.column() != 1:
+        col = index.column()
+
+        if item.kind == ItemKind.PARAMETER_ROW:
+            if col == 4:
+                return base_flags | Qt.ItemIsUserCheckable
+            if col in (1, 2, 3, 5):
+                return base_flags | Qt.ItemIsEditable
             return base_flags
 
-        if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "vary":
-            return base_flags | Qt.ItemIsUserCheckable
-        if item.kind in {ItemKind.REGION_SLICE, ItemKind.PARAMETER_FIELD, ItemKind.COMPONENT_MODEL}:
+        if col == 1 and item.kind in {ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}:
             return base_flags | Qt.ItemIsEditable
 
         return base_flags
@@ -226,39 +265,34 @@ class PropertiesModel(QAbstractItemModel):
         component_id: str,
         parameters_dto: dict[str, Any],
     ) -> None:
-        """Add parameter group and value/lower/upper/vary/expr rows for each parameter."""
+        """Add one flat row per parameter (value, lower, upper, vary, expr)."""
         for param_name, param_dto in parameters_dto.items():
-            param_group = PropertyItem(
-                name=str(param_name),
-                parent=parent_item,
-                kind=ItemKind.PARAMETER,
-                component_id=component_id,
-                parameter_name=str(param_name),
-            )
-            parent_item.append_child(param_group)
-            for field_name in ("value", "lower", "upper", "vary", "expr"):
-                field_value = getattr(param_dto, field_name)
-                param_group.append_child(
-                    PropertyItem(
-                        name=field_name,
-                        value=field_value,
-                        parent=param_group,
-                        kind=ItemKind.PARAMETER_FIELD,
-                        component_id=component_id,
-                        parameter_name=str(param_name),
-                        parameter_field=field_name,  # type: ignore[arg-type]
-                    )
+            parent_item.append_child(
+                PropertyItem(
+                    name=str(param_name),
+                    value=param_dto.value,
+                    parent=parent_item,
+                    kind=ItemKind.PARAMETER_ROW,
+                    component_id=component_id,
+                    parameter_name=str(param_name),
+                    param_lower=param_dto.lower,
+                    param_upper=param_dto.upper,
+                    param_vary=bool(param_dto.vary),
+                    param_expr=param_dto.expr,
                 )
+            )
 
     def setData(self, index: QModelIndex, value: Any, role: int = Qt.EditRole) -> bool:  # noqa: N802
         item = self._item(index)
-        if not isinstance(item, PropertyItem) or index.column() != 1:
+        if not isinstance(item, PropertyItem):
             return False
+
+        col = index.column()
 
         if role == Qt.CheckStateRole:
             if (
-                item.kind == ItemKind.PARAMETER_FIELD
-                and item.parameter_field == "vary"
+                item.kind == ItemKind.PARAMETER_ROW
+                and col == 4
                 and item.component_id is not None
                 and item.parameter_name is not None
             ):
@@ -270,6 +304,7 @@ class PropertiesModel(QAbstractItemModel):
                     coerced,
                     normalized=False,
                 )
+                item.param_vary = coerced
                 self.dataChanged.emit(index, index, [Qt.CheckStateRole])
                 return True
             return False
@@ -277,7 +312,7 @@ class PropertiesModel(QAbstractItemModel):
         if role != Qt.EditRole:
             return False
 
-        if item.kind == ItemKind.REGION_SLICE and item.region_id is not None:
+        if item.kind == ItemKind.REGION_SLICE and col == 1 and item.region_id is not None:
             slice_mode = self._controller.get_app_parameters().region_slice_display_mode
             new_bound = int(value) if slice_mode == "index" else float(value)
 
@@ -300,6 +335,7 @@ class PropertiesModel(QAbstractItemModel):
 
         if (
             item.kind == ItemKind.COMPONENT_MODEL
+            and col == 1
             and item.component_id
             and item.region_id
             and item.component_kind
@@ -318,13 +354,14 @@ class PropertiesModel(QAbstractItemModel):
             return True
 
         if (
-            item.kind == ItemKind.PARAMETER_FIELD
+            item.kind == ItemKind.PARAMETER_ROW
             and item.component_id is not None
             and item.parameter_name is not None
         ):
-            field = item.parameter_field
-            if field is None or field == "vary":
-                return False  # vary is edited via checkbox only
+            field_by_col = {1: "value", 2: "lower", 3: "upper", 5: "expr"}
+            field = field_by_col.get(col)
+            if field is None:
+                return False
 
             coerced: str | bool | float | None
             text = str(value)
@@ -332,18 +369,23 @@ class PropertiesModel(QAbstractItemModel):
                 coerced = float(text)
             elif field == "expr":
                 coerced = text.strip() if text.strip() else None
-            elif field == "name":
-                coerced = text
             else:
                 return False
             self._controller.update_parameter(
                 item.component_id,
                 item.parameter_name,
-                field,
+                field,  # type: ignore[arg-type]
                 coerced,
                 normalized=False,
             )
-            item.value = coerced
+            if field == "value":
+                item.value = coerced
+            elif field == "lower":
+                item.param_lower = coerced
+            elif field == "upper":
+                item.param_upper = coerced
+            else:
+                item.param_expr = coerced
             self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
             return True
 
@@ -466,8 +508,6 @@ class PropertiesDelegate(QStyledItemDelegate):
         item = index.internalPointer() if index.isValid() else None
         if not isinstance(item, PropertyItem):
             return super().createEditor(parent, option, index)
-        if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "vary":
-            return None
         if item.kind != ItemKind.COMPONENT_MODEL:
             return super().createEditor(parent, option, index)
         combo = QComboBox(parent)
@@ -527,6 +567,8 @@ class PropertiesView(QTreeView):
         self.setItemDelegateForColumn(1, PropertiesDelegate(self))
         self.setIndentation(12)
         self.setHeaderHidden(False)
+        hdr = self.header()
+        hdr.setStretchLastSection(True)
         self.setUniformRowHeights(True)
         self.setAlternatingRowColors(True)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -586,9 +628,34 @@ class PropertiesView(QTreeView):
         region_id = region_item.region_id if region_item is not None else None
         self._controller.set_selection(self._controller.selected_spectrum_id, region_id)
 
+    def _selected_component_id(self) -> str | None:
+        """Return the component id for the current selection, if any."""
+        sel = self.selectionModel().selectedIndexes()
+        idx = sel[0] if sel else self.selectionModel().currentIndex()
+        if not idx.isValid():
+            return None
+        raw = idx.internalPointer()
+        item = raw if isinstance(raw, PropertyItem) else None
+        while item is not None and item.kind != ItemKind.COMPONENT:
+            item = item.parent
+        return item.component_id if item is not None else None
+
+    def _copy_selected_component_id(self) -> None:
+        """Copy the selected component id to the system clipboard."""
+        cid = self._selected_component_id()
+        if cid:
+            QApplication.clipboard().setText(cid)
+
+    def _delete_selected_component(self) -> None:
+        """Remove the selected component and refresh."""
+        cid = self._selected_component_id()
+        if cid:
+            self._controller.full_remove_object(cid)
+            self.refresh()
+
     def _on_custom_context_menu(self, pos: QPoint) -> None:
         """
-        Show a context menu for creating regions, peaks, and background.
+        Spectrum-level menu on empty space; region-level menu on rows with a region.
 
         Parameters
         ----------
@@ -609,116 +676,22 @@ class PropertiesView(QTreeView):
 
         region_id = region_item.region_id if region_item is not None else None
         spectrum_id = self._controller.selected_spectrum_id
-        background_id = (
-            self._controller.query.get_background_id(region_id) if region_id is not None else None
-        )
-
-        # Resolve component from clicked item (e.g. Background or Peak node).
-        component_item = item
-        while component_item is not None and component_item.kind != ItemKind.COMPONENT:
-            component_item = component_item.parent
-        component_id = component_item.component_id if component_item else None
 
         menu = QMenu(self)
 
-        if spectrum_id is not None:
-            menu.addAction("Add region", self._create_full_region_for_spectrum)
-
         if region_id is not None:
-            menu.addAction("Add peak", lambda rid=region_id: self._create_peak_for_region(rid))
-            set_bg_action = menu.addAction(
-                "Set background", lambda rid=region_id: self._set_background_for_region(rid)
-            )
-            set_bg_action.setEnabled(background_id is None)
-
-            menu.addAction(
-                "Add component...",
-                lambda rid=region_id: self._add_component_for_region(rid),
-            )
-
-        if region_id is not None and item is not None:
-            menu.addAction("Delete region", lambda rid=region_id: self._delete_region(rid))
-
-        if component_id is not None:
-            menu.addAction("Delete component", lambda cid=component_id: self._delete_component(cid))
-
-        if not menu.actions():
+            region_actions = attach_region_context_actions(menu, self._controller, region_id, self)
+            region_actions.update_enabled_state()
+            menu.addSeparator()
+            sel_cid = self._selected_component_id()
+            copy_action = menu.addAction("Copy ID", self._copy_selected_component_id)
+            copy_action.setEnabled(sel_cid is not None)
+            del_action = menu.addAction("Delete component", self._delete_selected_component)
+            del_action.setEnabled(sel_cid is not None)
+        elif spectrum_id is not None:
+            spec_actions = attach_spectrum_context_actions(menu, self._controller)
+            spec_actions.update_enabled_state()
+        else:
             return
 
         menu.exec(self.viewport().mapToGlobal(pos))
-
-    def _add_component_for_region(self, region_id: str) -> None:
-        """
-        Open the shared component creation dialog for the given region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the parent region.
-        """
-        dialog = ComponentCreationDialog(self._controller, region_id=region_id, parent=self)
-        dialog.exec()
-
-    def _create_full_region_for_spectrum(self) -> None:
-        """
-        Create a new region covering the full spectrum for the current selection.
-        """
-        spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
-            return
-
-        spectrum_dto = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
-
-        length = len(spectrum_dto.x)
-        if length <= 1:
-            return
-
-        self._controller.create_region(spectrum_id, 0, length)
-
-    def _create_peak_for_region(self, region_id: str) -> None:
-        """
-        Create a new peak with default model for the given region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the parent region.
-        """
-        self._controller.create_peak(region_id, "pseudo-voigt", parameters=None)
-
-    def _set_background_for_region(self, region_id: str) -> None:
-        """
-        Create or replace the background with a default model for the given region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the parent region.
-        """
-        self._controller.create_background(region_id, "shirley", parameters=None)
-
-    def _delete_region(self, region_id: str) -> None:
-        """
-        Remove the region and refresh the properties view; clear selection if needed.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region to remove.
-        """
-        if self._controller.selected_region_id == region_id:
-            self._controller.set_selection(self._controller.selected_spectrum_id, None)
-        self._controller.full_remove_object(region_id)
-        self.refresh()
-
-    def _delete_component(self, component_id: str) -> None:
-        """
-        Remove the component (peak or background) and refresh the properties view.
-
-        Parameters
-        ----------
-        component_id : str
-            Identifier of the component to remove.
-        """
-        self._controller.full_remove_object(component_id)
-        self.refresh()
