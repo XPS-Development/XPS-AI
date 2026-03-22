@@ -2,9 +2,18 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QToolBar, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QStatusBar,
+    QToolBar,
+    QWidget,
+)
 
 from app.error_dump import save_error_dump
+
 from .controller import ControllerWrapper
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
@@ -49,7 +58,7 @@ class MainWindow(QMainWindow):
         self._status_bar: QStatusBar | None = None
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
-        self._plot_area: QWidget | None = None
+        self._plot_area: PlotAreaWidget | None = None
         self._properties_view: PropertiesView | None = None
 
         self._create_actions()
@@ -66,7 +75,7 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
-        self.resize(1280, 720)
+        self.resize(1400, 720)
 
     # ------------------------------------------------------------------
     # UI construction helpers
@@ -183,7 +192,7 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
-        splitter.setSizes([200, 600, 300])
+        splitter.setSizes([200, 500, 400])
 
         self.setCentralWidget(splitter)
 
@@ -199,19 +208,17 @@ class MainWindow(QMainWindow):
     def _connect_controller_signals(self) -> None:
         """Connect controller wrapper signals to window slots."""
         self._controller.undoRedoStateChanged.connect(self._on_undo_redo_state_changed)
-        self._controller.collectionChanged.connect(self._on_collection_changed)
+        self._controller.documentStateChanged.connect(self._on_document_state_changed)
         self._controller.selectionChanged.connect(self._on_selection_changed)
 
         if self._spectrum_tree_panel is not None:
-            self._controller.spectrumTreeChanged.connect(self._spectrum_tree_panel.refresh)
+            self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
         if self._plot_area is not None:
-            self._controller.spectrumTreeChanged.connect(self._plot_area.refresh)
+            self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
-            self._controller.collectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
-            self._controller.spectrumTreeChanged.connect(self._properties_view.refresh)
+            self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
             self._controller.selectionChanged.connect(self._properties_view.refresh)
-            self._controller.collectionChanged.connect(self._properties_view.refresh)
 
     # ------------------------------------------------------------------
     # Slots for actions
@@ -222,12 +229,7 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard_changes():
             return
         self._controller.orchestrator.new_collection()
-        self._controller.collectionChanged.emit()
-        self._controller.undoRedoStateChanged.emit(
-            self._controller.orchestrator.can_undo,
-            self._controller.orchestrator.can_redo,
-        )
-        self._on_collection_changed()
+        self._controller.emit_full_ui_refresh()
 
     def _on_open_triggered(self) -> None:
         """
@@ -383,8 +385,6 @@ class MainWindow(QMainWindow):
             return
 
         self._controller.apply_app_parameters(params)
-        if self._spectrum_tree_panel is not None:
-            self._spectrum_tree_panel.refresh()
 
     # ------------------------------------------------------------------
     # Slots for controller signals
@@ -394,13 +394,9 @@ class MainWindow(QMainWindow):
         """Update enabled state of undo/redo actions."""
         self._update_undo_redo_state(can_undo, can_redo)
 
-    def _on_collection_changed(self) -> None:
-        """
-        React to collection changes.
-
-        For now this only updates title and status bar; dedicated widgets
-        for spectrum tree, plot area, and properties will hook in later.
-        """
+    def _on_document_state_changed(self) -> None:
+        """React to dirty flag or save path changes by refreshing title and status bar."""
+        self._update_window_title()
         self._update_status_bar()
 
     def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:

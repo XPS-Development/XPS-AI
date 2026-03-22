@@ -4,9 +4,24 @@ from typing import Any, Literal, Sequence
 from PySide6.QtCore import QObject, Signal
 
 from app.command.changes import BaseChange, ParameterField
+from app.command.commands import (
+    Command,
+    CompositeCommand,
+    CreateBackgroundCommand,
+    CreatePeakCommand,
+    CreateRegionCommand,
+    CreateSpectrumCommand,
+    RemoveObjectCommand,
+    RemoveMetadataCommand,
+    SetMetadataCommand,
+    UpdateMultipleParameterValuesCommand,
+    UpdateParameterCommand,
+    UpdateRegionSliceCommand,
+)
 from app.orchestration import AppOrchestrator, AppParameters, QueryService
 from core.collection import CoreCollection
 from core.metadata import Metadata
+from core.objects import Spectrum
 
 
 class ControllerWrapper(QObject):
@@ -15,7 +30,9 @@ class ControllerWrapper(QObject):
 
     This wrapper owns a core collection and orchestrator instance, exposes a
     small, UI-friendly API surface, and emits Qt signals whenever the
-    underlying model or undo/redo state changes.
+    underlying model or undo/redo state changes. UI updates are split into
+    ``spectrumHierarchyChanged``, ``plotNeedsRefresh``, ``propertiesNeedsRefresh``,
+    and ``documentStateChanged`` so views refresh only when necessary.
 
     Parameters
     ----------
@@ -32,10 +49,12 @@ class ControllerWrapper(QObject):
         QObject parent used by Qt for lifetime management.
     """
 
-    collectionChanged: Signal = Signal()
+    spectrumHierarchyChanged: Signal = Signal()
+    plotNeedsRefresh: Signal = Signal()
+    propertiesNeedsRefresh: Signal = Signal()
+    documentStateChanged: Signal = Signal()
     undoRedoStateChanged: Signal = Signal(bool, bool)
     selectionChanged: Signal = Signal(object, object)
-    spectrumTreeChanged: Signal = Signal()
 
     def __init__(
         self,
@@ -266,17 +285,23 @@ class ControllerWrapper(QObject):
         """
         Undo the last executed command and emit signals.
         """
+        cmd = self._orchestrator.peek_undo_command()
+        if cmd is None:
+            raise IndexError("Nothing to undo")
         self._orchestrator.undo()
-        self._emit_spectrum_tree_changed()
-        self._emit_collection_and_undo_redo()
+        self._emit_ui_for_command(cmd)
+        self._emit_undo_redo_state()
 
     def redo(self) -> None:
         """
         Redo the last undone command and emit signals.
         """
+        cmd = self._orchestrator.peek_redo_command()
+        if cmd is None:
+            raise IndexError("Nothing to redo")
         self._orchestrator.redo()
-        self._emit_spectrum_tree_changed()
-        self._emit_collection_and_undo_redo()
+        self._emit_ui_for_command(cmd)
+        self._emit_undo_redo_state()
 
     def import_spectra(self, path: str | Path) -> None:
         """
@@ -288,7 +313,8 @@ class ControllerWrapper(QObject):
             Path to the spectra file.
         """
         self._orchestrator.import_spectra(path)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
@@ -301,7 +327,7 @@ class ControllerWrapper(QObject):
             Identifiers of the parent spectra for segmentation.
         """
         self._orchestrator.run_segmenter(spectrum_ids)
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def optimize_regions(
         self,
@@ -327,7 +353,7 @@ class ControllerWrapper(QObject):
             spectrum_ids=spectrum_ids,
             **kwargs,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def update_parameter(
         self,
@@ -361,7 +387,7 @@ class ControllerWrapper(QObject):
             new_value=new_value,
             normalized=normalized,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def update_parameters(
         self,
@@ -387,7 +413,7 @@ class ControllerWrapper(QObject):
             parameters=parameters,
             normalized=normalized,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def update_region_slice(
         self,
@@ -411,7 +437,7 @@ class ControllerWrapper(QObject):
             Whether start/stop are indices or x-axis values.
         """
         self._orchestrator.update_region_slice(region_id, start, stop, mode=mode)
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def replace_peak_model(
         self,
@@ -432,7 +458,7 @@ class ControllerWrapper(QObject):
             Optional initial parameter values for the new model.
         """
         self._orchestrator.replace_peak_model(peak_id, new_model_name, parameters=parameters)
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def replace_background_model(
         self,
@@ -458,7 +484,7 @@ class ControllerWrapper(QObject):
         self._orchestrator.replace_background_model(
             region_id, new_model_name, parameters=parameters, background_id=background_id
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def create_spectrum(
         self,
@@ -479,7 +505,8 @@ class ControllerWrapper(QObject):
             Explicit spectrum identifier.
         """
         self._orchestrator.create_spectrum(x=x, y=y, spectrum_id=spectrum_id)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def create_region(
@@ -513,7 +540,7 @@ class ControllerWrapper(QObject):
             region_id=region_id,
             mode=mode,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def create_peak(
         self,
@@ -542,7 +569,7 @@ class ControllerWrapper(QObject):
             parameters=parameters,
             peak_id=peak_id,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def create_background(
         self,
@@ -571,7 +598,7 @@ class ControllerWrapper(QObject):
             parameters=parameters,
             background_id=background_id,
         )
-        self._emit_collection_and_undo_redo()
+        self._emit_fit_data_changed()
 
     def set_metadata(self, obj_id: str, metadata: Metadata) -> None:
         """
@@ -585,7 +612,9 @@ class ControllerWrapper(QObject):
             Metadata instance to store.
         """
         self._orchestrator.set_metadata(obj_id, metadata)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def rename_spectrum(self, spectrum_id: str, new_name: str) -> None:
@@ -600,7 +629,8 @@ class ControllerWrapper(QObject):
             New display name.
         """
         self._orchestrator.rename_spectrum(spectrum_id, new_name)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
@@ -617,7 +647,8 @@ class ControllerWrapper(QObject):
             New group label.
         """
         self._orchestrator.rename_group(file_label, old_group_label, new_group_label)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def rename_file(self, old_file_label: str, new_file_label: str) -> None:
@@ -632,7 +663,8 @@ class ControllerWrapper(QObject):
             New file label.
         """
         self._orchestrator.rename_file(old_file_label, new_file_label)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def remove_object(self, obj_id: str) -> None:
@@ -644,8 +676,16 @@ class ControllerWrapper(QObject):
         obj_id : str
             Identifier of the object to remove.
         """
+        obj: Any = None
+        if self._orchestrator.query.check_object_exists(obj_id):
+            obj = self._collection.get(obj_id)
         self._orchestrator.remove_object(obj_id)
-        self._emit_collection_and_undo_redo()
+        if isinstance(obj, Spectrum):
+            self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
+        self._emit_undo_redo_state()
 
     def remove_metadata(self, obj_id: str) -> None:
         """
@@ -657,7 +697,8 @@ class ControllerWrapper(QObject):
             Identifier of the object whose metadata to remove.
         """
         self._orchestrator.remove_metadata(obj_id)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def full_remove_object(self, obj_id: str) -> None:
@@ -670,7 +711,11 @@ class ControllerWrapper(QObject):
             Identifier of the root object to remove.
         """
         self._orchestrator.full_remove_object(obj_id)
-        self._emit_collection_and_undo_redo()
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
+        self._emit_undo_redo_state()
 
     def remove_spectrum(self, spectrum_id: str) -> None:
         """
@@ -682,7 +727,10 @@ class ControllerWrapper(QObject):
             Identifier of the spectrum to remove.
         """
         self._orchestrator.full_remove_object(spectrum_id)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def remove_group(self, file_label: str, group_label: str) -> None:
@@ -697,7 +745,10 @@ class ControllerWrapper(QObject):
             Group label to remove.
         """
         self._orchestrator.remove_group(file_label, group_label)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def remove_file(self, file_label: str) -> None:
@@ -710,7 +761,10 @@ class ControllerWrapper(QObject):
             File label whose spectra should be removed.
         """
         self._orchestrator.remove_file(file_label)
-        self._emit_spectrum_tree_changed()
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def dump_collection(
@@ -733,7 +787,7 @@ class ControllerWrapper(QObject):
             JSON indentation level.
         """
         self._orchestrator.dump_collection(path=path, indent=indent)
-        self.collectionChanged.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
 
     def load_collection(
@@ -755,8 +809,7 @@ class ControllerWrapper(QObject):
             Loading mode passed to the orchestrator.
         """
         self._orchestrator.load_collection(path, mode=mode)  # type: ignore[arg-type]
-        self._emit_spectrum_tree_changed()
-        self._emit_collection_and_undo_redo()
+        self.emit_full_ui_refresh()
 
     def set_default_save_path(self, path: str | Path) -> None:
         """
@@ -784,14 +837,81 @@ class ControllerWrapper(QObject):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _emit_spectrum_tree_changed(self) -> None:
-        """Emit spectrum treeChanged signal."""
-        self.spectrumTreeChanged.emit()
+    def emit_full_ui_refresh(self) -> None:
+        """
+        Emit all UI invalidation signals after a document-wide change.
 
-    def _emit_collection_and_undo_redo(self) -> None:
-        """Emit collectionChanged and updated undo/redo state."""
-        self.collectionChanged.emit()
+        Used after loading a collection or creating a new workspace.
+        """
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
         self._emit_undo_redo_state()
+
+    def _emit_fit_data_changed(self) -> None:
+        """Emit signals after fit/slice/model changes that affect plot and properties."""
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()
+        self._emit_undo_redo_state()
+
+    def _emit_ui_for_command(self, cmd: Command) -> None:
+        """Emit controller signals appropriate for the given undo/redo command."""
+        hierarchy, plot, properties, document = self._ui_flags_for_command(cmd)
+        if hierarchy:
+            self.spectrumHierarchyChanged.emit()
+        if plot:
+            self.plotNeedsRefresh.emit()
+        if properties:
+            self.propertiesNeedsRefresh.emit()
+        if document:
+            self.documentStateChanged.emit()
+
+    def _ui_flags_for_command(self, cmd: Command) -> tuple[bool, bool, bool, bool]:
+        """
+        Return (hierarchy, plot, properties, document) invalidation flags for a command.
+
+        Used for undo/redo so only affected views refresh.
+        """
+        if isinstance(cmd, CompositeCommand):
+            h = p = pr = d = False
+            for sub in cmd.commands:
+                sh, sp, spr, sd = self._ui_flags_for_command(sub)
+                h |= sh
+                p |= sp
+                pr |= spr
+                d |= sd
+            return (h, p, pr, d)
+        if isinstance(
+            cmd,
+            (UpdateParameterCommand, UpdateRegionSliceCommand, UpdateMultipleParameterValuesCommand),
+        ):
+            return (False, True, True, True)
+        if isinstance(cmd, SetMetadataCommand):
+            return (True, False, True, True)
+        if isinstance(cmd, RemoveMetadataCommand):
+            return (True, False, False, True)
+        if isinstance(cmd, RemoveObjectCommand):
+            return self._ui_flags_for_remove_object_command(cmd)
+        if isinstance(cmd, CreateSpectrumCommand):
+            return (True, True, True, True)
+        if isinstance(cmd, CreateRegionCommand | CreatePeakCommand | CreateBackgroundCommand):
+            return (False, True, True, True)
+        return (True, True, True, True)
+
+    def _ui_flags_for_remove_object_command(self, cmd: RemoveObjectCommand) -> tuple[bool, bool, bool, bool]:
+        """
+        Return (hierarchy, plot, properties, document) for a remove-object command.
+
+        When the detached subtree root is a spectrum, the spectrum tree changes.
+        """
+        objs = cmd.objs
+        if objs is None or len(objs) == 0:
+            return (True, True, True, True)
+        root = objs[0]
+        hierarchy = isinstance(root, Spectrum)
+        return (hierarchy, True, True, True)
 
     def _emit_undo_redo_state(self) -> None:
         """Emit the current undo/redo capability state."""
@@ -834,6 +954,9 @@ class ControllerWrapper(QObject):
         """
         Apply updated application parameters to the orchestrator.
 
+        Refreshes all views that depend on app settings (spectrum tree, plot,
+        properties, and document/title/status).
+
         Parameters
         ----------
         params : AppParameters
@@ -841,3 +964,7 @@ class ControllerWrapper(QObject):
         """
         self._orchestrator._params = params
         self._orchestrator.reconfigure_services_from_params()
+        self.spectrumHierarchyChanged.emit()
+        self.plotNeedsRefresh.emit()
+        self.propertiesNeedsRefresh.emit()
+        self.documentStateChanged.emit()

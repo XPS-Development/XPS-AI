@@ -135,6 +135,32 @@ class UndoRedoStack:
         """
         self._undo_stack.append(cmd)
 
+    def peek_undo(self) -> Command | None:
+        """
+        Return the next command that would be undone, without popping.
+
+        Returns
+        -------
+        Command or None
+            The top of the undo stack, or None if the stack is empty.
+        """
+        if not self._undo_stack:
+            return None
+        return self._undo_stack[-1]
+
+    def peek_redo(self) -> Command | None:
+        """
+        Return the next command that would be redone, without popping.
+
+        Returns
+        -------
+        Command or None
+            The top of the redo stack, or None if the stack is empty.
+        """
+        if not self._redo_stack:
+            return None
+        return self._redo_stack[-1]
+
 
 class CommandRegistry:
     """
@@ -252,6 +278,14 @@ class CommandExecutor:
         cmd = self.stack.pop_redo()
         cmd.apply(self.ctx)
         self.stack.push_undo(cmd)
+
+    def peek_undo_command(self) -> Command | None:
+        """Return the command that would be undone next, without modifying stacks."""
+        return self.stack.peek_undo()
+
+    def peek_redo_command(self) -> Command | None:
+        """Return the command that would be redone next, without modifying stacks."""
+        return self.stack.peek_redo()
 
     def clear(self) -> None:
         """Clear both undo and redo stacks."""

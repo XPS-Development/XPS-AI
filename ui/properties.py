@@ -3,9 +3,11 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QHeaderView,
     QMenu,
     QStyledItemDelegate,
     QTreeView,
@@ -559,6 +561,9 @@ class PropertiesView(QTreeView):
     signals.
     """
 
+    # Approximate character counts per column for initial pixel widths (see _apply_column_widths).
+    _COLUMN_CHAR_WIDTHS = (11, 5, 4, 4, 3, 12)
+
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
@@ -568,13 +573,30 @@ class PropertiesView(QTreeView):
         self.setIndentation(12)
         self.setHeaderHidden(False)
         hdr = self.header()
-        hdr.setStretchLastSection(True)
+        hdr.setStretchLastSection(False)
+        self._apply_column_widths()
         self.setUniformRowHeights(True)
         self.setAlternatingRowColors(True)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
         self.refresh()
+
+    def _apply_column_widths(self) -> None:
+        """
+        Set fixed header section widths from the view font and target character counts.
+
+        Uses representative glyphs per column so Name/Expr allow letters and
+        numeric columns use digit width; Vary uses a short digit span (~checkbox).
+        """
+        fm = QFontMetrics(self.font())
+        hdr = self.header()
+        padding = 14
+        ref_chars = ("M", "0", "0", "0", "0", "m")
+        for i, n in enumerate(self._COLUMN_CHAR_WIDTHS):
+            ch = ref_chars[i]
+            # hdr.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
+            hdr.resizeSection(i, fm.horizontalAdvance(ch * n) + padding)
 
     def model(self) -> PropertiesModel:  # type: ignore[override]
         """
@@ -589,10 +611,55 @@ class PropertiesView(QTreeView):
 
     def refresh(self) -> None:
         """
-        Refresh tree contents from the controller and expand nodes.
+        Refresh tree contents from the controller while preserving expand/collapse state.
         """
+        expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
-        self.expandAll()
+        self._restore_expanded_stable_keys(expanded)
+
+    @staticmethod
+    def _stable_key_for_item(item: PropertyItem) -> tuple[Any, ...]:
+        """Return a key stable across model rebuilds for the given property item."""
+        if item.kind == ItemKind.REGION:
+            return ("region", item.region_id)
+        if item.kind == ItemKind.COMPONENT:
+            return ("component", item.region_id, item.component_id)
+        if item.kind == ItemKind.COMPONENT_MODEL:
+            return ("model", item.region_id, item.component_id)
+        if item.kind == ItemKind.REGION_SLICE:
+            return ("slice", item.region_id, item.name)
+        if item.kind == ItemKind.PARAMETER_ROW:
+            return ("param", item.component_id, item.parameter_name)
+        return ("other", item.kind, item.name)
+
+    def _collect_expanded_stable_keys(self) -> set[tuple[Any, ...]]:
+        """Return stable keys for all expanded property rows."""
+        keys: set[tuple[Any, ...]] = set()
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                if self.isExpanded(idx):
+                    raw = idx.internalPointer()
+                    if isinstance(raw, PropertyItem):
+                        keys.add(self._stable_key_for_item(raw))
+                walk(idx)
+
+        walk(QModelIndex())
+        return keys
+
+    def _restore_expanded_stable_keys(self, keys: set[tuple[Any, ...]]) -> None:
+        """Expand rows whose stable keys match a previously expanded set."""
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                raw = idx.internalPointer()
+                if isinstance(raw, PropertyItem) and self._stable_key_for_item(raw) in keys:
+                    self.setExpanded(idx, True)
+                walk(idx)
+
+        walk(QModelIndex())
 
     # ------------------------------------------------------------------
     # Slots

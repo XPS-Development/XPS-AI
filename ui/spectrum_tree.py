@@ -245,10 +245,61 @@ class SpectrumTreeWidget(QTreeView):
 
     def refresh(self) -> None:
         """
-        Refresh tree contents from the controller and expand top-level items.
+        Refresh tree contents from the controller while preserving expand/collapse state.
         """
+        expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
-        self.expandAll()
+        self._restore_expanded_stable_keys(expanded)
+
+    @staticmethod
+    def _stable_key_for_item(item: SpectrumTreeItem) -> tuple[Any, ...]:
+        """Return a key stable across model rebuilds for the given tree item."""
+        if item.kind == "file":
+            return ("file", item._label)
+        if item.kind == "group":
+            parent = item.parent
+            file_l = parent._label if parent is not None and parent.kind == "file" else None
+            return ("group", file_l, item._label)
+        if item.kind == "spectrum":
+            g_parent = item.parent
+            file_l = None
+            group_l = None
+            if g_parent is not None and g_parent.kind == "group":
+                group_l = g_parent._label
+                f_parent = g_parent.parent
+                if f_parent is not None and f_parent.kind == "file":
+                    file_l = f_parent._label
+            return ("spectrum", file_l, group_l, item.spectrum_id)
+        return ("other", item.kind, item._label)
+
+    def _collect_expanded_stable_keys(self) -> set[tuple[Any, ...]]:
+        """Return stable keys for all expanded nodes in the tree."""
+        keys: set[tuple[Any, ...]] = set()
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                if self.isExpanded(idx):
+                    item = self._model.item_from_index(idx)
+                    if item is not None:
+                        keys.add(self._stable_key_for_item(item))
+                walk(idx)
+
+        walk(QModelIndex())
+        return keys
+
+    def _restore_expanded_stable_keys(self, keys: set[tuple[Any, ...]]) -> None:
+        """Expand nodes whose stable keys match a previously expanded set."""
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                item = self._model.item_from_index(idx)
+                if item is not None and self._stable_key_for_item(item) in keys:
+                    self.setExpanded(idx, True)
+                walk(idx)
+
+        walk(QModelIndex())
 
     # ------------------------------------------------------------------
     # Selection helpers

@@ -33,6 +33,7 @@ from .command.changes import (
     UpdateParameter,
     UpdateRegionSlice,
 )
+from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
@@ -553,6 +554,28 @@ class AppOrchestrator:
     def redo(self) -> None:
         """Redo the last undone command."""
         self._executor.redo()
+
+    def peek_undo_command(self) -> Command | None:
+        """
+        Return the command that would be undone next, without modifying stacks.
+
+        Returns
+        -------
+        Command or None
+            The top undo command, or None if nothing to undo.
+        """
+        return self._executor.peek_undo_command()
+
+    def peek_redo_command(self) -> Command | None:
+        """
+        Return the command that would be redone next, without modifying stacks.
+
+        Returns
+        -------
+        Command or None
+            The top redo command, or None if nothing to redo.
+        """
+        return self._executor.peek_redo_command()
 
     # ---- App services ----
 
