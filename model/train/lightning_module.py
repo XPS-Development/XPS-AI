@@ -10,7 +10,7 @@ class XPSLightningModule(pl.LightningModule):
         self,
         learning_rate=5e-4,
         dicefocal_weight=5.0,
-    ):
+    ) -> None:
         super().__init__()
         self.save_hyperparameters()
 
@@ -23,15 +23,15 @@ class XPSLightningModule(pl.LightningModule):
         self.prec = Precision()
         self.rec = Recall()
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.model(x)
 
-    def criterion(self, inp, tar):
+    def criterion(self, inp, tar) -> torch.Tensor:
         return self.iouloss(inp[:, 0, :], tar[:, 0, :]) + self.hparams.dicefocal_weight * self.dicefocal(
             inp[:, 1, :], tar[:, 1, :]
         )
 
-    def compute_metrics(self, output, target):
+    def compute_metrics(self, output, target) -> dict:
         return {
             "iou_peak": self.iou(output[:, 0, :], target[:, 0, :]),
             "acc_peak": self.acc(output[:, 0, :], target[:, 0, :]),
@@ -43,7 +43,7 @@ class XPSLightningModule(pl.LightningModule):
             "rec_max": self.rec(output[:, 1, :], target[:, 1, :]),
         }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(self, batch, batch_idx) -> torch.Tensor:
         data, target = batch
         output = self(data)
         loss = self.criterion(output, target)
@@ -55,7 +55,7 @@ class XPSLightningModule(pl.LightningModule):
 
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx) -> torch.Tensor:
         data, target = batch
         output = self(data)
         loss = self.criterion(output, target)
@@ -67,5 +67,5 @@ class XPSLightningModule(pl.LightningModule):
 
         return loss
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Adam:
         return Adam(self.parameters(), lr=self.hparams.learning_rate)
