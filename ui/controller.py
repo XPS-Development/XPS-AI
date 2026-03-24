@@ -833,6 +833,84 @@ class ControllerWrapper(QObject):
         """
         return self._orchestrator.get_default_save_path()
 
+    def export_peak_parameters(
+        self,
+        spectrum_id: str,
+        path: str | Path,
+        *,
+        normalized: bool = False,
+        separator: str = ",",
+        use_xps_peak_names: bool = False,
+        precision: int | None = None,
+    ) -> None:
+        """
+        Export peak parameters to a CSV-like file.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+        path : str or Path
+            Output file path.
+        normalized : bool, optional
+            If True, export normalized parameters.
+        separator : str, optional
+            Column separator character.
+        use_xps_peak_names : bool, optional
+            If True, apply pseudo-voigt XPS aliases.
+        """
+        self._orchestrator.export_peak_parameters(
+            spectrum_id=spectrum_id,
+            path=path,
+            normalized=normalized,
+            separator=separator,
+            use_xps_peak_names=use_xps_peak_names,
+            precision=precision,
+        )
+
+    def export_spectrum(
+        self,
+        spectrum_id: str,
+        path: str | Path,
+        *,
+        normalized: bool = False,
+        separator: str = ",",
+        include_evaluated_components: bool = False,
+        include_background: bool = True,
+        include_difference: bool = True,
+        precision: int | None = None,
+    ) -> None:
+        """
+        Export spectrum data to a CSV-like file.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum.
+        path : str or Path
+            Output file path.
+        normalized : bool, optional
+            If True, export normalized data.
+        separator : str, optional
+            Column separator character.
+        include_evaluated_components : bool, optional
+            If True, include evaluated model columns.
+        include_background : bool, optional
+            If True, include background model column.
+        include_difference : bool, optional
+            If True, include residual/difference column.
+        """
+        self._orchestrator.export_spectrum(
+            spectrum_id=spectrum_id,
+            path=path,
+            normalized=normalized,
+            separator=separator,
+            include_evaluated_components=include_evaluated_components,
+            include_background=include_background,
+            include_difference=include_difference,
+            precision=precision,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

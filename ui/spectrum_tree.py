@@ -6,6 +6,7 @@ from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QTreeView, QWidget
 
 from .controller import ControllerWrapper
+from .export_options_dialog import export_peaks, export_spectra
 
 
 @dataclass
@@ -422,35 +423,47 @@ class SpectrumTreeWidget(QTreeView):
 
         menu = QMenu(self)
 
-        rename_action = None
-        delete_action = None
-        copy_id_action = None
-
         if item.kind == "spectrum":
             rename_action = menu.addAction("Rename spectrum")
+            rename_action.triggered.connect(lambda: self._handle_rename(item))
             delete_action = menu.addAction("Delete spectrum")
+            delete_action.triggered.connect(lambda: self._handle_delete(item))
             if item.spectrum_id is not None:
                 copy_id_action = menu.addAction("Copy spectrum ID")
+                copy_id_action.triggered.connect(lambda: self._handle_copy_id(item))
+                export_menu = menu.addMenu("Export...")
+                export_spectrum_action = export_menu.addAction("Export spectrum")
+                export_spectrum_action.triggered.connect(lambda: self._handle_export_spectrum(item))
+                export_peaks_action = export_menu.addAction("Export peaks")
+                export_peaks_action.triggered.connect(lambda: self._handle_export_peaks(item))
+                export_all_spectra_action = export_menu.addAction("Export all selected spectra")
+                export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
+                export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
+                export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
         elif item.kind == "group":
             rename_action = menu.addAction("Rename group")
+            rename_action.triggered.connect(lambda: self._handle_rename(item))
             delete_action = menu.addAction("Delete group")
+            delete_action.triggered.connect(lambda: self._handle_delete(item))
+            export_menu = menu.addMenu("Export...")
+            export_all_spectra_action = export_menu.addAction("Export all selected spectra")
+            export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
+            export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
+            export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
         elif item.kind == "file":
             rename_action = menu.addAction("Rename file")
+            rename_action.triggered.connect(lambda: self._handle_rename(item))
             delete_action = menu.addAction("Delete file")
-
+            delete_action.triggered.connect(lambda: self._handle_delete(item))
+            export_menu = menu.addMenu("Export...")
+            export_all_spectra_action = export_menu.addAction("Export all selected spectra")
+            export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
+            export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
+            export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
         if menu.isEmpty():
             return
 
-        chosen = menu.exec(self.viewport().mapToGlobal(pos))
-        if chosen is None:
-            return
-
-        if chosen is rename_action:
-            self._handle_rename(item)
-        elif chosen is delete_action:
-            self._handle_delete(item)
-        elif chosen is copy_id_action:
-            self._handle_copy_id(item)
+        menu.exec(self.viewport().mapToGlobal(pos))
 
     def _handle_rename(self, item: SpectrumTreeItem) -> None:
         """
@@ -516,3 +529,36 @@ class SpectrumTreeWidget(QTreeView):
         if item.spectrum_id is None:
             return
         QApplication.clipboard().setText(item.spectrum_id)
+
+    def _handle_export_spectrum(self, item: SpectrumTreeItem) -> None:
+        """
+        Export a spectrum item into a CSV-like file.
+
+        Parameters
+        ----------
+        item : SpectrumTreeItem
+            Spectrum item to export.
+        """
+        if item.spectrum_id is None:
+            return
+        export_spectra(self._controller, [item.spectrum_id], parent=self)
+
+    def _handle_export_peaks(self, item: SpectrumTreeItem) -> None:
+        """
+        Export peak parameters of spectrum item.
+        """
+        if item.spectrum_id is None:
+            return
+        export_peaks(self._controller, [item.spectrum_id], parent=self)
+
+    def _handle_export_all_selected_spectra(self) -> None:
+        spectrum_ids = self.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            return
+        export_spectra(self._controller, spectrum_ids, parent=self)
+
+    def _handle_export_peaks_all_selected_spectra(self) -> None:
+        spectrum_ids = self.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            return
+        export_peaks(self._controller, spectrum_ids, parent=self)

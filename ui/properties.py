@@ -747,7 +747,9 @@ class PropertiesView(QTreeView):
         menu = QMenu(self)
 
         if region_id is not None:
-            region_actions = attach_region_context_actions(menu, self._controller, region_id, self)
+            region_actions = attach_region_context_actions(
+                menu, self._controller, region_id, self, include_model_actions=False
+            )
             region_actions.update_enabled_state()
             menu.addSeparator()
             sel_cid = self._selected_component_id()
@@ -756,7 +758,9 @@ class PropertiesView(QTreeView):
             del_action = menu.addAction("Delete component", self._delete_selected_component)
             del_action.setEnabled(sel_cid is not None)
         elif spectrum_id is not None:
-            spec_actions = attach_spectrum_context_actions(menu, self._controller)
+            spec_actions = attach_spectrum_context_actions(
+                menu, self._controller, self, include_model_actions=False
+            )
             spec_actions.update_enabled_state()
         else:
             return

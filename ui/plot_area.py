@@ -56,7 +56,9 @@ class VieBoxCustomContextMenu(pg.ViewBox):
 
     def _create_menu(self) -> QMenu:
         menu = QMenu()
-        self._spectrum_menu_actions = attach_spectrum_context_actions(menu, self._controller)
+        self._spectrum_menu_actions = attach_spectrum_context_actions(
+            menu, self._controller, None, include_model_actions=False
+        )
         return menu
 
     def _applyMenuEnabled(self):
@@ -150,6 +152,7 @@ class InteractiveRegion(pg.LinearRegionItem):
             controller,
             region_id,
             dialog_parent,
+            include_model_actions=False,
         )
         self._update_menu_enabled_state()
 

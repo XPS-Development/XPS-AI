@@ -3,6 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QMainWindow,
     QMessageBox,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
 from app.error_dump import save_error_dump
 
 from .controller import ControllerWrapper
+from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties import PropertiesView
@@ -47,6 +49,10 @@ class MainWindow(QMainWindow):
         self._action_save: QAction | None = None
         self._action_save_as: QAction | None = None
         self._action_exit: QAction | None = None
+        self._action_export_spectrum_csv: QAction | None = None
+        self._action_export_peak_csv: QAction | None = None
+        self._action_export_all_selected_spectra_csv: QAction | None = None
+        self._action_export_peaks_all_selected_spectra_csv: QAction | None = None
         self._action_undo: QAction | None = None
         self._action_redo: QAction | None = None
         self._action_run_segmenter: QAction | None = None
@@ -88,6 +94,12 @@ class MainWindow(QMainWindow):
         self._action_save = QAction("Save", self)
         self._action_save_as = QAction("Save As…", self)
         self._action_exit = QAction("Exit", self)
+        self._action_export_spectrum_csv = QAction("Export selected spectrum CSV…", self)
+        self._action_export_peak_csv = QAction("Export selected region peak CSV…", self)
+        self._action_export_all_selected_spectra_csv = QAction("Export all selected spectra…", self)
+        self._action_export_peaks_all_selected_spectra_csv = QAction(
+            "Export peaks from all selected spectra…", self
+        )
 
         self._action_undo = QAction("Undo", self)
         self._action_redo = QAction("Redo", self)
@@ -104,6 +116,14 @@ class MainWindow(QMainWindow):
         self._action_save.triggered.connect(self._on_save_triggered)
         self._action_save_as.triggered.connect(self._on_save_as_triggered)
         self._action_exit.triggered.connect(self.close)
+        self._action_export_spectrum_csv.triggered.connect(self._on_export_spectrum_csv_triggered)
+        self._action_export_peak_csv.triggered.connect(self._on_export_peak_csv_triggered)
+        self._action_export_all_selected_spectra_csv.triggered.connect(
+            self._on_export_all_selected_spectra_triggered
+        )
+        self._action_export_peaks_all_selected_spectra_csv.triggered.connect(
+            self._on_export_peaks_all_selected_spectra_triggered
+        )
 
         self._action_undo.triggered.connect(self._on_undo_triggered)
         self._action_redo.triggered.connect(self._on_redo_triggered)
@@ -126,6 +146,15 @@ class MainWindow(QMainWindow):
             file_menu.addAction(self._action_save)
         if self._action_save_as is not None:
             file_menu.addAction(self._action_save_as)
+        export_menu = file_menu.addMenu("Export...")
+        if self._action_export_spectrum_csv is not None:
+            export_menu.addAction(self._action_export_spectrum_csv)
+        if self._action_export_peak_csv is not None:
+            export_menu.addAction(self._action_export_peak_csv)
+        if self._action_export_all_selected_spectra_csv is not None:
+            export_menu.addAction(self._action_export_all_selected_spectra_csv)
+        if self._action_export_peaks_all_selected_spectra_csv is not None:
+            export_menu.addAction(self._action_export_peaks_all_selected_spectra_csv)
         file_menu.addSeparator()
         if self._action_exit is not None:
             file_menu.addAction(self._action_exit)
@@ -312,6 +341,56 @@ class MainWindow(QMainWindow):
             dump_path = save_error_dump(exc)
             message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
             self._show_error("Failed to undo", message)
+
+    def _on_export_spectrum_csv_triggered(self) -> None:
+        """Export currently selected spectrum as CSV."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            self._show_info("No spectrum selected", "Select a spectrum before exporting.")
+            return
+        try:
+            export_spectra(self._controller, [spectrum_id], parent=self)
+        except Exception as exc:  # noqa: BLE001
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to export spectrum CSV", message)
+
+    def _on_export_peak_csv_triggered(self) -> None:
+        """Export peak parameters from currently selected spectrum as CSV."""
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            self._show_info("No spectrum selected", "Select a spectrum before exporting peak parameters.")
+            return
+        try:
+            export_peaks(self._controller, [spectrum_id], parent=self)
+        except Exception as exc:  # noqa: BLE001
+            dump_path = save_error_dump(exc)
+            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
+            self._show_error("Failed to export peak parameters CSV", message)
+
+    def _on_export_all_selected_spectra_triggered(self) -> None:
+        """
+        Export all selected spectra.
+        """
+        if self._spectrum_tree_panel is None:
+            return
+        spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            self._show_info("No spectrum selected", "Select one or more spectra before exporting.")
+            return
+        export_spectra(self._controller, spectrum_ids, parent=self)
+
+    def _on_export_peaks_all_selected_spectra_triggered(self) -> None:
+        """
+        Export peak parameters from all selected spectra.
+        """
+        if self._spectrum_tree_panel is None:
+            return
+        spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            self._show_info("No spectrum selected", "Select one or more spectra before exporting peaks.")
+            return
+        export_peaks(self._controller, spectrum_ids, parent=self)
 
     def _on_redo_triggered(self) -> None:
         """Trigger a redo via the controller."""

@@ -15,6 +15,7 @@ from core.services import CoreContext
 from tools.dto import ComponentDTO, DTOService, RegionDTO, SpectrumDTO
 
 from .automatization import AutomatizationAdapter
+from .csv_export import CSVExportService
 from .command.changes import (
     BaseChange,
     CompositeChange,
@@ -467,6 +468,7 @@ class AppOrchestrator:
         self._optimization = OptimizationService()
         self._automatization = AutomatizationAdapter()
         self._serialization = SerializationService()
+        self._csv_export = CSVExportService()
 
     @property
     def core_collection(self) -> CoreCollection:
@@ -1094,6 +1096,89 @@ class AppOrchestrator:
         self._params.default_serialization_path = None
         self._serialization.mark_dirty()
         self._executor.clear()
+
+    # ---- CSV export ----
+
+    def export_peak_parameters(
+        self,
+        spectrum_id: str,
+        path: str | Path,
+        *,
+        normalized: bool = False,
+        separator: str = ",",
+        use_xps_peak_names: bool = False,
+        precision: int | None = None,
+    ) -> None:
+        """
+        Export peak parameters for all peaks in a spectrum to a CSV-like file.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum whose peaks are exported.
+        path : str or Path
+            Output file path.
+        normalized : bool, optional
+            If True, export normalized parameters.
+        separator : str, optional
+            Column separator character.
+        use_xps_peak_names : bool, optional
+            If True, apply pseudo-voigt XPS aliases.
+        """
+        components: list[ComponentDTO] = []
+        for region_id in self._query.get_regions_ids(spectrum_id):
+            for peak_id in self._query.get_peaks_ids(region_id):
+                components.append(self._query.get_component_dto(peak_id, normalized=normalized))
+        self._csv_export.export_spectrum_peak_parameters(
+            path,
+            tuple(components),
+            separator=separator,
+            use_xps_peak_names=use_xps_peak_names,
+            precision=precision,
+        )
+
+    def export_spectrum(
+        self,
+        spectrum_id: str,
+        path: str | Path,
+        *,
+        normalized: bool = False,
+        separator: str = ",",
+        include_evaluated_components: bool = False,
+        include_background: bool = True,
+        include_difference: bool = True,
+        precision: int | None = None,
+    ) -> None:
+        """
+        Export a full spectrum DTO representation to a CSV-like file.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Identifier of the spectrum to export.
+        path : str or Path
+            Output file path.
+        normalized : bool, optional
+            If True, export normalized spectrum data.
+        separator : str, optional
+            Column separator character.
+        include_evaluated_components : bool, optional
+            If True, include evaluated model columns.
+        include_background : bool, optional
+            If True, include background model column.
+        include_difference : bool, optional
+            If True, include residual/difference column.
+        """
+        spectrum_repr = self._query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
+        self._csv_export.export_spectrum(
+            path,
+            spectrum_repr,
+            separator=separator,
+            include_evaluated_components=include_evaluated_components,
+            include_background=include_background,
+            include_difference=include_difference,
+            precision=precision,
+        )
 
     def set_default_save_path(self, path: str | Path | None) -> None:
         """Set the default save path (stored in AppParameters)."""

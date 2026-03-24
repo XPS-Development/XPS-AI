@@ -91,3 +91,37 @@ def test_undo_parameter_does_not_emit_hierarchy(
     assert counts["properties"] == 1
     assert counts["document"] == 1
     assert counts["undo_redo"] == 1
+
+
+def test_controller_export_spectrum_forwards_to_orchestrator(
+    qapp: QApplication,
+    simple_collection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    calls: list[tuple[str, str]] = []
+
+    def fake_export_spectrum(spectrum_id: str, path: str, **_kwargs) -> None:
+        calls.append((spectrum_id, path))
+
+    monkeypatch.setattr(ctrl.orchestrator, "export_spectrum", fake_export_spectrum)
+    ctrl.export_spectrum("s1", "/tmp/out.csv")
+    assert calls == [("s1", "/tmp/out.csv")]
+
+
+def test_controller_export_peak_forwards_to_orchestrator(
+    qapp: QApplication,
+    simple_collection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    calls: list[tuple[str, str]] = []
+
+    def fake_export_peak(spectrum_id: str, path: str, **_kwargs) -> None:
+        calls.append((spectrum_id, path))
+
+    monkeypatch.setattr(ctrl.orchestrator, "export_peak_parameters", fake_export_peak)
+    ctrl.export_peak_parameters("s1", "/tmp/p.csv")
+    assert calls == [("s1", "/tmp/p.csv")]
