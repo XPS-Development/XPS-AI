@@ -3,7 +3,7 @@ seed_everything: 42
 trainer:
   accelerator: auto
   devices: auto
-  max_epochs: 200
+  max_epochs: 400
   enable_progress_bar: true
   default_root_dir: logs
   logger: false
@@ -24,14 +24,18 @@ model:
 data:
   params_path: model/params.yaml
   seed: 42
-  train_data: model/train/data/dataset
-  val_data: model/train/data/val_dataset
+  train_data: ../model/train/data/train
+  val_data: ../model/train/data/val
   train:
     batch_size: 500
     train_test_split: 0.8
   num_workers: 4
   pin_memory: true
   persistent_workers: true
-  generate_synth: true
+  generate_synth: false
+  generate_synth_train: true
+  generate_synth_val: true
+  synth_train_size: 10000
+  synth_val_size: 2500
 
 # python train_lightning.py fit --config configs\lightning.yaml
