@@ -31,7 +31,7 @@ class ClearMLCallback(pl.Callback):
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             self.csv_name = f"metrics_clearml_{ts}.csv"
 
-    def on_validation_end(self, trainer, pl_module):
+    def on_validation_end(self, trainer, pl_module) -> None:
         metrics = trainer.callback_metrics
         epoch = trainer.current_epoch
         
@@ -58,11 +58,11 @@ class ClearMLCallback(pl.Callback):
 
         self.write_csv(trainer, epoch, metrics)
 
-    def on_fit_end(self, trainer, pl_module):
+    def on_fit_end(self, trainer, pl_module) -> None:
         self.upload_csv(trainer)
         self.save_best(trainer, pl_module, trainer.callback_metrics)
 
-    def log_pair(self, metrics, epoch, title, train_key, val_key):
+    def log_pair(self, metrics, epoch, title, train_key, val_key) -> None:
         train_val = metrics.get(train_key)
         val_val = metrics.get(val_key)
         if train_val is not None:
@@ -70,7 +70,7 @@ class ClearMLCallback(pl.Callback):
         if val_val is not None:
             self.logger.report_scalar(title, "val", iteration=epoch, value=float(val_val))
 
-    def log_peak_max(self, metrics, epoch, title, t_peak, v_peak, t_max, v_max):
+    def log_peak_max(self, metrics, epoch, title, t_peak, v_peak, t_max, v_max) -> None:
         t_peak_val = metrics.get(t_peak)
         v_peak_val = metrics.get(v_peak)
         t_max_val = metrics.get(t_max)
@@ -85,8 +85,10 @@ class ClearMLCallback(pl.Callback):
         if v_max_val is not None:
             self.logger.report_scalar(title, "val_max", iteration=epoch, value=float(v_max_val))
 
-    def write_csv(self, trainer, epoch, metrics):
-        path = os.path.join(trainer.default_root_dir or ".", self.csv_name)
+    def write_csv(self, trainer, epoch, metrics) -> None:
+        root_dir = trainer.default_root_dir or "."
+        os.makedirs(root_dir, exist_ok=True)
+        path = os.path.join(root_dir, self.csv_name)
         new_file = not os.path.exists(path)
         keys = [
             "train_loss", "val_loss",
@@ -110,18 +112,20 @@ class ClearMLCallback(pl.Callback):
                 values.append(float(v) if v is not None else "")
             writer.writerow([epoch] + values)
 
-    def upload_csv(self, trainer):
+    def upload_csv(self, trainer) -> None:
         path = os.path.join(trainer.default_root_dir or ".", self.csv_name)
         if os.path.exists(path):
             self.task.upload_artifact(name="metrics_csv", artifact_object=path)
 
-    def save_best(self, trainer, pl_module, metrics):
+    def save_best(self, trainer, pl_module, metrics) -> None:
         current = metrics.get(self.monitor)
         if current is None:
             return
         current = float(current)
         if self.best is None or current < self.best:
             self.best = current
-            path = os.path.join(trainer.default_root_dir or ".", self.file_name)
+            root_dir = trainer.default_root_dir or "."
+            os.makedirs(root_dir, exist_ok=True)
+            path = os.path.join(root_dir, self.file_name)
             torch.save(pl_module.state_dict(), path)
             self.task.upload_artifact(name=self.artifact_name, artifact_object=path)
