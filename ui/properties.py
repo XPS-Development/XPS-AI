@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -561,12 +561,17 @@ class PropertiesView(QTreeView):
     signals.
     """
 
-    # Approximate character counts per column for initial pixel widths (see _apply_column_widths).
-    _COLUMN_CHAR_WIDTHS = (11, 5, 4, 4, 3, 12)
+    # Character counts for fixed-width columns (Lower, Upper, Vary); see _apply_column_widths.
+    _NARROW_COLUMN_CHAR_WIDTHS = (4, 4, 3)
+    # Flexible columns 0,1,5 (Name, Value, Expr): Name is 1.5× Value; Expr matches Value.
+    _FLEX_WEIGHT_NAME = 3
+    _FLEX_WEIGHT_VALUE = 2
+    _FLEX_WEIGHT_EXPR = 2
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self._narrow_section_widths: list[int] = []
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegateForColumn(1, PropertiesDelegate(self))
@@ -582,21 +587,52 @@ class PropertiesView(QTreeView):
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
         self.refresh()
 
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Keep flexible columns sized to the viewport with Name:Value = 1.5:1."""
+        super().resizeEvent(event)
+        self._update_flexible_column_widths()
+
     def _apply_column_widths(self) -> None:
         """
-        Set fixed header section widths from the view font and target character counts.
+        Lay out columns so the table uses the full view width.
 
-        Uses representative glyphs per column so Name/Expr allow letters and
-        numeric columns use digit width; Vary uses a short digit span (~checkbox).
+        Name, Value, and Expr are sized in proportion (Name 1.5× Value, Expr same
+        as Value); Lower, Upper, and Vary stay fixed from font metrics.
         """
         fm = QFontMetrics(self.font())
         hdr = self.header()
         padding = 14
-        ref_chars = ("M", "0", "0", "0", "0", "m")
-        for i, n in enumerate(self._COLUMN_CHAR_WIDTHS):
-            ch = ref_chars[i]
-            # hdr.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
-            hdr.resizeSection(i, fm.horizontalAdvance(ch * n) + padding)
+        narrow_cols = (2, 3, 4)
+        ref_char = "0"
+        self._narrow_section_widths: list[int] = []
+        for col, n in zip(narrow_cols, self._NARROW_COLUMN_CHAR_WIDTHS, strict=True):
+            w = fm.horizontalAdvance(ref_char * n) + padding
+            self._narrow_section_widths.append(w)
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+            hdr.resizeSection(col, w)
+        for col in (0, 1, 5):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
+        self._update_flexible_column_widths()
+
+    def _update_flexible_column_widths(self) -> None:
+        """Divide remaining width across Name, Value, Expr using configured weights."""
+        if len(self._narrow_section_widths) != len(self._NARROW_COLUMN_CHAR_WIDTHS):
+            return
+        vp_w = int(self.viewport().width())
+        if vp_w <= 0:
+            return
+        narrow_total = sum(self._narrow_section_widths)
+        available = vp_w - narrow_total
+        if available <= 0:
+            return
+        w_sum = self._FLEX_WEIGHT_NAME + self._FLEX_WEIGHT_VALUE + self._FLEX_WEIGHT_EXPR
+        w_name = (self._FLEX_WEIGHT_NAME * available) // w_sum
+        w_value = (self._FLEX_WEIGHT_VALUE * available) // w_sum
+        w_expr = available - w_name - w_value
+        hdr = self.header()
+        hdr.resizeSection(0, w_name)
+        hdr.resizeSection(1, w_value)
+        hdr.resizeSection(5, w_expr)
 
     def model(self) -> PropertiesModel:  # type: ignore[override]
         """
@@ -711,7 +747,7 @@ class PropertiesView(QTreeView):
         """Copy the selected component id to the system clipboard."""
         cid = self._selected_component_id()
         if cid:
-            QApplication.clipboard().setText(cid)
+            QApplication.clipboard().setText(cid[:5])
 
     def _delete_selected_component(self) -> None:
         """Remove the selected component and refresh."""
