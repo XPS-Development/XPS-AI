@@ -1,9 +1,8 @@
 import numpy as np
-
-from .base_models import ParameterSpec, BasePeakModel, BaseBackgroundModel
-from .model_funcs import pvoigt, linear_background, static_shirley_background
-
 from numpy.typing import NDArray
+
+from .base_models import BaseBackgroundModel, BasePeakModel, ParameterSpec
+from .model_funcs import linear_background, pvoigt, static_shirley_background
 
 
 class PseudoVoigtPeakModel(BasePeakModel):
@@ -25,8 +24,7 @@ class PseudoVoigtPeakModel(BasePeakModel):
 
 class ConstantBackgroundModel(BaseBackgroundModel):
     name = "constant"
-    parameter_schema = (ParameterSpec("const", 0.0),)
-    static = True
+    parameter_schema = (ParameterSpec("const", 0.0, vary=False),)
     normalization_target_parameters = ("const",)
     use_scale = False
     use_offset = True
@@ -39,10 +37,9 @@ class ConstantBackgroundModel(BaseBackgroundModel):
 class LinearBackgroundModel(BaseBackgroundModel):
     name = "linear"
     parameter_schema = (
-        ParameterSpec("i1", 0.0),
+        ParameterSpec("i1", 0.0, vary=False),
         ParameterSpec("i2", 0.0),
     )
-    static = True
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
     use_offset = True
@@ -55,10 +52,9 @@ class LinearBackgroundModel(BaseBackgroundModel):
 class ShirleyBackgroundModel(BaseBackgroundModel):
     name = "shirley"
     parameter_schema = (
-        ParameterSpec("i1", 0.0),
-        ParameterSpec("i2", 0.0),
+        ParameterSpec("i1", 0.0, vary=False),
+        ParameterSpec("i2", 0.0, vary=False),
     )
-    static = True
     normalization_target_parameters = ("i1", "i2")
     use_scale = True
     use_offset = True

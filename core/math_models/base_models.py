@@ -1,12 +1,11 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Optional, Protocol, Tuple, TypeVar
 
 import numpy as np
-
-from .normalization import ParameterNormalizationPolicy, NormalizationContext
-
-from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Protocol, TypeVar
 from numpy.typing import NDArray
+
+from .normalization import NormalizationContext, ParameterNormalizationPolicy
 
 
 T = TypeVar("T", bound=np.floating)
@@ -63,8 +62,6 @@ class BasePeakModel(ParametricModel):
 
 
 class BaseBackgroundModel(ParametricModel):
-    static: bool
-
     @staticmethod
     @abstractmethod
     def evaluate(x: NDArray, y: Optional[NDArray], **kwargs: float) -> NDArray: ...
