@@ -12,6 +12,9 @@ from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 
 
+# TODO: refactor as a modular context menu factory
+
+
 @dataclass
 class SpectrumContextMenuActions:
     """
@@ -246,4 +249,5 @@ def attach_region_context_actions(
         delete_region.triggered.connect(lambda _checked=False: state._on_delete_region())
     export_peak_csv.triggered.connect(lambda _checked=False: state._on_export_peak_csv())
 
+    return state
     return state

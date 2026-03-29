@@ -6,11 +6,8 @@ context menus) and calls :class:`ui.controller.ControllerWrapper` methods to
 create a new component and apply parameter configuration.
 """
 
-from __future__ import annotations
-
 import math
 from dataclasses import dataclass
-from typing import Callable, Literal
 
 import numpy as np
 from PySide6.QtCore import Qt
@@ -19,12 +16,10 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -283,15 +278,22 @@ class ComponentCreationDialog(QDialog):
                 lower, upper, vary, expr = config_by_param[spec.name]
 
                 if not self._float_equal(lower, spec.lower):
-                    self._controller.update_parameter(component_id, spec.name, "lower", lower, normalized=False)
+                    self._controller.update_parameter(
+                        component_id, spec.name, "lower", lower, normalized=False
+                    )
                 if not self._float_equal(upper, spec.upper):
-                    self._controller.update_parameter(component_id, spec.name, "upper", upper, normalized=False)
+                    self._controller.update_parameter(
+                        component_id, spec.name, "upper", upper, normalized=False
+                    )
                 if vary != spec.vary:
-                    self._controller.update_parameter(component_id, spec.name, "vary", vary, normalized=False)
+                    self._controller.update_parameter(
+                        component_id, spec.name, "vary", vary, normalized=False
+                    )
                 if (expr or None) != spec.expr:
-                    self._controller.update_parameter(component_id, spec.name, "expr", expr, normalized=False)
+                    self._controller.update_parameter(
+                        component_id, spec.name, "expr", expr, normalized=False
+                    )
 
             self.accept()
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Failed to add component", str(exc))
-
