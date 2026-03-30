@@ -624,9 +624,15 @@ class AppOrchestrator:
         """
         changes: list[CompositeChange] = []
         for spectrum_id in spectrum_ids:
+            # Prevent NN from creating regions/components on spectra that already have regions.
+            if self._query.get_regions_ids(spectrum_id):
+                continue
             normalized_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=True)
             original_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
             changes.append(self._nn.run_segmenter(spectrum_id, normalized_spectrum, original_spectrum))
+
+        if not changes:
+            return
 
         self.execute(CompositeChange(changes=changes))
 
