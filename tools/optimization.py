@@ -1,24 +1,63 @@
 """
 Lmfit-based optimization for spectral fitting.
 
-Provides OptimizationContext, OptimizationPlanner, LmfitOptimizer, and optimize()
+Provides OptimizationContext, OptimizationExpressionPlan, OptimizationPlanner,
+LmfitOptimizer, and optimize()
 for use as a standalone library or via the app layer. Uses core.types protocols only;
 """
 
 import re
 from dataclasses import dataclass
+from typing import Any, Iterable, Sequence
 
 import numpy as np
 from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
 
 from core.types import ComponentLike, RegionLike
-
 from tools.evaluation import component_y
 
-from typing import Sequence, Any
 
 _COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
+
+
+def resolve_component_reference(token: str, component_ids: Iterable[str]) -> str | None:
+    """
+    Map an expression token to a full component id.
+
+    Exact id match always applies. Otherwise, return the unique component id such that
+    ``id.startswith(token)``.
+
+    Parameters
+    ----------
+    token : str
+        Identifier from an expression (short prefix or full id).
+    component_ids : Iterable[str]
+        Known component ids for the current optimization scope.
+
+    Returns
+    -------
+    str | None
+        Resolved full id, or ``None`` if unknown or ambiguous.
+    """
+    ids = tuple(component_ids)
+    if token in ids:
+        return token
+    matches = [cid for cid in ids if cid.startswith(token)]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _component_fully_fixed(cmp: ComponentLike) -> bool:
+    """
+    True if every parameter has ``vary=False`` (lmfit holds values fixed; expr is ignored for vary).
+
+    Such components are subtracted from region ``y`` and omitted from the fit.
+    """
+    if not cmp.parameters:
+        return False
+    return not any(p.vary for p in cmp.parameters.values())
 
 
 @dataclass(frozen=True)
@@ -44,8 +83,9 @@ def build_contexts(
     """
     Build optimization contexts from region-like and component-like data.
 
-    Subtracts static background contributions from y and includes only
-    components to optimize. Works with any RegionLike and ComponentLike
+    Subtracts contributions of fully fixed components (all parameters have
+    ``vary=False``) from ``y`` and includes only components to optimize.
+    Works with any RegionLike and ComponentLike
     (e.g. DTOs from DTOService.get_region_repr).
 
     Parameters
@@ -65,11 +105,7 @@ def build_contexts(
         cmps_to_opt: list[ComponentLike] = []
 
         for cmp in components:
-            is_static_bg = (
-                cmp.kind == "background"
-                and getattr(cmp.model, "static", False)
-            )
-            if is_static_bg:
+            if _component_fully_fixed(cmp):
                 y -= component_y(cmp, region.x, region.y)
             else:
                 cmps_to_opt.append(cmp)
@@ -100,35 +136,108 @@ class OptimizedComponent:
     normalized: bool
 
 
+@dataclass(frozen=True)
+class OptimizationExpressionPlan:
+    """
+    Single pass over parameter expressions: dependency graph and lmfit translations.
+
+    Built from all components in the optimization scope so grouping and fitting
+    reuse the same token resolution without re-parsing expressions.
+
+    Attributes
+    ----------
+    dependency_graph : dict[str, set[str]]
+        Symmetric adjacency between component ids derived from expression references.
+    lmfit_expr_by_component_param : dict[tuple[str, str], str | None]
+        For each constrained parameter, the lmfit ``expr`` string or ``None`` if
+        resolution failed.
+    """
+
+    dependency_graph: dict[str, set[str]]
+    lmfit_expr_by_component_param: dict[tuple[str, str], str | None]
+
+
+def _analyze_parameter_expression(
+    expr: str,
+    *,
+    owner_component_id: str,
+    param_name: str,
+    known_ids: frozenset[str],
+    components_by_id: dict[str, ComponentLike],
+    graph: dict[str, set[str]],
+) -> str | None:
+    tokens = _COMPONENT_REF_RE.findall(expr)
+    translated = expr
+    lmfit_ok = True
+
+    for token in tokens:
+        if token.replace(".", "", 1).isdigit():
+            continue
+
+        resolved = resolve_component_reference(token, known_ids)
+        if resolved is None:
+            lmfit_ok = False
+            continue
+
+        if resolved != owner_component_id and resolved in graph:
+            graph[owner_component_id].add(resolved)
+            graph[resolved].add(owner_component_id)
+
+        target = components_by_id.get(resolved)
+        if target is None:
+            lmfit_ok = False
+            continue
+
+        if param_name not in target.parameters:
+            lmfit_ok = False
+            continue
+
+        translated = re.sub(
+            rf"\b{re.escape(token)}\b",
+            f"{resolved}_{param_name}",
+            translated,
+        )
+
+    return translated if lmfit_ok else None
+
+
+def _build_expression_plan(
+    contexts: tuple[OptimizationContext, ...],
+) -> OptimizationExpressionPlan:
+    components = [cmp for ctx in contexts for cmp in ctx.components]
+    known_ids = frozenset(cmp.id_ for cmp in components)
+    components_by_id = {cmp.id_: cmp for cmp in components}
+
+    graph: dict[str, set[str]] = {}
+    for cmp in components:
+        graph.setdefault(cmp.id_, set())
+
+    lmfit_expr_by_component_param: dict[tuple[str, str], str | None] = {}
+
+    for cmp in components:
+        for pname, p in cmp.parameters.items():
+            if not p.expr:
+                continue
+            lmfit_e = _analyze_parameter_expression(
+                p.expr,
+                owner_component_id=cmp.id_,
+                param_name=pname,
+                known_ids=known_ids,
+                components_by_id=components_by_id,
+                graph=graph,
+            )
+            lmfit_expr_by_component_param[(cmp.id_, pname)] = lmfit_e
+
+    return OptimizationExpressionPlan(
+        dependency_graph=graph,
+        lmfit_expr_by_component_param=lmfit_expr_by_component_param,
+    )
+
+
 class OptimizationPlanner:
     """
     Groups optimization contexts into independent tasks based on parameter dependencies.
     """
-
-    def _build_dependency_graph(
-        self,
-        contexts: tuple[OptimizationContext, ...],
-    ) -> dict[str, set[str]]:
-        graph: dict[str, set[str]] = {}
-        components = [cmp for ctx in contexts for cmp in ctx.components]
-
-        for cmp in components:
-            graph.setdefault(cmp.id_, set())
-
-        for cmp in components:
-            for p in cmp.parameters.values():
-                if not p.expr:
-                    continue
-
-                tokens = _COMPONENT_REF_RE.findall(p.expr)
-                for token in tokens:
-                    if token == cmp.id_:
-                        continue
-                    if token in graph:
-                        graph[cmp.id_].add(token)
-                        graph[token].add(cmp.id_)
-
-        return graph
 
     @staticmethod
     def _connected_components(graph: dict[str, set[str]]) -> list[set[str]]:
@@ -175,11 +284,24 @@ class OptimizationPlanner:
     def get_groups(
         self,
         contexts: tuple[OptimizationContext, ...],
+        *,
+        expression_plan: OptimizationExpressionPlan | None = None,
     ) -> list[tuple[OptimizationContext, ...]]:
         """
         Split contexts into independent optimization groups.
+
+        Parameters
+        ----------
+        contexts : tuple[OptimizationContext, ...]
+            Contexts to partition.
+        expression_plan : OptimizationExpressionPlan | None
+            Pre-built expression analysis for ``contexts``. If ``None``, a plan
+            is computed once from ``contexts`` (same graph as ``dependency_graph``).
         """
-        graph = self._build_dependency_graph(contexts)
+        if expression_plan is not None:
+            graph = expression_plan.dependency_graph
+        else:
+            graph = _build_expression_plan(contexts).dependency_graph
         component_groups = self._connected_components(graph)
         return self._group_contexts(contexts, component_groups)
 
@@ -195,38 +317,30 @@ class LmfitOptimizer:
     def _build_component_index(self, components: Sequence[ComponentLike]) -> None:
         self._component_index = {cmp.id_: cmp for cmp in components}
 
-    def _translate_expr(
+    def _translate_expr_for_component(
         self,
+        owner_component_id: str,
         expr: str,
         *,
         param_name: str,
     ) -> str | None:
-        """
-        Translate core expr like "2 * p1234" into lmfit expr "2 * p1234_amp".
-        """
-        tokens = _COMPONENT_REF_RE.findall(expr)
-        translated = expr
+        known_ids = frozenset(self._component_index.keys())
+        graph = {cid: set() for cid in self._component_index}
+        return _analyze_parameter_expression(
+            expr,
+            owner_component_id=owner_component_id,
+            param_name=param_name,
+            known_ids=known_ids,
+            components_by_id=self._component_index,
+            graph=graph,
+        )
 
-        for token in tokens:
-            if token.replace(".", "", 1).isdigit():
-                continue
-
-            target = self._component_index.get(token)
-            if target is None:
-                return None
-
-            if param_name not in target.parameters:
-                return None
-
-            translated = re.sub(
-                rf"\b{token}\b",
-                f"{token}_{param_name}",
-                translated,
-            )
-
-        return translated
-
-    def _to_params(self, components: Sequence[ComponentLike]) -> Parameters:
+    def _to_params(
+        self,
+        components: Sequence[ComponentLike],
+        *,
+        expression_plan: OptimizationExpressionPlan | None = None,
+    ) -> Parameters:
         params = Parameters()
 
         for cmp in components:
@@ -235,7 +349,14 @@ class LmfitOptimizer:
 
                 expr = None
                 if param_obj.expr:
-                    expr = self._translate_expr(param_obj.expr, param_name=pname)
+                    if expression_plan is not None:
+                        expr = expression_plan.lmfit_expr_by_component_param.get((cmp.id_, pname))
+                    else:
+                        expr = self._translate_expr_for_component(
+                            cmp.id_,
+                            param_obj.expr,
+                            param_name=pname,
+                        )
 
                 params.add(
                     full_name,
@@ -285,14 +406,26 @@ class LmfitOptimizer:
     def optimize(
         self,
         contexts: tuple[OptimizationContext, ...],
+        *,
+        expression_plan: OptimizationExpressionPlan | None = None,
         **kwargs: Any,
     ) -> tuple[OptimizedComponent, ...]:
         """
         Run lmfit minimization and return optimized parameter values per component.
+
+        Parameters
+        ----------
+        contexts : tuple[OptimizationContext, ...]
+            Contexts for this minimization subproblem.
+        expression_plan : OptimizationExpressionPlan | None
+            Pre-built lmfit expression strings for constrained parameters. If
+            ``None``, expressions are resolved from ``contexts`` only.
+        **kwargs
+            Forwarded to ``lmfit.minimize``.
         """
         components = tuple(cmp for ctx in contexts for cmp in ctx.components)
         self._build_component_index(components)
-        params = self._to_params(components)
+        params = self._to_params(components, expression_plan=expression_plan)
         result = minimize(
             self.residual,
             params,
@@ -326,9 +459,10 @@ def optimize(
     optimizer = LmfitOptimizer()
 
     ctx_tuple = tuple(contexts)
+    plan = _build_expression_plan(ctx_tuple)
     result: list[OptimizedComponent] = []
 
-    for ctx_group in planner.get_groups(ctx_tuple):
-        result.extend(optimizer.optimize(ctx_group, **kwargs))
+    for ctx_group in planner.get_groups(ctx_tuple, expression_plan=plan):
+        result.extend(optimizer.optimize(ctx_group, expression_plan=plan, **kwargs))
 
     return tuple(result)

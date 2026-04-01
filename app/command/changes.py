@@ -7,10 +7,10 @@ into Command objects by CommandRegistry for execution and undo/redo.
 """
 
 from dataclasses import dataclass
+from typing import Literal, Optional, Union
 
-from typing import Literal, Union, Optional
-from numpy.typing import NDArray
 import numpy as np
+from numpy.typing import NDArray
 
 from core.metadata import Metadata
 
@@ -30,7 +30,7 @@ class UpdateParameter:
     component_id: str
     name: str
     parameter_field: ParameterField
-    new_value: str | bool | float
+    new_value: str | bool | float | None
     normalized: bool = False
 
 
@@ -39,8 +39,9 @@ class UpdateRegionSlice:
     """Change to update the index slice of an existing region."""
 
     region_id: str
-    start: int
-    stop: int
+    start: int | float | None = None
+    stop: int | float | None = None
+    mode: Literal["value", "index"] = "index"
 
 
 @dataclass(frozen=True)
@@ -109,9 +110,10 @@ class CreateRegion:
     """
 
     spectrum_id: str
-    start: int
-    stop: int
+    start: int | float | None = None
+    stop: int | float | None = None
     region_id: Optional[str] = None
+    mode: Literal["value", "index"] = "index"
 
 
 @dataclass(frozen=True)

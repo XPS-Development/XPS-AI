@@ -10,6 +10,11 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from ..._tools import recalculate_idx
+from ...automatization import (
+    calculate_background_intensities,
+    guess_pseudo_voigt_params_at_max,
+)
 from ..types import (
     BackgroundDetectionResult,
     ModelOutputT,
@@ -126,52 +131,14 @@ class SegmenterPostprocessor:
         medians = [(t + f) // 2 for f, t in zip(borders[0::2], borders[1::2])]
         return np.array(medians)
 
-    def _recalculate_idx(self, idx: int, array_1: NDArray, array_2: NDArray) -> int:
-        """Map index from interpolated grid (array_1) to original grid (array_2)."""
-        if idx >= len(array_1):
-            return len(array_2)
-        val = array_1[idx]
-        return int(np.abs(array_2 - val).argmin())
-
-    def _get_sig(self, x: NDArray, y: NDArray, max_idx: int) -> float:
-        """Sigma of the peak at max_idx."""
-        half_max = (y[max_idx] - y.min()) / 2 + y.min()
-        l_hm_idx = np.where(y[:max_idx] <= half_max)[0][-1]
-        r_hm_idx = np.where(y[max_idx:] <= half_max)[0][0] + max_idx
-        return (x[r_hm_idx] - x[l_hm_idx]) / 2
-
-    def _get_amp(self, y: NDArray, max_idx: int, sig: float, frac: float) -> float:
-        """Amplitude of the peak at max_idx."""
-        shape_mult = frac / np.pi + (1 - frac) * np.sqrt(np.log(2) / np.pi)
-        amp = (y[max_idx] - y.min()) * sig / shape_mult
-        return amp
-
-    def _get_peak_parameters(
-        self, x: NDArray, y: NDArray, max_idxs: NDArray, frac: float = DEFAULT_FRACTION
-    ) -> list[PeakDetectionResult]:
-        """Make peak parameters from x and y values."""
-        res = []
-        for max_idx in max_idxs:
-            sig = self._get_sig(x, y, max_idx)
-            amp = self._get_amp(y, max_idx, sig, frac)
-            res.append(
-                PeakDetectionResult(
-                    model_name=self.DEFAULT_PEAK_MODEL,
-                    parameters={
-                        "amp": float(amp),
-                        "cen": float(x[max_idx]),
-                        "sig": float(sig),
-                        "frac": float(frac),
-                    },
-                )
+    def _guess_peaks(self, x: NDArray, y: NDArray, max_idxs: NDArray) -> tuple[PeakDetectionResult, ...]:
+        """Guess peak parameters for pseudo-voigt model."""
+        parameters = tuple(guess_pseudo_voigt_params_at_max(x, y, idx) for idx in max_idxs)
+        return tuple(
+            PeakDetectionResult(
+                model_name=self.DEFAULT_PEAK_MODEL, parameters=dict(amp=amp, cen=cen, sig=sig, frac=frac)
             )
-        return res
-
-    def _get_background_parameters(self, y: NDArray, start: int, stop: int) -> BackgroundDetectionResult:
-        """Get background parameters from x and y values."""
-        return BackgroundDetectionResult(
-            model_name=self.DEFAULT_BACKGROUND_MODEL,
-            parameters={"i1": float(y[start]), "i2": float(y[stop])},
+            for amp, cen, sig, frac in parameters
         )
 
     def _get_parameters_from_masks(
@@ -185,8 +152,8 @@ class SegmenterPostprocessor:
         """Build RegionBounds from borders and max positions, mapped to original indices."""
         region_borders = self._find_borders(region_mask)
         max_idxs = self._prepare_max_mask(max_mask)
-        region_borders = np.array([self._recalculate_idx(int(i), x_int, x) for i in region_borders])
-        max_idxs = np.array([self._recalculate_idx(int(i), x_int, x) for i in max_idxs])
+        region_borders = np.array([recalculate_idx(int(i), x_int, x) for i in region_borders])
+        max_idxs = np.array([recalculate_idx(int(i), x_int, x) for i in max_idxs])
 
         connected_region_borders: list[int] = []
         for b in region_borders:
@@ -205,7 +172,10 @@ class SegmenterPostprocessor:
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
             if local_max_idxs.size != 0:
                 reg = RegionDetectionResult(start=int(f), stop=int(t))
-                peaks = self._get_peak_parameters(x, y, local_max_idxs)
-                background = self._get_background_parameters(y, f, t)
-                result.append(SegmenterResult(region=reg, peaks=tuple(peaks), background=background))
+                peaks = self._guess_peaks(x, y, local_max_idxs)
+                background = BackgroundDetectionResult(
+                    model_name=self.DEFAULT_BACKGROUND_MODEL,
+                    parameters=calculate_background_intensities(x, y, f, t),
+                )
+                result.append(SegmenterResult(region=reg, peaks=peaks, background=background))
         return result

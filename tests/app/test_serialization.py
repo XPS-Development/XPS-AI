@@ -2,100 +2,109 @@
 
 from pathlib import Path
 
-import pytest
-
 from app.serialization import SerializationService
+from core.collection import CoreCollection
 from core.services import MetadataService
 
 
-def test_is_saved_initially_false_without_path(simple_collection):
-    """Without default path, is_saved is False even when not dirty."""
+def test_initial_state_not_dirty():
+    """New service starts not dirty."""
+    service = SerializationService()
+    assert service.is_dirty is False
+
+
+def test_mark_dirty_sets_flag():
+    """mark_dirty sets the dirty flag."""
+    service = SerializationService()
+    assert service.is_dirty is False
+    service.mark_dirty()
+    assert service.is_dirty is True
+
+
+def test_dump_clears_dirty_and_writes_file(simple_collection, tmp_path):
+    """dump writes JSON file and clears dirty flag."""
     metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    assert manager.is_saved is False
+    service = SerializationService()
+    service.mark_dirty()
+    path = tmp_path / "out.json"
+
+    service.dump(path=path, collection=simple_collection, metadata_service=metadata_service)
+
+    assert path.exists()
+    assert service.is_dirty is False
 
 
-def test_is_saved_after_set_path_and_no_changes(simple_collection):
-    """With default path set and no dirty, is_saved is True."""
+def test_dump_gzip_roundtrip(simple_collection, tmp_path):
+    """dump with use_gzip writes gzip JSON; load restores collection."""
     metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    manager.set_default_path("/some/path.json")
-    assert manager.is_saved is True
+    service = SerializationService()
+    path = tmp_path / "out.json.gz"
+
+    service.dump(
+        path=path,
+        collection=simple_collection,
+        metadata_service=metadata_service,
+        use_gzip=True,
+        compresslevel=3,
+    )
+    assert path.exists()
+    with path.open("rb") as f:
+        assert f.read(2) == b"\x1f\x8b"
+
+    target_collection = CoreCollection()
+    target_metadata = MetadataService(target_collection)
+    service.load(
+        path=path,
+        collection=target_collection,
+        metadata_service=target_metadata,
+        mode="replace",
+    )
+    assert len(target_collection.objects_index) == len(simple_collection.objects_index)
 
 
-def test_mark_dirty_makes_is_saved_false(simple_collection, tmp_path):
-    """After mark_dirty, is_saved is False when path is set."""
+def test_load_replace_clears_dirty(simple_collection, tmp_path):
+    """load with replace loads data and clears dirty flag."""
     metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    manager.set_default_path(tmp_path / "x.json")
-    manager.dump()
-    assert manager.is_saved is True
-    manager.mark_dirty()
-    assert manager.is_saved is False
+    service = SerializationService()
+    path = tmp_path / "data.json"
+
+    # First dump the current collection
+    service.dump(path=path, collection=simple_collection, metadata_service=metadata_service)
+    service.mark_dirty()
+
+    # Prepare fresh collection/metadata to load into
+    target_collection = CoreCollection()
+    target_metadata = MetadataService(target_collection)
+
+    service.load(
+        path=path,
+        collection=target_collection,
+        metadata_service=target_metadata,
+        mode="replace",
+    )
+
+    assert service.is_dirty is False
+    assert len(target_collection.objects_index) == len(simple_collection.objects_index)
 
 
-def test_set_default_path_get_default_path(simple_collection):
-    """set_default_path and get_default_path round-trip."""
+def test_load_append_preserves_existing_objects(simple_collection, tmp_path):
+    """load with append adds objects without clearing existing ones."""
     metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    assert manager.get_default_path() is None
-    path = Path("/foo/bar.json")
-    manager.set_default_path(path)
-    assert manager.get_default_path() == path
+    service = SerializationService()
+    path = tmp_path / "data.json"
 
+    service.dump(path=path, collection=simple_collection, metadata_service=metadata_service)
 
-def test_dump_sets_path_and_clears_dirty(simple_collection, tmp_path):
-    """dump with explicit path sets default path and clears dirty."""
-    metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    manager.mark_dirty()
-    fp = tmp_path / "out.json"
-    manager.dump(path=fp)
-    assert manager.get_default_path() == fp
-    assert manager.is_saved is True
-    assert fp.exists()
+    # Start with a collection that already has one object
+    base_collection = CoreCollection()
+    base_metadata = MetadataService(base_collection)
 
+    # Append into base_collection
+    service.load(
+        path=path,
+        collection=base_collection,
+        metadata_service=base_metadata,
+        mode="append",
+    )
 
-def test_dump_without_path_uses_default(simple_collection, tmp_path):
-    """dump with no path uses default path."""
-    metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    fp = tmp_path / "default.json"
-    manager.set_default_path(fp)
-    manager.dump()
-    assert fp.exists()
-
-
-def test_dump_without_path_and_no_default_raises(simple_collection):
-    """dump with no path and no default raises ValueError."""
-    metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    with pytest.raises(ValueError, match="No path provided"):
-        manager.dump()
-
-
-def test_load_replace_updates_path_and_clears_dirty(simple_collection, tmp_path):
-    """load with replace sets default path and clears dirty."""
-    metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    fp = tmp_path / "data.json"
-    manager.dump(path=fp)
-    manager.mark_dirty()
-    manager.load(fp, mode="replace")
-    assert manager.get_default_path() == fp
-    assert manager.is_saved is True
-
-
-def test_load_new_returns_tuple(simple_collection, tmp_path):
-    """load with mode=new returns (collection, metadata_service)."""
-    metadata_service = MetadataService(simple_collection)
-    manager = SerializationService(simple_collection, metadata_service)
-    fp = tmp_path / "data.json"
-    manager.dump(path=fp)
-    result = manager.load(fp, mode="new")
-    assert result is not None
-    new_collection, new_metadata_service = result
-    assert new_collection is not simple_collection
-    assert len(new_collection.objects_index) == len(simple_collection.objects_index)
-    assert manager.get_default_path() == fp
-    assert manager.is_saved is True
+    assert len(base_collection.objects_index) == len(simple_collection.objects_index)
