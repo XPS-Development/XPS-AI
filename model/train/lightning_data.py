@@ -60,7 +60,7 @@ class XPSDataModule(pl.LightningDataModule):
 
         train_size = int(self.synth_train_size or self.synth_data.get("dataset_size", 0))
         if train_size <= 0:
-            raise ValueError("Synthetic train size must be > 0")
+            train_size = 1
         val_size = int(self.synth_val_size or max(1, train_size // 4))
 
         real_train_count = self.csv_count(train_path)
@@ -87,7 +87,7 @@ class XPSDataModule(pl.LightningDataModule):
     def setup(self, stage=None) -> None:
         dataset = XPSDataset(self.train_data)
 
-        has_val = self.has_real_val_data(self.val_data)
+        has_val = self.has_val(self.val_data)
         if has_val:
             self.train_dataset = dataset
             self.val_dataset = XPSDataset(self.val_data)
@@ -134,7 +134,7 @@ class XPSDataModule(pl.LightningDataModule):
         np.random.seed(seed)
         return torch.Generator().manual_seed(seed)
 
-    def has_real_val_data(self, val_data_dir) -> bool:
+    def has_val(self, val_data_dir) -> bool:
         if not val_data_dir:
             return False
         val_path = Path(val_data_dir)
