@@ -14,9 +14,7 @@ def qapp() -> QApplication:
     return app
 
 
-def test_spectrum_context_menu_exports_csv(
-    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_spectrum_context_menu_exports_csv(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
     del qapp
     controller = MagicMock()
     controller.selected_spectrum_id = "s1"
@@ -26,7 +24,7 @@ def test_spectrum_context_menu_exports_csv(
     actions = attach_spectrum_context_actions(menu, controller)
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "ui.context_menus.run_export_spectrum_pipeline",
+        "ui.context_menus.export_spectra",
         lambda _controller, spectrum_ids, parent=None: calls.append(spectrum_ids) or True,
     )
 
@@ -35,9 +33,7 @@ def test_spectrum_context_menu_exports_csv(
     assert calls == [["s1"]]
 
 
-def test_region_context_menu_exports_first_peak(
-    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_region_context_menu_exports_first_peak(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
     del qapp
     controller = MagicMock()
     controller.query.get_background_id.return_value = None
@@ -47,7 +43,7 @@ def test_region_context_menu_exports_first_peak(
     actions = attach_region_context_actions(menu, controller, "r1", QWidget())
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "ui.context_menus.run_export_peaks_pipeline",
+        "ui.context_menus.export_peaks",
         lambda _controller, spectrum_ids, parent=None: calls.append(spectrum_ids) or True,
     )
 

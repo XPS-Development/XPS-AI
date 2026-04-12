@@ -3,7 +3,7 @@ from typing import Any, Literal, Sequence
 
 from PySide6.QtCore import QObject, Signal
 
-from app.command.changes import BaseChange, ParameterField
+from app.command.changes import ParameterField
 from app.command.commands import (
     Command,
     CompositeCommand,
@@ -11,8 +11,8 @@ from app.command.commands import (
     CreatePeakCommand,
     CreateRegionCommand,
     CreateSpectrumCommand,
-    RemoveObjectCommand,
     RemoveMetadataCommand,
+    RemoveObjectCommand,
     SetMetadataCommand,
     UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
@@ -353,6 +353,21 @@ class ControllerWrapper(QObject):
             spectrum_ids=spectrum_ids,
             **kwargs,
         )
+        self._emit_fit_data_changed()
+
+    def auto_fit_spectra(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+        """
+        Run the segmenter then optimize regions for the given spectra.
+
+        Parameters
+        ----------
+        spectrum_ids : Sequence[str]
+            Identifiers of the parent spectra to auto-fit.
+        **kwargs
+            Extra keyword arguments forwarded to
+            :meth:`AppOrchestrator.optimize_regions`.
+        """
+        self._orchestrator.auto_fit(spectrum_ids, **kwargs)
         self._emit_fit_data_changed()
 
     def update_parameter(

@@ -24,15 +24,15 @@ class SpectrumContextMenuActions:
     ----------
     add_region : QAction
         Create a new region (default span) on the current spectrum.
-    optimize_regions : QAction
+    optimize : QAction
         Optimize all regions of the current spectrum.
-    run_segmenter : QAction
-        Run the NN segmenter on the current spectrum.
+    auto_fit : QAction
+        Run the NN segmenter then optimize all regions of the current spectrum.
     """
 
     add_region: QAction
-    optimize_regions: QAction
-    run_segmenter: QAction
+    optimize: QAction
+    auto_fit: QAction
     export_spectrum_csv: QAction
     _controller: ControllerWrapper
     _dialog_parent: QWidget | None
@@ -42,15 +42,15 @@ class SpectrumContextMenuActions:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             self.add_region.setEnabled(False)
-            self.optimize_regions.setEnabled(False)
-            self.run_segmenter.setEnabled(False)
+            self.optimize.setEnabled(False)
+            self.auto_fit.setEnabled(False)
             return
 
         has_regions = bool(self._controller.query.get_regions_ids(spectrum_id))
 
         self.add_region.setEnabled(True)
-        self.optimize_regions.setEnabled(has_regions)
-        self.run_segmenter.setEnabled(not has_regions)
+        self.optimize.setEnabled(has_regions)
+        self.auto_fit.setEnabled(True)
 
     def _on_add_region(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
@@ -58,17 +58,17 @@ class SpectrumContextMenuActions:
             return
         self._controller.create_region(spectrum_id)
 
-    def _on_optimize_regions(self) -> None:
+    def _on_optimize(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
         self._controller.optimize_regions(spectrum_ids=[spectrum_id])
 
-    def _on_run_segmenter(self) -> None:
+    def _on_auto_fit(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.run_segmenter([spectrum_id])
+        self._controller.auto_fit_spectra([spectrum_id])
 
     def _on_export_spectrum_csv(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
@@ -101,26 +101,26 @@ def attach_spectrum_context_actions(
     """
     if include_model_actions:
         add_region = menu.addAction("Add region")
-        optimize_regions = menu.addAction("Optimize regions")
-        run_segmenter = menu.addAction("Run segmenter")
+        optimize = menu.addAction("Optimize")
+        auto_fit = menu.addAction("Auto fit")
     else:
         add_region = QAction("Add region", menu)
-        optimize_regions = QAction("Optimize regions", menu)
-        run_segmenter = QAction("Run segmenter", menu)
+        optimize = QAction("Optimize", menu)
+        auto_fit = QAction("Auto fit", menu)
     export_spectrum_csv = menu.addAction("Export spectrum")
 
     state = SpectrumContextMenuActions(
         add_region=add_region,
-        optimize_regions=optimize_regions,
-        run_segmenter=run_segmenter,
+        optimize=optimize,
+        auto_fit=auto_fit,
         export_spectrum_csv=export_spectrum_csv,
         _controller=controller,
         _dialog_parent=dialog_parent,
     )
     if include_model_actions:
         add_region.triggered.connect(lambda _checked=False: state._on_add_region())
-        optimize_regions.triggered.connect(lambda _checked=False: state._on_optimize_regions())
-        run_segmenter.triggered.connect(lambda _checked=False: state._on_run_segmenter())
+        optimize.triggered.connect(lambda _checked=False: state._on_optimize())
+        auto_fit.triggered.connect(lambda _checked=False: state._on_auto_fit())
     export_spectrum_csv.triggered.connect(lambda _checked=False: state._on_export_spectrum_csv())
 
     return state
@@ -249,5 +249,4 @@ def attach_region_context_actions(
         delete_region.triggered.connect(lambda _checked=False: state._on_delete_region())
     export_peak_csv.triggered.connect(lambda _checked=False: state._on_export_peak_csv())
 
-    return state
     return state

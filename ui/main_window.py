@@ -1,17 +1,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import (
-    QDialog,
-    QFileDialog,
-    QMainWindow,
-    QMessageBox,
-    QSplitter,
-    QStatusBar,
-    QToolBar,
-    QWidget,
-)
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
@@ -25,7 +16,7 @@ class MainWindow(QMainWindow):
     """
     Main application window hosting spectrum tree, plot area, and properties.
 
-    The window wires menu and toolbar actions to the :class:`ControllerWrapper`
+    The window wires menu actions to the :class:`ControllerWrapper`
     and listens to its signals to keep UI state (undo/redo, status bar, and
     future child widgets) in sync with the underlying model.
 
@@ -53,12 +44,10 @@ class MainWindow(QMainWindow):
         self._action_export_peaks_all_selected_spectra_csv: QAction | None = None
         self._action_undo: QAction | None = None
         self._action_redo: QAction | None = None
-        self._action_run_segmenter: QAction | None = None
-        self._action_optimize_regions: QAction | None = None
+        self._action_auto_fit: QAction | None = None
         self._action_load_nn_model: QAction | None = None
         self._action_app_parameters: QAction | None = None
 
-        self._main_toolbar: QToolBar | None = None
         self._status_bar: QStatusBar | None = None
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
@@ -67,7 +56,6 @@ class MainWindow(QMainWindow):
 
         self._create_actions()
         self._create_menus()
-        self._create_toolbar()
         self._create_central_splitter()
         self._create_status_bar()
         self._connect_controller_signals()
@@ -89,7 +77,9 @@ class MainWindow(QMainWindow):
         """Create menu and toolbar actions."""
         self._action_new = QAction("New", self)
         self._action_open = QAction("Open…", self)
+        self._action_open.setShortcut(QKeySequence.StandardKey.Open)
         self._action_save = QAction("Save", self)
+        self._action_save.setShortcut(QKeySequence.StandardKey.Save)
         self._action_save_as = QAction("Save As…", self)
         self._action_exit = QAction("Exit", self)
         self._action_export_spectrum_csv = QAction("Export selected spectrum CSV…", self)
@@ -100,12 +90,13 @@ class MainWindow(QMainWindow):
         )
 
         self._action_undo = QAction("Undo", self)
+        self._action_undo.setShortcut(QKeySequence.StandardKey.Undo)
         self._action_redo = QAction("Redo", self)
+        self._action_redo.setShortcut(QKeySequence.StandardKey.Redo)
         self._action_undo.setEnabled(False)
         self._action_redo.setEnabled(False)
 
-        self._action_run_segmenter = QAction("Run segmenter", self)
-        self._action_optimize_regions = QAction("Optimize regions", self)
+        self._action_auto_fit = QAction("Auto fit", self)
         self._action_load_nn_model = QAction("Load NN model…", self)
         self._action_app_parameters = QAction("Application parameters…", self)
 
@@ -126,8 +117,7 @@ class MainWindow(QMainWindow):
         self._action_undo.triggered.connect(self._on_undo_triggered)
         self._action_redo.triggered.connect(self._on_redo_triggered)
 
-        self._action_run_segmenter.triggered.connect(self._on_run_segmenter_triggered)
-        self._action_optimize_regions.triggered.connect(self._on_optimize_regions_triggered)
+        self._action_auto_fit.triggered.connect(self._on_auto_fit_triggered)
         self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
         self._action_app_parameters.triggered.connect(self._on_app_parameters_triggered)
 
@@ -164,40 +154,14 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(self._action_redo)
 
         run_menu = menu_bar.addMenu("Run")
-        if self._action_run_segmenter is not None:
-            run_menu.addAction(self._action_run_segmenter)
-        if self._action_optimize_regions is not None:
-            run_menu.addAction(self._action_optimize_regions)
+        if self._action_auto_fit is not None:
+            run_menu.addAction(self._action_auto_fit)
 
         options_menu = menu_bar.addMenu("Options")
         if self._action_load_nn_model is not None:
             options_menu.addAction(self._action_load_nn_model)
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
-
-    def _create_toolbar(self) -> None:
-        """Create the main toolbar and add actions."""
-        toolbar = QToolBar("Main", self)
-        toolbar.setObjectName("MainToolbar")
-
-        if self._action_open is not None:
-            toolbar.addAction(self._action_open)
-        if self._action_save is not None:
-            toolbar.addAction(self._action_save)
-        toolbar.addSeparator()
-        if self._action_undo is not None:
-            toolbar.addAction(self._action_undo)
-        if self._action_redo is not None:
-            toolbar.addAction(self._action_redo)
-
-        toolbar.addSeparator()
-        if self._action_run_segmenter is not None:
-            toolbar.addAction(self._action_run_segmenter)
-        if self._action_optimize_regions is not None:
-            toolbar.addAction(self._action_optimize_regions)
-
-        self.addToolBar(toolbar)
-        self._main_toolbar = toolbar
 
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
@@ -359,27 +323,16 @@ class MainWindow(QMainWindow):
         """Trigger a redo via the controller."""
         self._controller.redo()
 
-    def _on_run_segmenter_triggered(self) -> None:
-        """Run the segmenter for the currently selected spectrum."""
+    def _on_auto_fit_triggered(self) -> None:
+        """Run segmenter then optimization for all selected spectra."""
         spectrum_ids: list[str] = []
         if self._spectrum_tree_panel is not None:
             spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
         if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select a spectrum before running the segmenter.")
+            self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
             return
 
-        self._controller.run_segmenter(spectrum_ids)
-
-    def _on_optimize_regions_triggered(self) -> None:
-        """Run optimization for regions associated with the selected spectrum."""
-        spectrum_ids: list[str] = []
-        if self._spectrum_tree_panel is not None:
-            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
-        if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select a spectrum before optimizing regions.")
-            return
-
-        self._controller.optimize_regions(spectrum_ids=spectrum_ids)
+        self._controller.auto_fit_spectra(spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
