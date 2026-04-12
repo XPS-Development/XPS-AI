@@ -421,6 +421,15 @@ def test_orchestrator_dump_raises_without_path(orchestrator_with_data):
         orch.dump_collection()
 
 
+def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_data, tmp_path):
+    """dump_collection records the path so the UI can show the filename after save."""
+    orch = orchestrator_with_data
+    assert orch.get_default_save_path() is None
+    fp = tmp_path / "out.json"
+    orch.dump_collection(path=fp)
+    assert orch.get_default_save_path() == fp
+
+
 # ---- Automatic methods (AutomatizationAdapter) ----
 
 

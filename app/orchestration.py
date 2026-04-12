@@ -1076,6 +1076,7 @@ class AppOrchestrator:
             use_gzip=self._params.default_serialization_use_gzip,
             compresslevel=self._params.default_serialization_compresslevel,
         )
+        self.set_default_save_path(resolved_path)
 
     def load_collection(
         self,
