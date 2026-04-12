@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -227,73 +226,70 @@ class ComponentCreationDialog(QDialog):
 
     def _on_create(self) -> None:
         """Create component and apply parameter configuration."""
-        try:
-            component_type = str(self._component_type_combo.currentText()).strip()
-            model_name = str(self._model_combo.currentText()).strip()
-            if component_type not in {"peak", "background"}:
-                raise ValueError("Invalid component type selection.")
-            if not model_name:
-                raise ValueError("Please select a model.")
+        component_type = str(self._component_type_combo.currentText()).strip()
+        model_name = str(self._model_combo.currentText()).strip()
+        if component_type not in {"peak", "background"}:
+            raise ValueError("Invalid component type selection.")
+        if not model_name:
+            raise ValueError("Please select a model.")
 
-            value_by_param: dict[str, float] = {}
-            config_by_param: dict[str, tuple[float, float, bool, str | None]] = {}
+        value_by_param: dict[str, float] = {}
+        config_by_param: dict[str, tuple[float, float, bool, str | None]] = {}
 
-            for spec in self._param_specs:
-                editors = self._editors_by_param[spec.name]
-                value_text = editors.value_edit.text().strip()
-                if not value_text:
-                    raise ValueError(f"Missing value for parameter '{spec.name}'.")
-                value_by_param[spec.name] = float(value_text)
+        for spec in self._param_specs:
+            editors = self._editors_by_param[spec.name]
+            value_text = editors.value_edit.text().strip()
+            if not value_text:
+                raise ValueError(f"Missing value for parameter '{spec.name}'.")
+            value_by_param[spec.name] = float(value_text)
 
-                lower = self._parse_bound(editors.lower_edit.text(), is_lower=True)
-                upper = self._parse_bound(editors.upper_edit.text(), is_lower=False)
-                vary = editors.vary_cb.isChecked()
-                expr = self._parse_expr(editors.expr_edit.text())
-                config_by_param[spec.name] = (lower, upper, vary, expr)
+            lower = self._parse_bound(editors.lower_edit.text(), is_lower=True)
+            upper = self._parse_bound(editors.upper_edit.text(), is_lower=False)
+            vary = editors.vary_cb.isChecked()
+            expr = self._parse_expr(editors.expr_edit.text())
+            config_by_param[spec.name] = (lower, upper, vary, expr)
 
-            # Capture component identifiers before creation so we can find the created component.
-            before_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
-            before_bg_id = self._controller.query.get_background_id(self._region_id)
+        # Capture component identifiers before creation so we can find the created component.
+        before_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
+        before_bg_id = self._controller.query.get_background_id(self._region_id)
 
-            if component_type == "peak":
-                self._controller.create_peak(self._region_id, model_name, parameters=value_by_param)
-                after_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
-                new_ids = list(after_peak_ids - before_peak_ids)
-                if len(new_ids) != 1:
-                    raise RuntimeError(
-                        "Failed to identify created peak id (unexpected number of new peaks)."
-                    )
-                component_id = new_ids[0]
-            else:
-                # Background replacement is disabled in this dialog when a background exists.
-                if before_bg_id is not None:
-                    raise RuntimeError("Background already exists; replacement is disabled.")
-                self._controller.create_background(self._region_id, model_name, parameters=value_by_param)
-                component_id = str(self._controller.query.get_background_id(self._region_id))
-                if not component_id:
-                    raise RuntimeError("Failed to identify created background id.")
+        if component_type == "peak":
+            self._controller.create_peak(self._region_id, model_name, parameters=value_by_param)
+            after_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
+            new_ids = list(after_peak_ids - before_peak_ids)
+            if len(new_ids) != 1:
+                raise RuntimeError(
+                    "Failed to identify created peak id (unexpected number of new peaks)."
+                )
+            component_id = new_ids[0]
+        else:
+            # Background replacement is disabled in this dialog when a background exists.
+            if before_bg_id is not None:
+                raise RuntimeError("Background already exists; replacement is disabled.")
+            self._controller.create_background(self._region_id, model_name, parameters=value_by_param)
+            component_id = str(self._controller.query.get_background_id(self._region_id))
+            if not component_id:
+                raise RuntimeError("Failed to identify created background id.")
 
-            # Apply lower/upper/vary/expr only when the value differs from model defaults.
-            for spec in self._param_specs:
-                lower, upper, vary, expr = config_by_param[spec.name]
+        # Apply lower/upper/vary/expr only when the value differs from model defaults.
+        for spec in self._param_specs:
+            lower, upper, vary, expr = config_by_param[spec.name]
 
-                if not self._float_equal(lower, spec.lower):
-                    self._controller.update_parameter(
-                        component_id, spec.name, "lower", lower, normalized=False
-                    )
-                if not self._float_equal(upper, spec.upper):
-                    self._controller.update_parameter(
-                        component_id, spec.name, "upper", upper, normalized=False
-                    )
-                if vary != spec.vary:
-                    self._controller.update_parameter(
-                        component_id, spec.name, "vary", vary, normalized=False
-                    )
-                if (expr or None) != spec.expr:
-                    self._controller.update_parameter(
-                        component_id, spec.name, "expr", expr, normalized=False
-                    )
+            if not self._float_equal(lower, spec.lower):
+                self._controller.update_parameter(
+                    component_id, spec.name, "lower", lower, normalized=False
+                )
+            if not self._float_equal(upper, spec.upper):
+                self._controller.update_parameter(
+                    component_id, spec.name, "upper", upper, normalized=False
+                )
+            if vary != spec.vary:
+                self._controller.update_parameter(
+                    component_id, spec.name, "vary", vary, normalized=False
+                )
+            if (expr or None) != spec.expr:
+                self._controller.update_parameter(
+                    component_id, spec.name, "expr", expr, normalized=False
+                )
 
-            self.accept()
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Failed to add component", str(exc))
+        self.accept()

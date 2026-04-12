@@ -15,7 +15,6 @@ from core.services import CoreContext
 from tools.dto import ComponentDTO, DTOService, RegionDTO, SpectrumDTO
 
 from .automatization import AutomatizationAdapter
-from .csv_export import CSVExportService
 from .command.changes import (
     BaseChange,
     CompositeChange,
@@ -36,6 +35,8 @@ from .command.changes import (
 )
 from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
+from .csv_export import CSVExportService
+from .error_dump import apply_safe_execution_to_class
 from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
@@ -67,7 +68,7 @@ class AppParameters:
     import_use_cps: bool = True
 
     # ---- NN service parameters ----
-    nn_model_path: str | None = "model.onnx"
+    nn_model_path: str | None = "assets/models/model.onnx"
     nn_pred_threshold: float = 0.5
     nn_smooth: bool = True
     nn_interp_num: int = 256
@@ -1194,3 +1195,6 @@ class AppOrchestrator:
         """Return the default save path from AppParameters."""
         p = self._params.default_serialization_path
         return Path(p) if p is not None else None
+
+
+apply_safe_execution_to_class(AppOrchestrator)

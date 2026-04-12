@@ -459,10 +459,7 @@ class PlotAreaWidget(QWidget):
     def _clear_rois(self) -> None:
         """Detach every ``InteractiveRegion`` from the main plot."""
         for roi in self._roi_items_by_region.values():
-            try:
-                self._main_plot.removeItem(roi)
-            except Exception:
-                pass
+            self._main_plot.removeItem(roi)
         self._roi_items_by_region.clear()
         self._roi_region_ids_in_plot.clear()
 
@@ -496,10 +493,7 @@ class PlotAreaWidget(QWidget):
             if rid not in wanted:
                 roi = self._roi_items_by_region.pop(rid)
                 self._roi_region_ids_in_plot.discard(rid)
-                try:
-                    self._main_plot.removeItem(roi)
-                except Exception:
-                    pass
+                self._main_plot.removeItem(roi)
 
         # Create/update ROIs for current regions.
         for rid in region_ids:
@@ -583,10 +577,7 @@ class PlotAreaWidget(QWidget):
             Region item whose handles were moved.
         """
         low, high = roi.getRegion()
-        try:
-            self._controller.update_region_slice(roi.region_id, low, high, mode="value")
-        except Exception:
-            return
+        self._controller.update_region_slice(roi.region_id, low, high, mode="value")
 
     def _draw_spectrum(self, result: SpectrumEvaluationResult) -> None:
         """

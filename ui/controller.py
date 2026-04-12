@@ -287,7 +287,7 @@ class ControllerWrapper(QObject):
         """
         cmd = self._orchestrator.peek_undo_command()
         if cmd is None:
-            raise IndexError("Nothing to undo")
+            return
         self._orchestrator.undo()
         self._emit_ui_for_command(cmd)
         self._emit_undo_redo_state()
@@ -298,7 +298,7 @@ class ControllerWrapper(QObject):
         """
         cmd = self._orchestrator.peek_redo_command()
         if cmd is None:
-            raise IndexError("Nothing to redo")
+            return
         self._orchestrator.redo()
         self._emit_ui_for_command(cmd)
         self._emit_undo_redo_state()

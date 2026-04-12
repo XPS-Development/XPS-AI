@@ -13,8 +13,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.error_dump import save_error_dump
-
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
@@ -278,36 +276,23 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            suffix = Path(filename).suffix.lower()
-            if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
-                self._controller.import_spectra(filename)
-            else:
-                if not self._confirm_discard_changes():
-                    return
-                self._controller.load_collection(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to open file", message)
-            return
+        suffix = Path(filename).suffix.lower()
+        if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
+            self._controller.import_spectra(filename)
+        else:
+            if not self._confirm_discard_changes():
+                return
+            self._controller.load_collection(filename)
 
         self._update_window_title()
         self._update_status_bar()
 
     def _on_save_triggered(self) -> None:
         """Save the collection using the default or last used path."""
-        try:
-            self._controller.dump_collection()
-        except ValueError:
+        if self._controller.get_default_save_path() is None:
             self._on_save_as_triggered()
             return
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to save file", message)
-            return
-
+        self._controller.dump_collection()
         self._update_window_title()
         self._update_status_bar()
 
@@ -322,25 +307,13 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            self._controller.dump_collection(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to save file", message)
-            return
-
+        self._controller.dump_collection(filename)
         self._update_window_title()
         self._update_status_bar()
 
     def _on_undo_triggered(self) -> None:
         """Trigger an undo via the controller."""
-        try:
-            self._controller.undo()
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to undo", message)
+        self._controller.undo()
 
     def _on_export_spectrum_csv_triggered(self) -> None:
         """Export currently selected spectrum as CSV."""
@@ -348,12 +321,7 @@ class MainWindow(QMainWindow):
         if spectrum_id is None:
             self._show_info("No spectrum selected", "Select a spectrum before exporting.")
             return
-        try:
-            export_spectra(self._controller, [spectrum_id], parent=self)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to export spectrum CSV", message)
+        export_spectra(self._controller, [spectrum_id], parent=self)
 
     def _on_export_peak_csv_triggered(self) -> None:
         """Export peak parameters from currently selected spectrum as CSV."""
@@ -361,12 +329,7 @@ class MainWindow(QMainWindow):
         if spectrum_id is None:
             self._show_info("No spectrum selected", "Select a spectrum before exporting peak parameters.")
             return
-        try:
-            export_peaks(self._controller, [spectrum_id], parent=self)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to export peak parameters CSV", message)
+        export_peaks(self._controller, [spectrum_id], parent=self)
 
     def _on_export_all_selected_spectra_triggered(self) -> None:
         """
@@ -394,12 +357,7 @@ class MainWindow(QMainWindow):
 
     def _on_redo_triggered(self) -> None:
         """Trigger a redo via the controller."""
-        try:
-            self._controller.redo()
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to redo", message)
+        self._controller.redo()
 
     def _on_run_segmenter_triggered(self) -> None:
         """Run the segmenter for the currently selected spectrum."""
@@ -410,12 +368,7 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select a spectrum before running the segmenter.")
             return
 
-        try:
-            self._controller.run_segmenter(spectrum_ids)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to run segmenter", message)
+        self._controller.run_segmenter(spectrum_ids)
 
     def _on_optimize_regions_triggered(self) -> None:
         """Run optimization for regions associated with the selected spectrum."""
@@ -426,12 +379,7 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select a spectrum before optimizing regions.")
             return
 
-        try:
-            self._controller.optimize_regions(spectrum_ids=spectrum_ids)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to optimize regions", message)
+        self._controller.optimize_regions(spectrum_ids=spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
@@ -444,12 +392,7 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            self._controller.load_nn_model(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to load NN model", message)
+        self._controller.load_nn_model(filename)
 
     def _on_app_parameters_triggered(self) -> None:
         """Open the application parameters dialog."""
@@ -571,19 +514,6 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No,
         )
         return answer == QMessageBox.StandardButton.Yes
-
-    def _show_error(self, title: str, message: str) -> None:
-        """
-        Display an error message box.
-
-        Parameters
-        ----------
-        title : str
-            Dialog title.
-        message : str
-            Error description.
-        """
-        QMessageBox.critical(self, title, message)
 
     def _show_info(self, title: str, message: str) -> None:
         """
