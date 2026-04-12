@@ -637,6 +637,31 @@ class AppOrchestrator:
 
         self.execute(CompositeChange(changes=changes))
 
+    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+        """
+        Run the NN segmenter then region optimization for the given spectra.
+
+        This performs two separate command executions (two undo steps): first
+        :meth:`run_segmenter`, then :meth:`optimize_regions`, so optimization
+        sees regions created by the segmenter.
+
+        Parameters
+        ----------
+        spectrum_ids : Sequence of str
+            Parent spectrum identifiers to process.
+        **kwargs
+            Forwarded to :meth:`optimize_regions` (merged with
+            ``AppParameters.optimization_kwargs``).
+
+        Notes
+        -----
+        If ``spectrum_ids`` is empty, this method returns without doing anything.
+        """
+        if not spectrum_ids:
+            return
+        self.run_segmenter(spectrum_ids)
+        self.optimize_regions(spectrum_ids=spectrum_ids, **kwargs)
+
     def optimize_regions(
         self,
         *,
