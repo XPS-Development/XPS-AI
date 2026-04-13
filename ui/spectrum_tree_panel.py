@@ -1,7 +1,5 @@
-from typing import Any
-
-from PySide6.QtCore import QModelIndex, Qt
-from PySide6.QtWidgets import QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtCore import QModelIndex
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from .controller import ControllerWrapper
 from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
@@ -9,7 +7,7 @@ from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
 
 class SpectrumTreePanel(QWidget):
     """
-    Composite widget hosting a search box and the spectrum tree.
+    Composite widget hosting a search box, Auto fit / Optimize controls, and the spectrum tree.
 
     The search box filters and highlights spectra, groups, and files by
     matching the entered text against their labels. Matching branches are
@@ -22,13 +20,21 @@ class SpectrumTreePanel(QWidget):
         self._search_edit = QLineEdit(self)
         self._search_edit.setPlaceholderText("Search spectra, groups, files…")
         self._tree = SpectrumTreeWidget(controller, self)
+        self._auto_fit_btn = QPushButton("Auto fit", self)
+        self._optimize_btn = QPushButton("Optimize", self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._search_edit)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self._auto_fit_btn)
+        btn_row.addWidget(self._optimize_btn)
+        layout.addLayout(btn_row)
         layout.addWidget(self._tree)
 
         self._search_edit.textChanged.connect(self._on_search_text_changed)
+        self._auto_fit_btn.clicked.connect(self._on_auto_fit_clicked)
+        self._optimize_btn.clicked.connect(self._on_optimize_clicked)
 
     @property
     def tree(self) -> SpectrumTreeWidget:
@@ -59,6 +65,30 @@ class SpectrumTreePanel(QWidget):
     def _on_search_text_changed(self, text: str) -> None:
         """React to search box changes by updating the filter."""
         self._apply_filter(text)
+
+    def _on_auto_fit_clicked(self) -> None:
+        """Run segmenter then optimization for all selected spectra."""
+        spectrum_ids = self._tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            QMessageBox.information(
+                self,
+                "No spectrum selected",
+                "Select one or more spectra before auto fit.",
+            )
+            return
+        self._controller.auto_fit_spectra(spectrum_ids)
+
+    def _on_optimize_clicked(self) -> None:
+        """Optimize all regions under each selected spectrum."""
+        spectrum_ids = self._tree.get_selected_spectrum_ids()
+        if not spectrum_ids:
+            QMessageBox.information(
+                self,
+                "No spectrum selected",
+                "Select one or more spectra before optimizing.",
+            )
+            return
+        self._controller.optimize_regions(spectrum_ids=spectrum_ids)
 
     def _apply_filter(self, text: str) -> None:
         """

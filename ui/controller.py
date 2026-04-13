@@ -3,7 +3,7 @@ from typing import Any, Literal, Sequence
 
 from PySide6.QtCore import QObject, Signal
 
-from app.command.changes import BaseChange, ParameterField
+from app.command.changes import ParameterField
 from app.command.commands import (
     Command,
     CompositeCommand,
@@ -11,8 +11,8 @@ from app.command.commands import (
     CreatePeakCommand,
     CreateRegionCommand,
     CreateSpectrumCommand,
-    RemoveObjectCommand,
     RemoveMetadataCommand,
+    RemoveObjectCommand,
     SetMetadataCommand,
     UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
@@ -287,7 +287,7 @@ class ControllerWrapper(QObject):
         """
         cmd = self._orchestrator.peek_undo_command()
         if cmd is None:
-            raise IndexError("Nothing to undo")
+            return
         self._orchestrator.undo()
         self._emit_ui_for_command(cmd)
         self._emit_undo_redo_state()
@@ -298,7 +298,7 @@ class ControllerWrapper(QObject):
         """
         cmd = self._orchestrator.peek_redo_command()
         if cmd is None:
-            raise IndexError("Nothing to redo")
+            return
         self._orchestrator.redo()
         self._emit_ui_for_command(cmd)
         self._emit_undo_redo_state()
@@ -353,6 +353,21 @@ class ControllerWrapper(QObject):
             spectrum_ids=spectrum_ids,
             **kwargs,
         )
+        self._emit_fit_data_changed()
+
+    def auto_fit_spectra(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+        """
+        Run the segmenter then optimize regions for the given spectra.
+
+        Parameters
+        ----------
+        spectrum_ids : Sequence[str]
+            Identifiers of the parent spectra to auto-fit.
+        **kwargs
+            Extra keyword arguments forwarded to
+            :meth:`AppOrchestrator.optimize_regions`.
+        """
+        self._orchestrator.auto_fit(spectrum_ids, **kwargs)
         self._emit_fit_data_changed()
 
     def update_parameter(

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.json_utils import parse_json_object
 from app.orchestration import AppParameters
 
 
@@ -202,9 +203,11 @@ class OptionsDialog(QDialog):
         params.nn_smooth = self._nn_smooth_cb.isChecked()
         params.nn_interp_num = int(self._nn_interp_num_sb.value())
 
-        params.optimization_kwargs = self._parse_kwargs_json(
-            self._optimization_kwargs_edit.toPlainText(),
-        )
+        opt_text = self._optimization_kwargs_edit.toPlainText()
+        kwargs, err = parse_json_object(opt_text)
+        if err is not None:
+            raise ValueError(err)
+        params.optimization_kwargs = kwargs
 
         mode_text = self._serialization_mode_edit.text().strip() or "replace"
         params.default_serialization_mode = mode_text  # type: ignore[assignment]
@@ -232,11 +235,11 @@ class OptionsDialog(QDialog):
         bool
             True if validation succeeded and params were updated.
         """
-        try:
-            self.apply_to_params(params)
-        except ValueError as exc:
-            QMessageBox.critical(self, "Invalid settings", str(exc))
+        _, opt_err = parse_json_object(self._optimization_kwargs_edit.toPlainText())
+        if opt_err is not None:
+            QMessageBox.critical(self, "Invalid settings", opt_err)
             return False
+        self.apply_to_params(params)
         return True
 
     def _dict_to_pretty_json(self, data: dict[str, Any]) -> str:
@@ -247,17 +250,3 @@ class OptionsDialog(QDialog):
             return "{}"
         return json.dumps(data, indent=2, sort_keys=True)
 
-    def _parse_kwargs_json(self, text: str) -> dict[str, Any]:
-        """Parse optimization kwargs from JSON text."""
-        import json
-
-        cleaned = text.strip()
-        if not cleaned:
-            return {}
-        try:
-            value = json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid optimization kwargs JSON: {exc}") from exc
-        if not isinstance(value, dict):
-            raise ValueError("Optimization kwargs must be a JSON object (mapping).")
-        return value

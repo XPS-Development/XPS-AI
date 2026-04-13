@@ -4,3 +4,5 @@ __pycache__
 model/train/data
 train_log*
 *.ipynb
+notebooks/
+error_dumps/

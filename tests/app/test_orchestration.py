@@ -1,5 +1,6 @@
 """Tests for AppOrchestrator: aggregation and orchestration of app services and commands."""
 
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
@@ -111,6 +112,44 @@ def test_orchestrator_optimize_regions(orchestrator_with_data, region_id, peak_i
     assert len(params) > 0
     for p in params.values():
         assert np.isfinite(p["value"])
+
+
+def test_orchestrator_auto_fit_spectra_calls_segmenter_then_optimize(
+    orchestrator_with_data, spectrum_id, monkeypatch
+):
+    """auto_fit_spectra invokes run_segmenter then optimize_regions in order."""
+    orch = orchestrator_with_data
+    calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    def fake_run_segmenter(spectrum_ids: tuple[Any, ...]) -> None:
+        calls.append(("run_segmenter", spectrum_ids, {}))
+
+    def fake_optimize_regions(*args: Any, **kwargs: Any) -> None:
+        calls.append(("optimize_regions", args, kwargs))
+
+    monkeypatch.setattr(orch, "run_segmenter", fake_run_segmenter)
+    monkeypatch.setattr(orch, "optimize_regions", fake_optimize_regions)
+
+    orch.auto_fit_spectra([spectrum_id], method="least_squares")
+
+    assert len(calls) == 2
+    assert calls[0][0] == "run_segmenter"
+    assert list(calls[0][1]) == [spectrum_id]
+    assert calls[1][0] == "optimize_regions"
+    assert calls[1][2]["spectrum_ids"] == [spectrum_id]
+    assert calls[1][2]["method"] == "least_squares"
+
+
+def test_orchestrator_auto_fit_spectra_empty_ids_noop(orchestrator_with_data, monkeypatch):
+    """auto_fit_spectra with empty spectrum_ids does not call segmenter or optimize."""
+    orch = orchestrator_with_data
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise AssertionError("should not be called")
+
+    monkeypatch.setattr(orch, "run_segmenter", boom)
+    monkeypatch.setattr(orch, "optimize_regions", boom)
+    orch.auto_fit_spectra([])
 
 
 # ---- Create ----
@@ -380,6 +419,15 @@ def test_orchestrator_dump_raises_without_path(orchestrator_with_data):
     orch = orchestrator_with_data
     with pytest.raises(ValueError, match="path is required"):
         orch.dump_collection()
+
+
+def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_data, tmp_path):
+    """dump_collection records the path so the UI can show the filename after save."""
+    orch = orchestrator_with_data
+    assert orch.get_default_save_path() is None
+    fp = tmp_path / "out.json"
+    orch.dump_collection(path=fp)
+    assert orch.get_default_save_path() == fp
 
 
 # ---- Automatic methods (AutomatizationAdapter) ----

@@ -1,19 +1,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
-from PySide6.QtWidgets import (
-    QDialog,
-    QFileDialog,
-    QMainWindow,
-    QMessageBox,
-    QSplitter,
-    QStatusBar,
-    QToolBar,
-    QWidget,
-)
-
-from app.error_dump import save_error_dump
+from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
@@ -27,7 +16,7 @@ class MainWindow(QMainWindow):
     """
     Main application window hosting spectrum tree, plot area, and properties.
 
-    The window wires menu and toolbar actions to the :class:`ControllerWrapper`
+    The window wires menu actions to the :class:`ControllerWrapper`
     and listens to its signals to keep UI state (undo/redo, status bar, and
     future child widgets) in sync with the underlying model.
 
@@ -55,12 +44,10 @@ class MainWindow(QMainWindow):
         self._action_export_peaks_all_selected_spectra_csv: QAction | None = None
         self._action_undo: QAction | None = None
         self._action_redo: QAction | None = None
-        self._action_run_segmenter: QAction | None = None
-        self._action_optimize_regions: QAction | None = None
+        self._action_auto_fit: QAction | None = None
         self._action_load_nn_model: QAction | None = None
         self._action_app_parameters: QAction | None = None
 
-        self._main_toolbar: QToolBar | None = None
         self._status_bar: QStatusBar | None = None
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
@@ -69,7 +56,6 @@ class MainWindow(QMainWindow):
 
         self._create_actions()
         self._create_menus()
-        self._create_toolbar()
         self._create_central_splitter()
         self._create_status_bar()
         self._connect_controller_signals()
@@ -91,7 +77,9 @@ class MainWindow(QMainWindow):
         """Create menu and toolbar actions."""
         self._action_new = QAction("New", self)
         self._action_open = QAction("Open…", self)
+        self._action_open.setShortcut(QKeySequence.StandardKey.Open)
         self._action_save = QAction("Save", self)
+        self._action_save.setShortcut(QKeySequence.StandardKey.Save)
         self._action_save_as = QAction("Save As…", self)
         self._action_exit = QAction("Exit", self)
         self._action_export_spectrum_csv = QAction("Export selected spectrum CSV…", self)
@@ -102,12 +90,13 @@ class MainWindow(QMainWindow):
         )
 
         self._action_undo = QAction("Undo", self)
+        self._action_undo.setShortcut(QKeySequence.StandardKey.Undo)
         self._action_redo = QAction("Redo", self)
+        self._action_redo.setShortcut(QKeySequence.StandardKey.Redo)
         self._action_undo.setEnabled(False)
         self._action_redo.setEnabled(False)
 
-        self._action_run_segmenter = QAction("Run segmenter", self)
-        self._action_optimize_regions = QAction("Optimize regions", self)
+        self._action_auto_fit = QAction("Auto fit", self)
         self._action_load_nn_model = QAction("Load NN model…", self)
         self._action_app_parameters = QAction("Application parameters…", self)
 
@@ -128,8 +117,7 @@ class MainWindow(QMainWindow):
         self._action_undo.triggered.connect(self._on_undo_triggered)
         self._action_redo.triggered.connect(self._on_redo_triggered)
 
-        self._action_run_segmenter.triggered.connect(self._on_run_segmenter_triggered)
-        self._action_optimize_regions.triggered.connect(self._on_optimize_regions_triggered)
+        self._action_auto_fit.triggered.connect(self._on_auto_fit_triggered)
         self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
         self._action_app_parameters.triggered.connect(self._on_app_parameters_triggered)
 
@@ -166,40 +154,14 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(self._action_redo)
 
         run_menu = menu_bar.addMenu("Run")
-        if self._action_run_segmenter is not None:
-            run_menu.addAction(self._action_run_segmenter)
-        if self._action_optimize_regions is not None:
-            run_menu.addAction(self._action_optimize_regions)
+        if self._action_auto_fit is not None:
+            run_menu.addAction(self._action_auto_fit)
 
         options_menu = menu_bar.addMenu("Options")
         if self._action_load_nn_model is not None:
             options_menu.addAction(self._action_load_nn_model)
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
-
-    def _create_toolbar(self) -> None:
-        """Create the main toolbar and add actions."""
-        toolbar = QToolBar("Main", self)
-        toolbar.setObjectName("MainToolbar")
-
-        if self._action_open is not None:
-            toolbar.addAction(self._action_open)
-        if self._action_save is not None:
-            toolbar.addAction(self._action_save)
-        toolbar.addSeparator()
-        if self._action_undo is not None:
-            toolbar.addAction(self._action_undo)
-        if self._action_redo is not None:
-            toolbar.addAction(self._action_redo)
-
-        toolbar.addSeparator()
-        if self._action_run_segmenter is not None:
-            toolbar.addAction(self._action_run_segmenter)
-        if self._action_optimize_regions is not None:
-            toolbar.addAction(self._action_optimize_regions)
-
-        self.addToolBar(toolbar)
-        self._main_toolbar = toolbar
 
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
@@ -278,36 +240,23 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            suffix = Path(filename).suffix.lower()
-            if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
-                self._controller.import_spectra(filename)
-            else:
-                if not self._confirm_discard_changes():
-                    return
-                self._controller.load_collection(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to open file", message)
-            return
+        suffix = Path(filename).suffix.lower()
+        if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
+            self._controller.import_spectra(filename)
+        else:
+            if not self._confirm_discard_changes():
+                return
+            self._controller.load_collection(filename)
 
         self._update_window_title()
         self._update_status_bar()
 
     def _on_save_triggered(self) -> None:
         """Save the collection using the default or last used path."""
-        try:
-            self._controller.dump_collection()
-        except ValueError:
+        if self._controller.get_default_save_path() is None:
             self._on_save_as_triggered()
             return
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to save file", message)
-            return
-
+        self._controller.dump_collection()
         self._update_window_title()
         self._update_status_bar()
 
@@ -322,25 +271,13 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            self._controller.dump_collection(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to save file", message)
-            return
-
+        self._controller.dump_collection(filename)
         self._update_window_title()
         self._update_status_bar()
 
     def _on_undo_triggered(self) -> None:
         """Trigger an undo via the controller."""
-        try:
-            self._controller.undo()
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to undo", message)
+        self._controller.undo()
 
     def _on_export_spectrum_csv_triggered(self) -> None:
         """Export currently selected spectrum as CSV."""
@@ -348,12 +285,7 @@ class MainWindow(QMainWindow):
         if spectrum_id is None:
             self._show_info("No spectrum selected", "Select a spectrum before exporting.")
             return
-        try:
-            export_spectra(self._controller, [spectrum_id], parent=self)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to export spectrum CSV", message)
+        export_spectra(self._controller, [spectrum_id], parent=self)
 
     def _on_export_peak_csv_triggered(self) -> None:
         """Export peak parameters from currently selected spectrum as CSV."""
@@ -361,12 +293,7 @@ class MainWindow(QMainWindow):
         if spectrum_id is None:
             self._show_info("No spectrum selected", "Select a spectrum before exporting peak parameters.")
             return
-        try:
-            export_peaks(self._controller, [spectrum_id], parent=self)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to export peak parameters CSV", message)
+        export_peaks(self._controller, [spectrum_id], parent=self)
 
     def _on_export_all_selected_spectra_triggered(self) -> None:
         """
@@ -394,44 +321,18 @@ class MainWindow(QMainWindow):
 
     def _on_redo_triggered(self) -> None:
         """Trigger a redo via the controller."""
-        try:
-            self._controller.redo()
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to redo", message)
+        self._controller.redo()
 
-    def _on_run_segmenter_triggered(self) -> None:
-        """Run the segmenter for the currently selected spectrum."""
+    def _on_auto_fit_triggered(self) -> None:
+        """Run segmenter then optimization for all selected spectra."""
         spectrum_ids: list[str] = []
         if self._spectrum_tree_panel is not None:
             spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
         if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select a spectrum before running the segmenter.")
+            self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
             return
 
-        try:
-            self._controller.run_segmenter(spectrum_ids)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to run segmenter", message)
-
-    def _on_optimize_regions_triggered(self) -> None:
-        """Run optimization for regions associated with the selected spectrum."""
-        spectrum_ids: list[str] = []
-        if self._spectrum_tree_panel is not None:
-            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
-        if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select a spectrum before optimizing regions.")
-            return
-
-        try:
-            self._controller.optimize_regions(spectrum_ids=spectrum_ids)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to optimize regions", message)
+        self._controller.auto_fit_spectra(spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
@@ -444,12 +345,7 @@ class MainWindow(QMainWindow):
         if not filename:
             return
 
-        try:
-            self._controller.load_nn_model(filename)
-        except Exception as exc:  # noqa: BLE001
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            self._show_error("Failed to load NN model", message)
+        self._controller.load_nn_model(filename)
 
     def _on_app_parameters_triggered(self) -> None:
         """Open the application parameters dialog."""
@@ -571,19 +467,6 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No,
         )
         return answer == QMessageBox.StandardButton.Yes
-
-    def _show_error(self, title: str, message: str) -> None:
-        """
-        Display an error message box.
-
-        Parameters
-        ----------
-        title : str
-            Dialog title.
-        message : str
-            Error description.
-        """
-        QMessageBox.critical(self, title, message)
 
     def _show_info(self, title: str, message: str) -> None:
         """

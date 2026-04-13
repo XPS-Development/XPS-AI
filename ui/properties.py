@@ -92,12 +92,12 @@ class PropertyItem:
         """Return the index of this item within its parent."""
         if self.parent is None:
             return 0
-        try:
-            return self.parent.children.index(self)
-        except ValueError:
-            # This can happen if Qt holds a stale QModelIndex whose internalPointer()
-            # refers to an item that was removed during a model reset/rebuild.
-            return -1
+        for idx, child in enumerate(self.parent.children):
+            if child is self:
+                return idx
+        # Qt can hold a stale QModelIndex whose internalPointer() refers to an
+        # item that was removed during a model reset/rebuild.
+        return -1
 
     def append_child(self, item: "PropertyItem") -> None:
         """Append a child item to this node."""
