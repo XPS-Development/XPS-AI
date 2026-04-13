@@ -1,10 +1,8 @@
 __pycache__
-/.vscode
-/.venv
-/*build*
-/*dist*
-/other
-tests.py
-/model/train/data
-/train_log*
-/draft.*
+.vscode
+.venv
+model/train/data
+train_log*
+*.ipynb
+notebooks/
+error_dumps/
