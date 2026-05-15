@@ -1,39 +1,89 @@
 # XPS-AI
 The XPS-AI project is a comprehensive toolset for analyzing X-ray Photoelectron Spectroscopy (XPS) spectra. The project provides a neural network model for XPS spectra segmentation, data processing and visualization tools for analyzing XPS spectra, and a graphical user interface (GUI) for easy interaction with the tools.
 
-## Features
-* Neural network model for XPS spectra segmentation
-* Data processing and visualization tools for analyzing XPS spectra
-* Graphical user interface (GUI) for easy interaction with the tools
-* Manual analysis support
-* Support for exporting spectra data to various formats
+## v0.1.0 — First Public Release
 
-## Installation
+This release introduces a fully redesigned application architecture, enabling significant improvements in performance, flexibility, and extensibility.
 
-**Requirements**: Python 3.8
+---
 
-1. Clone git repo:  
-`git clone https://github.com/XPS-Development/XPS-AI.git`  
-(Optional) Create new python virtual environment:  
-`cd XPS-AI`  
-`python -m venv venv` (or other methods to create virtual env)
+### 🚀 Features
 
-2. Install requirements:  
-`pip install -r app_requirements.txt`
+* Parametric optimization powered by **lmfit**
+* Parameter constraints support
+* Fast parameter initialization mechanism for auto-analysis (up to 10× speed improvement)
+* Flexible export system for analysis results
 
-3. Run UI:  
-`python main.py`  
-(Optional) Build app with Nuitka:  
-`nuitka --onefile --enable-plugin=pyside6 --include-data-dir=venv\Lib\site-packages\scipy.libs=scipy.libs --include-data-files=model.onnx=model.onnx --windows-console-mode=disable main.py`
+---
 
+### ⚠️ Limitations
 
-## Project Structure
-The project structure is as follows:
+* Post-analysis mode is not yet available in this version
+* Currently supported peak model: Pseudo-Voigt only
+* Supported background models:
 
-`model`: Neural network model and related code  
-`tools`: Data processing and visualization tools  
-`run_train.py`: Script for training the neural network model  
-`main.py`: Script for running the GUI application  
-`app_requirements.txt`: Requirements file for the GUI application  
-`requirements.txt`: Requirements file for the project  
-`model.onnx`: deployed model to use with various frameworks  
+  * Linear
+  * Constant
+  * Shirley
+
+---
+
+### Installation
+
+#### Windows Installer
+
+1. Download `xps-ai_0.1.0_x64.exe`
+2. Run the installer
+3. Follow the setup instructions
+
+#### Portable Version
+
+1. Extract the archive
+2. Run `XPS-AI.exe`
+
+---
+
+### Build from Source
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/XPS-Development/XPS-AI.git
+   ```
+
+2. Navigate to the project directory:
+
+   ```bash
+   cd xps-ai
+   ```
+
+3. (Optional) Create a virtual environment:
+
+   ```bash
+   python -m venv venv
+   ```
+
+4. Activate the virtual environment:
+
+   * Windows:
+
+     ```bash
+     venv\Scripts\activate
+     ```
+   * Linux/macOS:
+
+     ```bash
+     source venv/bin/activate
+     ```
+
+5. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+6. Run the application:
+
+   ```bash
+   python main.py
+   ```
