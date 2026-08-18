@@ -75,7 +75,11 @@ def test_orchestrator_import_spectra(empty_collection):
     orch.import_spectra("tests/data/test_1_spec.txt")
 
     assert len(empty_collection.objects_index) >= 1
-    spectrum_ids = [oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)]
+    spectrum_ids = [
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if isinstance(obj, Spectrum)
+    ]
     assert len(spectrum_ids) == 1
     meta = orch.ctx.metadata.get_metadata(spectrum_ids[0])
     assert meta is not None
@@ -94,9 +98,13 @@ def test_orchestrator_run_segmenter(empty_collection, simple_gauss_spectrum):
 
     orch.run_segmenter(spectrum_ids=[sid])
 
-    regions = [o for o in empty_collection.objects_index.values() if isinstance(o, Region)]
+    regions = [
+        o for o in empty_collection.objects_index.values() if isinstance(o, Region)
+    ]
     peaks = [o for o in empty_collection.objects_index.values() if isinstance(o, Peak)]
-    backgrounds = [o for o in empty_collection.objects_index.values() if isinstance(o, Background)]
+    backgrounds = [
+        o for o in empty_collection.objects_index.values() if isinstance(o, Background)
+    ]
     assert len(regions) == 1
     assert len(peaks) == 1
     assert len(backgrounds) == 1
@@ -117,7 +125,7 @@ def test_orchestrator_optimize_regions(orchestrator_with_data, region_id, peak_i
 def test_orchestrator_auto_fit_spectra_calls_segmenter_then_optimize(
     orchestrator_with_data, spectrum_id, monkeypatch
 ):
-    """auto_fit_spectra invokes run_segmenter then optimize_regions in order."""
+    """auto_fit invokes run_segmenter then optimize_regions in order."""
     orch = orchestrator_with_data
     calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
@@ -130,7 +138,7 @@ def test_orchestrator_auto_fit_spectra_calls_segmenter_then_optimize(
     monkeypatch.setattr(orch, "run_segmenter", fake_run_segmenter)
     monkeypatch.setattr(orch, "optimize_regions", fake_optimize_regions)
 
-    orch.auto_fit_spectra([spectrum_id], method="least_squares")
+    orch.auto_fit([spectrum_id], method="least_squares")
 
     assert len(calls) == 2
     assert calls[0][0] == "run_segmenter"
@@ -140,8 +148,10 @@ def test_orchestrator_auto_fit_spectra_calls_segmenter_then_optimize(
     assert calls[1][2]["method"] == "least_squares"
 
 
-def test_orchestrator_auto_fit_spectra_empty_ids_noop(orchestrator_with_data, monkeypatch):
-    """auto_fit_spectra with empty spectrum_ids does not call segmenter or optimize."""
+def test_orchestrator_auto_fit_spectra_empty_ids_noop(
+    orchestrator_with_data, monkeypatch
+):
+    """auto_fit with empty spectrum_ids does not call segmenter or optimize."""
     orch = orchestrator_with_data
 
     def boom(*_a: Any, **_k: Any) -> None:
@@ -149,7 +159,7 @@ def test_orchestrator_auto_fit_spectra_empty_ids_noop(orchestrator_with_data, mo
 
     monkeypatch.setattr(orch, "run_segmenter", boom)
     monkeypatch.setattr(orch, "optimize_regions", boom)
-    orch.auto_fit_spectra([])
+    orch.auto_fit([])
 
 
 # ---- Create ----
@@ -162,7 +172,11 @@ def test_orchestrator_create_spectrum(orchestrator):
     orch = orchestrator
     orch.create_spectrum(x, y)
 
-    spectra = [o for o in orch.core_collection.objects_index.values() if isinstance(o, Spectrum)]
+    spectra = [
+        o
+        for o in orch.core_collection.objects_index.values()
+        if isinstance(o, Spectrum)
+    ]
     assert len(spectra) == 1
     assert spectra[0].x.shape == (100,)
     assert spectra[0].y.shape == (100,)
@@ -173,10 +187,14 @@ def test_orchestrator_create_region(orchestrator_with_data, spectrum_id):
     orch = orchestrator_with_data
     orch.create_region(spectrum_id, start=50, stop=150)
 
-    regions = [o for o in orch.core_collection.objects_index.values() if isinstance(o, Region)]
+    regions = [
+        o for o in orch.core_collection.objects_index.values() if isinstance(o, Region)
+    ]
     assert len(regions) >= 2
     new_regions = [
-        r for r in regions if r.parent_id == spectrum_id and r.slice_.start == 50 and r.slice_.stop == 150
+        r
+        for r in regions
+        if r.parent_id == spectrum_id and r.slice_.start == 50 and r.slice_.stop == 150
     ]
     assert len(new_regions) == 1
 
@@ -184,9 +202,15 @@ def test_orchestrator_create_region(orchestrator_with_data, spectrum_id):
 def test_orchestrator_create_peak(orchestrator_with_data, region_id):
     """create_peak adds a peak under a region."""
     orch = orchestrator_with_data
-    orch.create_peak(region_id, "pseudo-voigt", parameters={"amp": 2.0, "cen": 0.0, "sig": 1.0, "frac": 0.0})
+    orch.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 2.0, "cen": 0.0, "sig": 1.0, "frac": 0.0},
+    )
 
-    peaks = [o for o in orch.core_collection.objects_index.values() if isinstance(o, Peak)]
+    peaks = [
+        o for o in orch.core_collection.objects_index.values() if isinstance(o, Peak)
+    ]
     assert len(peaks) >= 2
     new_peaks = [p for p in peaks if p.parent_id == region_id]
     assert len(new_peaks) >= 1
@@ -197,7 +221,11 @@ def test_orchestrator_create_background(orchestrator_with_data, region_id):
     orch = orchestrator_with_data
     orch.create_background(region_id, "shirley", parameters={"i1": 0.1, "i2": 0.2})
 
-    backgrounds = [o for o in orch.core_collection.objects_index.values() if isinstance(o, Background)]
+    backgrounds = [
+        o
+        for o in orch.core_collection.objects_index.values()
+        if isinstance(o, Background)
+    ]
     assert len(backgrounds) >= 1
 
 
@@ -275,11 +303,15 @@ def test_orchestrator_update_region_slice(orchestrator_with_data, region_id):
     assert stop == 175
 
 
-def test_orchestrator_replace_peak_model(orchestrator_with_data: AppOrchestrator, peak_id: str):
+def test_orchestrator_replace_peak_model(
+    orchestrator_with_data: AppOrchestrator, peak_id: str
+):
     """replace_peak_model swaps peak model preserving ID."""
     orch = orchestrator_with_data
     orch.replace_peak_model(
-        peak_id, "pseudo-voigt", parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+        peak_id,
+        "pseudo-voigt",
+        parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.0},
     )
     assert orch.ctx.query.check_object_exists(peak_id)
     comp = orch.ctx.query._get(peak_id)
@@ -289,7 +321,9 @@ def test_orchestrator_replace_peak_model(orchestrator_with_data: AppOrchestrator
 def test_orchestrator_replace_background_model(orchestrator_with_data, region_id):
     """replace_background_model swaps background model for region."""
     orch = orchestrator_with_data
-    orch.replace_background_model(region_id, "shirley", parameters={"i1": 0.1, "i2": 0.2})
+    orch.replace_background_model(
+        region_id, "shirley", parameters={"i1": 0.1, "i2": 0.2}
+    )
     bg_id = orch.ctx.query.get_background(region_id)
     assert bg_id is not None
 
@@ -347,7 +381,9 @@ def test_orchestrator_execute_marks_dirty(orchestrator_with_data, peak_id, tmp_p
     assert orch.is_dirty is True
 
 
-def test_orchestrator_dump_load_replace_clears_undo_stack(orchestrator_with_data, peak_id, tmp_path):
+def test_orchestrator_dump_load_replace_clears_undo_stack(
+    orchestrator_with_data, peak_id, tmp_path
+):
     """load_collection with mode=replace clears undo/redo stack."""
     orch = orchestrator_with_data
     fp = tmp_path / "coll.json"
@@ -377,7 +413,11 @@ def test_orchestrator_import_uses_app_params(empty_collection, tmp_path):
     params = AppParameters(import_use_binding_energy=True, import_use_cps=True)
     orch = AppOrchestrator(empty_collection, params)
     orch.import_spectra("tests/data/test_1_spec.txt")
-    spectrum_ids = [oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)]
+    spectrum_ids = [
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if isinstance(obj, Spectrum)
+    ]
     assert len(spectrum_ids) == 1
 
 
@@ -399,7 +439,9 @@ def test_orchestrator_nn_service_initialized_from_params(empty_collection):
     assert pl.preprocessor._num == 128
 
 
-def test_orchestrator_optimize_regions_merges_default_kwargs(simple_collection, region_id):
+def test_orchestrator_optimize_regions_merges_default_kwargs(
+    simple_collection, region_id
+):
     """optimize_regions merges AppParameters.optimization_kwargs with explicit kwargs."""
     from app.orchestration import AppParameters
 
@@ -421,7 +463,9 @@ def test_orchestrator_dump_raises_without_path(orchestrator_with_data):
         orch.dump_collection()
 
 
-def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_data, tmp_path):
+def test_orchestrator_dump_collection_sets_default_save_path(
+    orchestrator_with_data, tmp_path
+):
     """dump_collection records the path so the UI can show the filename after save."""
     orch = orchestrator_with_data
     assert orch.get_default_save_path() is None
@@ -433,7 +477,9 @@ def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_d
 # ---- Automatic methods (AutomatizationAdapter) ----
 
 
-def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple_gauss_spectrum):
+def test_create_peak_auto_params_when_automatic_methods(
+    empty_collection, simple_gauss_spectrum
+):
     """create_peak with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
@@ -452,7 +498,9 @@ def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple
     assert "frac" in params_dict
 
 
-def test_create_background_auto_params_when_automatic_methods(empty_collection, simple_gauss_spectrum):
+def test_create_background_auto_params_when_automatic_methods(
+    empty_collection, simple_gauss_spectrum
+):
     """create_background with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
@@ -469,7 +517,9 @@ def test_create_background_auto_params_when_automatic_methods(empty_collection, 
     assert "i2" in params_dict
 
 
-def test_update_region_slice_updates_background_intensities(simple_collection, region_id, background_id):
+def test_update_region_slice_updates_background_intensities(
+    simple_collection, region_id, background_id
+):
     """update_region_slice with automatic_methods=True updates slice and background params when region has bg."""
     params = AppParameters(automatic_methods=True)
     orch = AppOrchestrator(simple_collection, params)
@@ -483,18 +533,26 @@ def test_update_region_slice_updates_background_intensities(simple_collection, r
     assert "const" in bg_params
 
 
-def test_create_peak_explicit_params_when_automatic_methods_false(simple_collection, region_id):
+def test_create_peak_explicit_params_when_automatic_methods_false(
+    simple_collection, region_id
+):
     """create_peak with automatic_methods=False uses explicit parameters path."""
     params = AppParameters(automatic_methods=False)
     orch = AppOrchestrator(simple_collection, params)
-    orch.create_peak(region_id, "pseudo-voigt", parameters={"amp": 5.0, "cen": 0.0, "sig": 1.5, "frac": 0.5})
+    orch.create_peak(
+        region_id,
+        "pseudo-voigt",
+        parameters={"amp": 5.0, "cen": 0.0, "sig": 1.5, "frac": 0.5},
+    )
 
     peaks = [p for p in simple_collection.objects_index.values() if isinstance(p, Peak)]
     new_peak = next(p for p in peaks if p.parent_id == region_id and p.id_ != "p1")
     assert orch.ctx.component.get_parameter(new_peak.id_, "amp")["value"] == 5.0
 
 
-def test_update_region_slice_plain_when_no_background(empty_collection, simple_gauss_spectrum):
+def test_update_region_slice_plain_when_no_background(
+    empty_collection, simple_gauss_spectrum
+):
     """update_region_slice with no background uses plain UpdateRegionSlice only."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))

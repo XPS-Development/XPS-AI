@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
+from numpy.typing import NDArray
+
 from core.collection import CoreCollection
 from core.metadata import Metadata, SpectrumMetadata
 from core.services import CoreContext
@@ -18,20 +20,16 @@ from .automatization import AutomatizationAdapter
 from .command.changes import (
     BaseChange,
     CompositeChange,
-    CreateBackground,
-    CreatePeak,
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
     ParameterField,
     RemoveMetadata,
     RemoveObject,
-    ReplaceBackgroundModel,
     ReplacePeakModel,
     SetMetadata,
     UpdateMultipleParameterValues,
     UpdateParameter,
-    UpdateRegionSlice,
 )
 from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
@@ -41,6 +39,7 @@ from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
 from .serialization import SerializationService
+from .usecases import AnalysisUseCases, EditingUseCases
 
 
 @dataclass
@@ -470,6 +469,8 @@ class AppOrchestrator:
         self._automatization = AutomatizationAdapter()
         self._serialization = SerializationService()
         self._csv_export = CSVExportService()
+        self._editing = EditingUseCases(self._query, self._automatization, params)
+        self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
 
     @property
     def core_collection(self) -> CoreCollection:
@@ -522,6 +523,7 @@ class AppOrchestrator:
             smooth=self._params.nn_smooth,
             interp_num=self._params.nn_interp_num,
         )
+        self._analysis.set_nn(self._nn)
 
     @property
     def can_undo(self) -> bool:
@@ -623,21 +625,12 @@ class AppOrchestrator:
         spectrum_ids : Sequence of str
             Identifiers of the parent spectra for CreateRegion.
         """
-        changes: list[CompositeChange] = []
-        for spectrum_id in spectrum_ids:
-            # Prevent NN from creating regions/components on spectra that already have regions.
-            if self._query.get_regions_ids(spectrum_id):
-                continue
-            normalized_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=True)
-            original_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-            changes.append(self._nn.run_segmenter(spectrum_id, normalized_spectrum, original_spectrum))
-
-        if not changes:
+        change = self._analysis.run_segmenter(spectrum_ids)
+        if change is None:
             return
+        self.execute(change)
 
-        self.execute(CompositeChange(changes=changes))
-
-    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs) -> None:
         """
         Run the NN segmenter then region optimization for the given spectra.
 
@@ -667,7 +660,7 @@ class AppOrchestrator:
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
-        **kwargs: Any,
+        **kwargs,
     ) -> None:
         """
         Run optimization and execute UpdateMultipleParameterValues changes.
@@ -684,24 +677,13 @@ class AppOrchestrator:
         **kwargs
             Passed to lmfit.minimize; overrides AppParameters.optimization_kwargs.
         """
-        merged = {**self._params.optimization_kwargs, **kwargs}
-        changes: list[CompositeChange] = []
-
-        if region_ids is None and spectrum_ids is None:
-            raise ValueError("region_ids or spectrum_ids must be provided")
-
-        if region_ids is None:
-            region_ids = []
-            for spectrum_id in spectrum_ids:
-                region_ids.extend(self._query.get_regions_ids(spectrum_id))
-
-        region_reprs: list[tuple[RegionDTO, tuple[ComponentDTO, ...]]] = []
-        for region_id in region_ids:
-            region_repr = self._query.get_region_dto_repr(region_id, normalized=True)
-            region_reprs.append(region_repr)
-
-        changes.append(self._optimization.optimize_regions(region_reprs, **merged))
-        self.execute(CompositeChange(changes=changes))
+        self.execute(
+            self._analysis.optimize_regions(
+                region_ids=region_ids,
+                spectrum_ids=spectrum_ids,
+                **kwargs,
+            )
+        )
 
     # ---- Parameters and models ----
 
@@ -749,24 +731,7 @@ class AppOrchestrator:
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """Update the index slice of an existing region; executed as a command."""
-        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
-
-        if self._params.automatic_methods:
-            background_id = self._query.get_background_id(region_id)
-            if background_id is not None:
-                background_dto = self._query.get_component_dto(background_id)
-                spectrum_id = self._query.get_parent_id(region_id)
-                spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-                bg_change = self._automatization.update_intensities(
-                    background_dto=background_dto,
-                    spectrum_dto=spectrum,
-                    new_slice=(start, stop),
-                    slice_mode=mode,
-                )
-                self.execute(CompositeChange(changes=[change, bg_change]))
-                return
-
-        self.execute(change)
+        self.execute(self._editing.update_region_slice(region_id, start, stop, mode=mode))
 
     def replace_peak_model(
         self,
@@ -791,22 +756,10 @@ class AppOrchestrator:
         background_id: str | None = None,
     ) -> None:
         """Replace a background's model; executed as a command."""
-        if self._params.automatic_methods and parameters is None:
-            spectrum_dto = self._query.get_spectrum_dto(
-                self._query.get_parent_id(region_id),
-                normalized=False,
-            )
-            reg_slice = self._query.get_region_slice(region_id, mode="index")
-            parameters = self._automatization.get_bg_parameters(
-                new_model_name,
-                spectrum_dto,
-                reg_slice,
-                "index",
-            )
         self.execute(
-            ReplaceBackgroundModel(
-                region_id=region_id,
-                new_model_name=new_model_name,
+            self._editing.replace_background_model(
+                region_id,
+                new_model_name,
                 parameters=parameters,
                 background_id=background_id,
             )
@@ -816,8 +769,8 @@ class AppOrchestrator:
 
     def create_spectrum(
         self,
-        x: Any,
-        y: Any,
+        x: NDArray,
+        y: NDArray,
         spectrum_id: str | None = None,
     ) -> None:
         """Create a new spectrum; executed as a command."""
@@ -850,19 +803,14 @@ class AppOrchestrator:
         peak_id: str | None = None,
     ) -> None:
         """Create a new peak component; executed as a command."""
-        if self._params.automatic_methods and model_name == "pseudo-voigt" and parameters is None:
-            region_repr = self._query.get_region_dto_repr(region_id, normalized=False)
-            change = self._automatization.create_pseudo_voigt_peak(region_repr[0], region_repr[1])
-            self.execute(change)
-        else:
-            self.execute(
-                CreatePeak(
-                    region_id=region_id,
-                    model_name=model_name,
-                    parameters=parameters,
-                    peak_id=peak_id,
-                )
+        self.execute(
+            self._editing.create_peak(
+                region_id,
+                model_name,
+                parameters=parameters,
+                peak_id=peak_id,
             )
+        )
 
     def create_background(
         self,
@@ -872,28 +820,14 @@ class AppOrchestrator:
         background_id: str | None = None,
     ) -> None:
         """Create or replace a background component; executed as a command."""
-        if self._params.automatic_methods and parameters is None:
-            spectrum_id = self._query.get_parent_id(region_id)
-            spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-            start, stop = self._query.get_region_slice(region_id, mode="index")
-            change = self._automatization.create_background(
-                region_id=region_id,
-                spectrum_dto=spectrum,
-                new_slice=(start, stop),
-                slice_mode="index",
-                model_name=model_name,
+        self.execute(
+            self._editing.create_background(
+                region_id,
+                model_name,
+                parameters=parameters,
                 background_id=background_id,
             )
-            self.execute(change)
-        else:
-            self.execute(
-                CreateBackground(
-                    region_id=region_id,
-                    model_name=model_name,
-                    parameters=parameters,
-                    background_id=background_id,
-                )
-            )
+        )
 
     # ---- Metadata ----
 
@@ -1033,7 +967,9 @@ class AppOrchestrator:
         )
         if not spectrum_ids:
             return
-        changes: list[BaseChange] = [FullRemoveObject(obj_id=spectrum_id) for spectrum_id in spectrum_ids]
+        changes: list[BaseChange] = [
+            FullRemoveObject(obj_id=spectrum_id) for spectrum_id in spectrum_ids
+        ]
         self.execute(CompositeChange(changes=changes))
 
     # ---- Serialization ----
@@ -1066,8 +1002,12 @@ class AppOrchestrator:
         """
         resolved_path = path if path is not None else self._params.default_serialization_path
         if resolved_path is None:
-            raise ValueError("path is required when AppParameters.default_serialization_path is not set")
-        resolved_indent = indent if indent is not None else self._params.default_serialization_indent
+            raise ValueError(
+                "path is required when AppParameters.default_serialization_path is not set"
+            )
+        resolved_indent = (
+            indent if indent is not None else self._params.default_serialization_indent
+        )
         self._serialization.dump(
             path=resolved_path,
             collection=self._core_collection,
