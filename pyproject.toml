@@ -19,6 +19,8 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-benchmark>=5.2.3",
+    "ruff>=0.16.3",
+    "ty>=0.0.72",
     "viztracer>=1.1.1",
 ]
 interactive = [
@@ -31,10 +33,47 @@ testpaths = [
     "tests",
 ]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
+target-version = "py311"
+src = ["app", "core", "ui", "tools", "tests"]
+extend-exclude = ["model", "notebooks"]
 
-[tool.isort]
-profile = "black"
-lines_after_imports = 2
-line_length = 100
+[tool.ruff.lint]
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "ANN",  # type annotations
+    "D",    # docstrings
+    "RUF",  # ruff-specific
+    "TC",   # TYPE_CHECKING blocks
+    "PT",   # pytest
+]
+ignore = [
+    "ANN002",  # *args
+    "ANN003",  # **kwargs
+    "TC006",   # quoted types in isinstance/cast (noisy with from __future__ import annotations)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]
+"**/test_*.py" = ["D", "ANN"]
+"ui/**" = ["ANN401"]
+"tools/serialization.py" = ["ANN401"]
+"app/json_utils.py" = ["ANN401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "core", "ui", "tools"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
