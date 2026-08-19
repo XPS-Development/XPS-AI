@@ -6,11 +6,11 @@ They encapsulate "how" to apply and undo changes against the core data model.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any, Callable
 
 from core.metadata import Metadata
-from core.objects import Background, CoreObject, Peak, Region
+from core.objects import Background, CoreObject, Peak
 from core.services import ComponentService, CoreContext, RegionService, SpectrumService
 
 from .changes import (
@@ -36,17 +36,20 @@ class Command(ABC):
 
     @classmethod
     @abstractmethod
-    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "Command": ...
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "Command":
+        """Build a command from a change DTO."""
+
     @abstractmethod
-    def apply(self, ctx: CoreContext) -> None: ...
+    def apply(self, ctx: CoreContext) -> None:
+        """Apply the command to the core model."""
+
     @abstractmethod
-    def undo(self, ctx: CoreContext) -> None: ...
+    def undo(self, ctx: CoreContext) -> None:
+        """Revert the command on the core model."""
 
 
 class UpdateParameterCommand(Command):
-    """
-    Command that updates a single parameter attribute; supports undo via stored old value.
-    """
+    """Command that updates a single parameter attribute; supports undo via stored old value."""
 
     def __init__(
         self,
@@ -115,6 +118,7 @@ class UpdateParameterCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Set the parameter to the new value."""
         ctx.component.set_parameter(
             self.component_id,
             self.name,
@@ -123,6 +127,7 @@ class UpdateParameterCommand(Command):
         )
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous parameter value."""
         if self._old_value is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_parameter(
@@ -195,9 +200,11 @@ class UpdateRegionSliceCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Set the region slice to the new bounds."""
         ctx.region.update_slice(self.region_id, self.new_start, self.new_stop, mode="index")
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous region slice bounds."""
         ctx.region.update_slice(self.region_id, self.old_start, self.old_stop, mode="index")
 
 
@@ -250,7 +257,9 @@ class UpdateMultipleParameterValuesCommand(Command):
             Command instance with old values stored for undo.
         """
         all_params = ctx.component.get_parameters(change.component_id, normalized=change.normalized)
-        old_values = {param_name: all_params[param_name]["value"] for param_name in change.parameters.keys()}
+        old_values = {
+            param_name: all_params[param_name]["value"] for param_name in change.parameters.keys()
+        }
         return cls(
             component_id=change.component_id,
             parameters=change.parameters,
@@ -259,9 +268,11 @@ class UpdateMultipleParameterValuesCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Write the new parameter values onto the component."""
         ctx.component.set_values(self.component_id, self.parameters, normalized=self.normalized)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous parameter values."""
         if self._old_values is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_values(self.component_id, self._old_values, normalized=self.normalized)
@@ -311,9 +322,11 @@ class SetMetadataCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Store the new metadata for the object."""
         ctx.metadata.set_metadata(self.obj_id, self.metadata)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore previous metadata, or remove it if none existed."""
         if self._old_metadata is None:
             ctx.metadata.remove_metadata(self.obj_id)
         else:
@@ -369,9 +382,11 @@ class RemoveMetadataCommand(Command):
         return cls(obj_id=change.obj_id, old_metadata=old_metadata)
 
     def apply(self, ctx: CoreContext) -> None:
+        """Remove metadata for the object."""
         ctx.metadata.remove_metadata(self.obj_id)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous metadata if it existed."""
         if self._old_metadata is not None:
             ctx.metadata.set_metadata(self.obj_id, self._old_metadata)
 
@@ -397,9 +412,7 @@ class RemoveObjectCommand(Command):
 
     @classmethod
     def from_change(cls, change: RemoveObject, ctx: CoreContext) -> "RemoveObjectCommand":
-        """
-        Create a RemoveObjectCommand from a change.
-        """
+        """Create a RemoveObjectCommand from a change."""
         if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         return cls(obj_id=change.obj_id)
@@ -417,13 +430,11 @@ class RemoveObjectCommand(Command):
 
 
 class CreateObjectCommand(Command):
-    """
-    Base command for adding objects to the collection.
-    """
+    """Base command for adding objects to the collection."""
 
     create_obj_fn: Callable[..., CoreObject]
 
-    def __init__(self, **params: Any) -> None:
+    def __init__(self, **params) -> None:
         """
         Initialize an add object command.
 
@@ -571,7 +582,9 @@ class CompositeCommand(Command):
     @classmethod
     def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CompositeCommand":
         """Not used; CompositeCommand is built from CompositeChange by the registry."""
-        raise NotImplementedError("CompositeCommand is built from CompositeChange by CommandRegistry")
+        raise NotImplementedError(
+            "CompositeCommand is built from CompositeChange by CommandRegistry"
+        )
 
     def __init__(self, *, commands: list[Command]) -> None:
         """
@@ -599,10 +612,10 @@ class ReplacePeakModelCommand(CompositeCommand):
     """Command that replaces a peak's model; stores old peak for undo."""
 
     @staticmethod
-    def _parse_change(change: ReplacePeakModel, ctx: CoreContext) -> tuple[RemoveObject, CreatePeak]:
-        """
-        Adapter for ReplacePeakModel change to RemoveObject and CreatePeak.
-        """
+    def _parse_change(
+        change: ReplacePeakModel, ctx: CoreContext
+    ) -> tuple[RemoveObject, CreatePeak]:
+        """Adapter for ReplacePeakModel change to RemoveObject and CreatePeak."""
         rm_ch = RemoveObject(change.peak_id)
         create_ch = CreatePeak(
             region_id=ctx.query.get_parent(change.peak_id),
@@ -642,9 +655,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
     def _parse_change(
         change: ReplaceBackgroundModel, ctx: CoreContext
     ) -> tuple[RemoveObject | None, CreateBackground]:
-        """
-        Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground.
-        """
+        """Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground."""
         create_ch = CreateBackground(
             region_id=change.region_id,
             model_name=change.new_model_name,

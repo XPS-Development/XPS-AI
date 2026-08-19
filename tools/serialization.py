@@ -9,7 +9,7 @@ import gzip
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 import numpy as np
 
@@ -25,14 +25,13 @@ from core.metadata import (
 from core.objects import Background, Component, Peak, Region, Spectrum
 from core.services import MetadataService
 
-
 LoadMode = Literal["append", "replace", "new"]
-DeserializeResult = Union[CoreCollection, tuple[CoreCollection, MetadataService]]
+DeserializeResult = CoreCollection | tuple[CoreCollection, MetadataService]
 
 VERSION = "1.0"
 
 
-def _serialize_spectrum(spectrum: Spectrum, metadata: Optional[Metadata] = None) -> dict[str, Any]:
+def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) -> dict[str, Any]:
     """
     Serialize a Spectrum object.
 
@@ -87,7 +86,7 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Optional[Metadata] = None)
     return result
 
 
-def _serialize_region(region: Region, metadata: Optional[Metadata] = None) -> dict[str, Any]:
+def _serialize_region(region: Region, metadata: Metadata | None = None) -> dict[str, Any]:
     """
     Serialize a Region object.
 
@@ -120,7 +119,7 @@ def _serialize_region(region: Region, metadata: Optional[Metadata] = None) -> di
     return result
 
 
-def _serialize_component(component: Component, metadata: Optional[Metadata] = None) -> dict[str, Any]:
+def _serialize_component(component: Component, metadata: Metadata | None = None) -> dict[str, Any]:
     """
     Serialize a Component object (Peak or Background).
 
@@ -174,9 +173,7 @@ def _serialize_component(component: Component, metadata: Optional[Metadata] = No
 
 
 def _inf_cast(value: float) -> str | float:
-    """
-    Cast a float to a string representation of infinity.
-    """
+    """Cast a float to a string representation of infinity."""
     if value == np.inf:
         return "inf"
     if value == -np.inf:
@@ -210,7 +207,7 @@ def _json_default(obj: Any) -> Any:
 
 
 def serialize(
-    collection: CoreCollection, metadata_service: Optional[MetadataService] = None
+    collection: CoreCollection, metadata_service: MetadataService | None = None
 ) -> dict[str, Any]:
     """
     Serialize a CoreCollection to a dictionary.
@@ -232,7 +229,7 @@ def serialize(
 
     for obj in collection.objects_index.values():
         # Get metadata if service is available
-        metadata: Optional[Metadata] = None
+        metadata: Metadata | None = None
         if metadata_service is not None:
             metadata = metadata_service.get_metadata(obj.id_)
 
@@ -260,7 +257,7 @@ def serialize(
     }
 
 
-def _resolve_load_use_gzip(path: Path, use_gzip: Optional[bool]) -> bool:
+def _resolve_load_use_gzip(path: Path, use_gzip: bool | None) -> bool:
     """
     Decide whether to read the file as gzip-compressed JSON.
 
@@ -291,7 +288,7 @@ def _resolve_load_use_gzip(path: Path, use_gzip: Optional[bool]) -> bool:
 def dump(
     collection: CoreCollection,
     fp: str | Path,
-    metadata_service: Optional[MetadataService] = None,
+    metadata_service: MetadataService | None = None,
     indent: int | None = None,
     *,
     use_gzip: bool = False,
@@ -327,7 +324,7 @@ def dump(
 
 
 def _convert_json_value(value: Any) -> Any:
-    """
+    r"""
     Convert JSON values back to numpy-compatible types.
 
     Parameters
@@ -465,8 +462,8 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
     return component
 
 
-def _create_metadata(obj_data: dict[str, Any], obj_type: str) -> Optional[Metadata]:
-    """
+def _create_metadata(obj_data: dict[str, Any], obj_type: str) -> Metadata | None:
+    r"""
     Create metadata object from serialized data.
 
     Parameters
@@ -503,12 +500,12 @@ def _create_metadata(obj_data: dict[str, Any], obj_type: str) -> Optional[Metada
 
 def deserialize(
     data: dict[str, Any],
-    collection: Optional[CoreCollection] = None,
-    metadata_service: Optional[MetadataService] = None,
+    collection: CoreCollection | None = None,
+    metadata_service: MetadataService | None = None,
     *,
     mode: LoadMode = "replace",
 ) -> DeserializeResult:
-    """
+    r"""
     Deserialize a dictionary to a CoreCollection (and optionally metadata).
 
     Parameters
@@ -615,13 +612,13 @@ def deserialize(
 
 def load(
     fp: str | Path,
-    collection: Optional[CoreCollection] = None,
-    metadata_service: Optional[MetadataService] = None,
+    collection: CoreCollection | None = None,
+    metadata_service: MetadataService | None = None,
     *,
     mode: LoadMode = "replace",
-    use_gzip: Optional[bool] = None,
+    use_gzip: bool | None = None,
 ) -> DeserializeResult:
-    """
+    r"""
     Deserialize a JSON file to a CoreCollection (and optionally metadata).
 
     Parameters

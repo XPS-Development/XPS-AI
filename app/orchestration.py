@@ -5,9 +5,10 @@ Aggregates app services and the command/change pipeline into a single entry poin
 for running services, applying changes (create/update/metadata/remove), and undo/redo.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from numpy.typing import NDArray
 
@@ -84,9 +85,7 @@ class AppParameters:
 
 
 class QueryService:
-    """
-    Thin wrapper for querying the collection, metadata and DTO.
-    """
+    """Thin wrapper for querying the collection, metadata and DTO."""
 
     def __init__(self, ctx: CoreContext) -> None:
         """

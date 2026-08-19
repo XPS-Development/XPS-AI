@@ -26,9 +26,7 @@ from .adapter import ONNXSegmenterAdapter
 
 @dataclass(frozen=True)
 class SegmenterResult:
-    """
-    Result for the segmenter: RegionDetectionResult and tuple of PeakDetectionResult.
-    """
+    """Result for the segmenter: RegionDetectionResult and tuple of PeakDetectionResult."""
 
     region: RegionDetectionResult
     peaks: tuple[PeakDetectionResult, ...]
@@ -54,7 +52,8 @@ class SegmenterPostprocessor:
         window_length: int = 10,
         min_border_distance: int = 5,
     ) -> None:
-        """
+        """Configure mask thresholding and smoothing.
+
         Parameters
         ----------
         threshold : float, optional
@@ -110,7 +109,9 @@ class SegmenterPostprocessor:
         kernel = np.ones(self._window_length) / self._window_length
         return np.convolve(mask, kernel, mode="same")
 
-    def _restrict_mask(self, region_raw_mask: NDArray, max_raw_mask: NDArray) -> tuple[NDArray, NDArray]:
+    def _restrict_mask(
+        self, region_raw_mask: NDArray, max_raw_mask: NDArray
+    ) -> tuple[NDArray, NDArray]:
         """Binarize masks with optional smoothing on peak mask."""
         if self._smooth:
             region_mask = (self._smooth_mask(region_raw_mask) > self._threshold).astype(np.float64)
@@ -128,15 +129,18 @@ class SegmenterPostprocessor:
     def _prepare_max_mask(self, max_mask: NDArray) -> NDArray:
         """Return indices of medians (center) of each run in max_mask."""
         borders = self._find_borders(max_mask)
-        medians = [(t + f) // 2 for f, t in zip(borders[0::2], borders[1::2])]
+        medians = [(t + f) // 2 for f, t in zip(borders[0::2], borders[1::2], strict=False)]
         return np.array(medians)
 
-    def _guess_peaks(self, x: NDArray, y: NDArray, max_idxs: NDArray) -> tuple[PeakDetectionResult, ...]:
+    def _guess_peaks(
+        self, x: NDArray, y: NDArray, max_idxs: NDArray
+    ) -> tuple[PeakDetectionResult, ...]:
         """Guess peak parameters for pseudo-voigt model."""
         parameters = tuple(guess_pseudo_voigt_params_at_max(x, y, idx) for idx in max_idxs)
         return tuple(
             PeakDetectionResult(
-                model_name=self.DEFAULT_PEAK_MODEL, parameters=dict(amp=amp, cen=cen, sig=sig, frac=frac)
+                model_name=self.DEFAULT_PEAK_MODEL,
+                parameters=dict(amp=amp, cen=cen, sig=sig, frac=frac),
             )
             for amp, cen, sig, frac in parameters
         )

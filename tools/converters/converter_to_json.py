@@ -2,7 +2,6 @@ import json
 import re
 from pathlib import Path
 
-
 NUM_RE = re.compile(r"[-+]?\d+(?:[.,]\d+)?(?:[eE][-+]?\d+)?")
 
 
@@ -37,7 +36,7 @@ def parse_kv(line) -> tuple | None:
 def parse_par(par_path) -> list:
     peaks = []
 
-    with open(par_path, "r", encoding="utf-8", errors="ignore") as file:
+    with open(par_path, encoding="utf-8", errors="ignore") as file:
         lines = file.readlines()
 
     in_table = False
@@ -76,7 +75,7 @@ def parse_dat(dat_path) -> tuple:
     bg_be_vals = []
     bg = {}
 
-    with open(dat_path, "r", encoding="utf-8", errors="ignore") as file:
+    with open(dat_path, encoding="utf-8", errors="ignore") as file:
         lines = file.readlines()
 
     data_on = False
@@ -131,7 +130,7 @@ def parse_bg_file(par_path) -> dict:
     if not bg_path.exists():
         return {}
 
-    with open(bg_path, "r", encoding="utf-8", errors="ignore") as file:
+    with open(bg_path, encoding="utf-8", errors="ignore") as file:
         return json.load(file)
 
 
@@ -207,7 +206,7 @@ def convert_dir(in_dir, out_dir) -> list:
     return converted
 
 
-def main():
+def main() -> None:
     root = Path(__file__).resolve().parents[2]
     in_dir = (root / "../../Desktop/exported_spec").resolve()
     out_dir = (root / "../../Desktop/Json_spec").resolve()

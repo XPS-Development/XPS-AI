@@ -1,6 +1,4 @@
-"""
-App-level CSV export service for DTO projections.
-"""
+"""App-level CSV export service for DTO projections."""
 
 from pathlib import Path
 
@@ -9,9 +7,7 @@ from tools.csv_export import SpectrumRepr, export_spectrum_csv, export_spectrum_
 
 
 class CSVExportService:
-    """
-    Service that exports DTO projections into CSV-like files.
-    """
+    """Service that exports DTO projections into CSV-like files."""
 
     def export_spectrum_peak_parameters(
         self,

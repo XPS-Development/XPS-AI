@@ -1,16 +1,22 @@
+"""Persist unexpected exceptions to ``error_dumps`` and optionally show Qt dialogs."""
+
 from __future__ import annotations
 
 import functools
 import logging
-from collections.abc import Callable, Collection
 from datetime import datetime
 from pathlib import Path
 from traceback import format_exception
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Collection
 
 logger = logging.getLogger(__name__)
 
-_C = TypeVar("_C", bound=type[Any])
+_C = TypeVar("_C", bound=type[object])
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 _ORCHESTRATOR_ERROR_USER_ATTR = "_ai_xps_orchestrator_error_user_notified"
 
@@ -69,10 +75,8 @@ def _notify_orchestrator_error_ui(exc: BaseException, dump_path: Path) -> None:
     setattr(exc, _ORCHESTRATOR_ERROR_USER_ATTR, True)
 
 
-def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
-    """
-    Wrap a callable so failures are persisted, logged, optionally shown in Qt,
-    then re-raised.
+def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Wrap a callable so failures are persisted, logged, and then re-raised.
 
     On :class:`Exception`, writes ``error_dumps`` via :func:`save_error_dump`,
     logs with :meth:`logging.Logger.exception`, and when
@@ -90,7 +94,7 @@ def safe_execution(func: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @functools.wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         try:
             return func(*args, **kwargs)
         except Exception as exc:

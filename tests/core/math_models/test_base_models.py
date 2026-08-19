@@ -1,7 +1,16 @@
 import inspect
 
-from core.math_models.base_models import ParametricModel, BasePeakModel, BaseBackgroundModel, ParameterSpec
-from core.math_models.models import ConstantBackgroundModel, LinearBackgroundModel, ShirleyBackgroundModel
+from core.math_models.base_models import (
+    BaseBackgroundModel,
+    BasePeakModel,
+    ParameterSpec,
+    ParametricModel,
+)
+from core.math_models.models import (
+    ConstantBackgroundModel,
+    LinearBackgroundModel,
+    ShirleyBackgroundModel,
+)
 
 
 def test_parameter_spec_defaults():

@@ -6,12 +6,15 @@ Adapters load the model and run inference; input/output are model-specific
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from numpy.typing import NDArray
 import onnxruntime as ort
 
 from ..types import ModelInputT, ModelOutputT
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 class ONNXSegmenterAdapter:
@@ -26,17 +29,22 @@ class ONNXSegmenterAdapter:
     CHANNEL_MASK_KEYS: tuple[str, str] = ("region_mask", "max_mask")
 
     def __init__(self, model_path: str | Path | None = None) -> None:
-        """
+        """Load the ONNX session if a model path is given.
+
         Parameters
         ----------
         model_path : str or Path or None, optional
             Path to ONNX model file. If None or empty, session is not created
             until load() or run() with a loaded session.
         """
-        self._model_path: Path | None = Path(model_path) if model_path and str(model_path).strip() else None
+        self._model_path: Path | None = (
+            Path(model_path) if model_path and str(model_path).strip() else None
+        )
         self._session = None
         if self._model_path and self._model_path.exists():
-            self._session = ort.InferenceSession(str(self._model_path), providers=["CPUExecutionProvider"])
+            self._session = ort.InferenceSession(
+                str(self._model_path), providers=["CPUExecutionProvider"]
+            )
 
     @property
     def session(self) -> ort.InferenceSession | None:

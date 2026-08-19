@@ -25,7 +25,6 @@ from .context_menus import (
 )
 from .controller import ControllerWrapper
 
-
 # Curve styling constants
 PEN_RAW = pg.mkPen(color="k", width=1)
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
@@ -50,7 +49,8 @@ class DoubleClickAutoRangeViewBox(pg.ViewBox):
     """
 
     def __init__(self, **kwargs: Any) -> None:
-        """
+        """Initialize the view box.
+
         Parameters
         ----------
         **kwargs : Any
@@ -89,7 +89,8 @@ class VieBoxCustomContextMenu(DoubleClickAutoRangeViewBox):
         controller: ControllerWrapper,
         **kwargs: Any,
     ) -> None:
-        """
+        """Initialize the view box with a spectrum context menu.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -153,7 +154,8 @@ class RegionContextPlotWidget(pg.PlotWidget):
         controller: ControllerWrapper,
         parent: QWidget | None = None,
     ) -> None:
-        """
+        """Initialize the plot widget with a custom ViewBox.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -211,7 +213,8 @@ class InteractiveRegion(pg.LinearRegionItem):
         dialog_parent: QWidget,
         **kwargs: Any,
     ) -> None:
-        """
+        """Initialize the linear region item for a spectrum region.
+
         Parameters
         ----------
         region_id : str
@@ -342,7 +345,8 @@ class PlotAreaWidget(QWidget):
         controller: ControllerWrapper,
         parent: QWidget | None = None,
     ) -> None:
-        """
+        """Initialize the plot area from the controller.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -500,7 +504,9 @@ class PlotAreaWidget(QWidget):
             start_val, stop_val = self._controller.query.get_region_slice(rid, mode="value")
             roi = self._roi_items_by_region.get(rid)
             if roi is None:
-                roi = self._create_region_roi(region_id=rid, start=float(start_val), stop=float(stop_val))
+                roi = self._create_region_roi(
+                    region_id=rid, start=float(start_val), stop=float(stop_val)
+                )
                 self._roi_items_by_region[rid] = roi
                 self._roi_region_ids_in_plot.discard(rid)
             else:
@@ -538,7 +544,9 @@ class PlotAreaWidget(QWidget):
             controller=self._controller,
             dialog_parent=self,
         )
-        roi.sigRegionChangeFinished.connect(lambda _roi=roi: self._on_roi_region_change_finished(_roi))
+        roi.sigRegionChangeFinished.connect(
+            lambda _roi=roi: self._on_roi_region_change_finished(_roi)
+        )
         roi.sigClickedRegion.connect(self._on_roi_clicked)
         return roi
 
@@ -635,7 +643,7 @@ class PlotAreaWidget(QWidget):
 
         if self._res_plot.isVisible():
             # Residuals subplot: same x as spectrum, one curve per region
-            for rx, ry in zip(all_res_x, all_res_y):
+            for rx, ry in zip(all_res_x, all_res_y, strict=False):
                 self._res_plot.plot(rx, ry, pen=PEN_RESIDUALS)
 
             # Lock residuals y-axis from data

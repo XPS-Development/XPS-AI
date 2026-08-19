@@ -1,3 +1,5 @@
+"""Dialog for editing application parameters."""
+
 from pathlib import Path
 from typing import Any
 
@@ -160,7 +162,9 @@ class OptionsDialog(QDialog):
         self._nn_smooth_cb.setChecked(params.nn_smooth)
         self._nn_interp_num_sb.setValue(params.nn_interp_num)
 
-        self._optimization_kwargs_edit.setPlainText(self._dict_to_pretty_json(params.optimization_kwargs))
+        self._optimization_kwargs_edit.setPlainText(
+            self._dict_to_pretty_json(params.optimization_kwargs)
+        )
 
         self._serialization_mode_edit.setText(str(params.default_serialization_mode))
         self._serialization_path_edit.setText(str(params.default_serialization_path or ""))
@@ -170,7 +174,9 @@ class OptionsDialog(QDialog):
             self._serialization_indent_sb.setValue(params.default_serialization_indent)
 
         self._serialization_use_gzip_cb.setChecked(params.default_serialization_use_gzip)
-        self._serialization_compresslevel_sb.setValue(int(params.default_serialization_compresslevel))
+        self._serialization_compresslevel_sb.setValue(
+            int(params.default_serialization_compresslevel)
+        )
 
     def apply_to_params(self, params: AppParameters) -> None:
         """
@@ -219,7 +225,9 @@ class OptionsDialog(QDialog):
         params.default_serialization_indent = None if indent_value == 0 else indent_value
 
         params.default_serialization_use_gzip = self._serialization_use_gzip_cb.isChecked()
-        params.default_serialization_compresslevel = int(self._serialization_compresslevel_sb.value())
+        params.default_serialization_compresslevel = int(
+            self._serialization_compresslevel_sb.value()
+        )
 
     def validate_and_apply(self, params: AppParameters) -> bool:
         """
@@ -249,4 +257,3 @@ class OptionsDialog(QDialog):
         if not data:
             return "{}"
         return json.dumps(data, indent=2, sort_keys=True)
-

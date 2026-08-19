@@ -1,5 +1,7 @@
+"""Core services for querying, mutating, and evaluating domain objects."""
+
 from dataclasses import asdict, dataclass
-from typing import Literal, Optional, TypeVar
+from typing import Literal, TypeVar
 
 from numpy.typing import NDArray
 
@@ -16,7 +18,6 @@ from .math_models import (
 from .metadata import Metadata
 from .objects import Background, Component, CoreObject, Peak, Region, Spectrum
 
-
 T = TypeVar("T")
 
 
@@ -31,7 +32,7 @@ class BaseCoreService:
     This class is not intended to be used directly.
     """
 
-    def __init__(self, collection: CoreCollection):
+    def __init__(self, collection: CoreCollection) -> None:
         """
         Initialize the service with a spectrum collection.
 
@@ -42,7 +43,7 @@ class BaseCoreService:
         """
         self.collection = collection
 
-    def _get(self, obj_id: str):
+    def _get(self, obj_id: str) -> CoreObject:
         """
         Retrieve a core object by ID.
 
@@ -89,15 +90,11 @@ class BaseCoreService:
         return self.collection.get_typed(obj_id, tp)
 
     def _get_first_parent(self, obj_id: str) -> CoreObject:
-        """
-        Retrieve the first parent of an object.
-        """
+        """Retrieve the first parent of an object."""
         return self.collection.get_parent(obj_id)
 
     def _get_typed_parent(self, obj_id: str, tp: type[T]) -> T:
-        """
-        Retrieve the parent of an object by type.
-        """
+        """Retrieve the parent of an object by type."""
         return self.collection.get_typed_parent(obj_id, tp)
 
     def attach(self, obj: CoreObject) -> None:
@@ -139,9 +136,7 @@ class CollectionQueryService(BaseCoreService):
     """
 
     def check_object_exists(self, obj_id: str) -> bool:
-        """
-        Check if an object exists in the collection.
-        """
+        """Check if an object exists in the collection."""
         return obj_id in self.collection.objects_index
 
     def get_parent(self, obj_id: str) -> str:
@@ -190,7 +185,9 @@ class CollectionQueryService(BaseCoreService):
         tuple[str, ...]
             Regions identifiers whose parent is the given spectrum.
         """
-        return tuple(obj.id_ for obj in self.collection.get_children(spectrum_id) if isinstance(obj, Region))
+        return tuple(
+            obj.id_ for obj in self.collection.get_children(spectrum_id) if isinstance(obj, Region)
+        )
 
     def get_components(self, region_id: str) -> tuple[str, ...]:
         """
@@ -224,9 +221,11 @@ class CollectionQueryService(BaseCoreService):
         tuple[str, ...]
             All peak identifiers belonging to the region.
         """
-        return tuple(obj.id_ for obj in self.collection.get_children(region_id) if isinstance(obj, Peak))
+        return tuple(
+            obj.id_ for obj in self.collection.get_children(region_id) if isinstance(obj, Peak)
+        )
 
-    def get_background(self, region_id: str) -> Optional[str]:
+    def get_background(self, region_id: str) -> str | None:
         """
         Retrieve the unique background component of a region.
 
@@ -245,7 +244,9 @@ class CollectionQueryService(BaseCoreService):
         RuntimeError
             If the region has more than one background.
         """
-        bgs = [obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)]
+        bgs = [
+            obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)
+        ]
 
         if len(bgs) > 1:
             raise RuntimeError(f"Region {region_id} has multiple Backgrounds")
@@ -261,7 +262,9 @@ class CollectionQueryService(BaseCoreService):
         tuple[str, ...]
             All peak identifiers registered in the collection.
         """
-        return tuple(obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Peak))
+        return tuple(
+            obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Peak)
+        )
 
     def get_all_spectra(self) -> tuple[str, ...]:
         """
@@ -272,7 +275,9 @@ class CollectionQueryService(BaseCoreService):
         tuple[str, ...]
             All registered spectra identifiers.
         """
-        return tuple(obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Spectrum))
+        return tuple(
+            obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Spectrum)
+        )
 
     def get_all_regions(self) -> tuple[str, ...]:
         """
@@ -283,7 +288,9 @@ class CollectionQueryService(BaseCoreService):
         tuple[str, ...]
             All registered regions identifiers.
         """
-        return tuple(obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Region))
+        return tuple(
+            obj.id_ for obj in self.collection.objects_index.values() if isinstance(obj, Region)
+        )
 
 
 class SpectrumService(BaseCoreService):
@@ -294,17 +301,15 @@ class SpectrumService(BaseCoreService):
     """
 
     @staticmethod
-    def _create_spectrum_obj(x: NDArray, y: NDArray, spectrum_id: Optional[str] = None) -> Spectrum:
-        """
-        Create a new spectrum object.
-        """
+    def _create_spectrum_obj(x: NDArray, y: NDArray, spectrum_id: str | None = None) -> Spectrum:
+        """Create a new spectrum object."""
         return Spectrum(x=x, y=y, id_=spectrum_id)
 
     def create_spectrum(
         self,
         x: NDArray,
         y: NDArray,
-        spectrum_id: Optional[str] = None,
+        spectrum_id: str | None = None,
     ) -> str:
         """
         Create and register a new spectrum.
@@ -361,24 +366,18 @@ class RegionService(BaseCoreService):
         spectrum_id: str,
         start: int,
         stop: int,
-        region_id: Optional[str] = None,
+        region_id: str | None = None,
     ) -> Region:
-        """
-        Create a new region object.
-        """
+        """Create a new region object."""
         return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
 
     def _get_bound_indices(self, spectrum_id: str) -> tuple[int, int]:
-        """
-        Get the bound indices of a spectrum.
-        """
+        """Get the bound indices of a spectrum."""
         spectrum = self._get_typed(spectrum_id, Spectrum)
         return 0, len(spectrum.x)
 
     def _convert_value_to_index(self, spectrum_id: str, value: float | None = None) -> int:
-        """
-        Convert a value to an index.
-        """
+        """Convert a value to an index."""
         if value is None:
             return None
 
@@ -390,9 +389,7 @@ class RegionService(BaseCoreService):
         start: int | None = None,
         stop: int | None = None,
     ) -> bool:
-        """
-        Check if a slice is valid.
-        """
+        """Check if a slice is valid."""
         spectrum = self._get_typed(spectrum_id, Spectrum)
         return start is not None and stop is not None and 0 <= start < stop <= len(spectrum.x)
 
@@ -401,7 +398,7 @@ class RegionService(BaseCoreService):
         spectrum_id: str,
         start: int | float | None = None,
         stop: int | float | None = None,
-        region_id: Optional[str] = None,
+        region_id: str | None = None,
         mode: Literal["value", "index"] = "index",
     ) -> str:
         """
@@ -513,7 +510,7 @@ class DataQueryService(BaseCoreService):
     """
 
     def get_norm_ctx(
-        self, *, spectrum_id: Optional[str] = None, region_id: Optional[str] = None
+        self, *, spectrum_id: str | None = None, region_id: str | None = None
     ) -> NormalizationContext:
         """
         Retrieve the normalization context of a spectrum.
@@ -539,7 +536,9 @@ class DataQueryService(BaseCoreService):
             region = self._get_typed(region_id, Region)
             return self._get_typed(region.parent_id, Spectrum).norm_ctx
 
-    def get_spectrum_data(self, spectrum_id: str, normalized: bool = False) -> tuple[NDArray, NDArray]:
+    def get_spectrum_data(
+        self, spectrum_id: str, normalized: bool = False
+    ) -> tuple[NDArray, NDArray]:
         """
         Retrieve spectrum x/y data.
 
@@ -612,8 +611,8 @@ class ComponentService(BaseCoreService):
     def _create_component_obj(
         region_id: str,
         model_name: str,
-        parameters: Optional[dict[str, float]] = None,
-        component_id: Optional[str] = None,
+        parameters: dict[str, float] | None = None,
+        component_id: str | None = None,
         expected_type: type[Peak] | type[Background] = Component,
     ) -> Peak | Background:
         """
@@ -640,7 +639,6 @@ class ComponentService(BaseCoreService):
         TypeError
             If the model type is unsupported.
         """
-
         if parameters is None:
             parameters = {}
 
@@ -666,9 +664,7 @@ class ComponentService(BaseCoreService):
         return obj
 
     def _get_norm_ctx(self, component_id: str) -> NormalizationContext:
-        """
-        Retrieve the normalization context of a component.
-        """
+        """Retrieve the normalization context of a component."""
         component = self._get_typed(component_id, Component)
         reg = self._get_typed(component.parent_id, Region)
         spec = self._get_typed(reg.parent_id, Spectrum)
@@ -678,8 +674,8 @@ class ComponentService(BaseCoreService):
         self,
         region_id: str,
         model_name: str,
-        parameters: Optional[dict[str, float]] = None,
-        peak_id: Optional[str] = None,
+        parameters: dict[str, float] | None = None,
+        peak_id: str | None = None,
     ) -> str:
         """
         Create and register a peak component.
@@ -700,7 +696,9 @@ class ComponentService(BaseCoreService):
         str
             ID of the created peak.
         """
-        peak = self._create_component_obj(region_id, model_name, parameters, peak_id, expected_type=Peak)
+        peak = self._create_component_obj(
+            region_id, model_name, parameters, peak_id, expected_type=Peak
+        )
         self.attach(peak)
         return peak.id_
 
@@ -708,8 +706,8 @@ class ComponentService(BaseCoreService):
         self,
         region_id: str,
         model_name: str,
-        parameters: Optional[dict[str, float]] = None,
-        background_id: Optional[str] = None,
+        parameters: dict[str, float] | None = None,
+        background_id: str | None = None,
     ) -> str:
         """
         Replace or create the background component of a region.
@@ -737,12 +735,13 @@ class ComponentService(BaseCoreService):
         ValueError
             If the model is not a background model.
         """
-
-        backgrounds = [obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)]
+        backgrounds = [
+            obj for obj in self.collection.get_children(region_id) if isinstance(obj, Background)
+        ]
 
         if len(backgrounds) > 1:
             raise RuntimeError(
-                f"Region {region_id} must have exactly one Background, " f"found {len(backgrounds)}"
+                f"Region {region_id} must have exactly one Background, found {len(backgrounds)}"
             )
 
         new_bg = self._create_component_obj(
@@ -857,7 +856,9 @@ class ComponentService(BaseCoreService):
 
         component.set_param(param, **kwargs)
 
-    def set_values(self, component_id: str, parameters: dict[str, float], normalized: bool = False) -> None:
+    def set_values(
+        self, component_id: str, parameters: dict[str, float], normalized: bool = False
+    ) -> None:
         """
         Update values of multiple parameters at once.
 
@@ -879,6 +880,7 @@ class ComponentService(BaseCoreService):
             component.set_param(name, value=val)
 
     def get_model(self, component_id: str) -> ParametricModelLike:
+        """Return the parametric model bound to the component."""
         component = self._get_typed(component_id, Component)
         return component.model
 
@@ -897,7 +899,7 @@ class MetadataService(BaseCoreService):
     - Peak: element_type
     """
 
-    def __init__(self, collection: CoreCollection):
+    def __init__(self, collection: CoreCollection) -> None:
         super().__init__(collection)
         self._metadata: dict[str, Metadata] = {}
 
@@ -965,7 +967,11 @@ class MetadataService(BaseCoreService):
         self._metadata.clear()
 
     def find_objects(
-        self, md_field: str, md_value: str, match_exact: bool = False, tp: type[Metadata] | None = None
+        self,
+        md_field: str,
+        md_value: str,
+        match_exact: bool = False,
+        tp: type[Metadata] | None = None,
     ) -> tuple[str, ...]:
         """
         Return object IDs whose metadata matches the given metadata field and value.

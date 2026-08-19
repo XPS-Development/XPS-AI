@@ -6,17 +6,15 @@ uses CoreContext and DTOService from conftest fixtures.
 """
 
 import numpy as np
-import pytest
 
 from tools.automatization import (
-    guess_pseudo_voigt_sig_parameter,
-    guess_pseudo_voigt_amp_parameter,
     calculate_background_intensities,
-    guess_pseudo_voigt_params_at_max,
-    guess_peak_position_by_residuals,
     create_pseudo_voigt_peak_parameters,
+    guess_peak_position_by_residuals,
+    guess_pseudo_voigt_amp_parameter,
+    guess_pseudo_voigt_params_at_max,
+    guess_pseudo_voigt_sig_parameter,
 )
-
 
 # --- Pure function tests (no context) ---
 
@@ -63,7 +61,8 @@ def test_calculate_background_intensities_clamps_to_bounds() -> None:
     x = np.arange(y.size, dtype=float)
     # start=1: mean of y[max(0,0):1] = mean([1]) = 1; stop=4: mean of y[4:5] = 5
     params = calculate_background_intensities(x, y, start=1, stop=4, avg_on=3)
-    assert np.isfinite(params["i1"]) and np.isfinite(params["i2"])
+    assert np.isfinite(params["i1"])
+    assert np.isfinite(params["i2"])
     assert params["i1"] == 1.0
     assert params["i2"] == 5.0
 

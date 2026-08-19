@@ -7,13 +7,12 @@ into Command objects by CommandRegistry for execution and undo/redo.
 """
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
 
 from core.metadata import Metadata
-
 
 # Type alias for parameter field names; maps to RuntimeParameter attributes.
 ParameterField = Literal["name", "value", "lower", "upper", "vary", "expr"]
@@ -98,7 +97,7 @@ class CreateSpectrum:
 
     x: NDArray[np.floating]
     y: NDArray[np.floating]
-    spectrum_id: Optional[str] = None
+    spectrum_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,7 +111,7 @@ class CreateRegion:
     spectrum_id: str
     start: int | float | None = None
     stop: int | float | None = None
-    region_id: Optional[str] = None
+    region_id: str | None = None
     mode: Literal["value", "index"] = "index"
 
 
@@ -126,8 +125,8 @@ class CreatePeak:
 
     region_id: str
     model_name: str
-    parameters: Optional[dict[str, float]] = None
-    peak_id: Optional[str] = None
+    parameters: dict[str, float] | None = None
+    peak_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -141,8 +140,8 @@ class CreateBackground:
 
     region_id: str
     model_name: str
-    parameters: Optional[dict[str, float]] = None
-    background_id: Optional[str] = None
+    parameters: dict[str, float] | None = None
+    background_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -157,7 +156,7 @@ class ReplacePeakModel:
 
     peak_id: str
     new_model_name: str
-    parameters: Optional[dict[str, float]] = None
+    parameters: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -170,8 +169,8 @@ class ReplaceBackgroundModel:
 
     region_id: str
     new_model_name: str
-    parameters: Optional[dict[str, float]] = None
-    background_id: Optional[str] = None
+    parameters: dict[str, float] | None = None
+    background_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -198,19 +197,19 @@ class CompositeChange:
 
 
 # Union type for typed dispatch in CommandRegistry and CommandExecutor.
-BaseChange = Union[
-    UpdateParameter,
-    UpdateRegionSlice,
-    RemoveObject,
-    RemoveMetadata,
-    FullRemoveObject,
-    CreateSpectrum,
-    CreateRegion,
-    CreatePeak,
-    CreateBackground,
-    ReplacePeakModel,
-    ReplaceBackgroundModel,
-    UpdateMultipleParameterValues,
-    SetMetadata,
-    CompositeChange,
-]
+BaseChange = (
+    UpdateParameter
+    | UpdateRegionSlice
+    | RemoveObject
+    | RemoveMetadata
+    | FullRemoveObject
+    | CreateSpectrum
+    | CreateRegion
+    | CreatePeak
+    | CreateBackground
+    | ReplacePeakModel
+    | ReplaceBackgroundModel
+    | UpdateMultipleParameterValues
+    | SetMetadata
+    | CompositeChange
+)

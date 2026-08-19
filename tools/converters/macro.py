@@ -123,7 +123,7 @@ def read_ave(background_window, dropdown_button) -> int | None:
     best_text = ""
     best_score = None
     for control in controls:
-        c_left, c_top, c_right, c_bottom = ctrl_rect(control)
+        _c_left, c_top, c_right, c_bottom = ctrl_rect(control)
         c_center_y = (c_top + c_bottom) / 2
         if abs(c_center_y - center_y) > 12:
             continue
@@ -154,7 +154,7 @@ def read_bg_type(background_window, dropdown_button) -> str:
     best_text = ""
     best_score = None
     for control in controls:
-        c_left, c_top, c_right, c_bottom = ctrl_rect(control)
+        _c_left, c_top, c_right, c_bottom = ctrl_rect(control)
         c_center_y = (c_top + c_bottom) / 2
         if abs(c_center_y - center_y) > 12:
             continue
@@ -184,7 +184,7 @@ def copy_num_at(x, y) -> int | float | None:
 
 
 def read_left_value(button, max_steps=24, step_px=5) -> int | float | None:
-    left, top, right, bottom = ctrl_rect(button)
+    left, top, _right, bottom = ctrl_rect(button)
     center_y = (top + bottom) / 2
     start_x = left - 8
     for i in range(max_steps):
@@ -221,7 +221,9 @@ def find_bg_window(num):
         for window in windows:
             if window.Name != name:
                 continue
-            dropdowns = [control for control in all_controls(window) if control.AutomationId == "DropDown"]
+            dropdowns = [
+                control for control in all_controls(window) if control.AutomationId == "DropDown"
+            ]
             if len(dropdowns) >= 2:
                 return window
     return None
@@ -244,7 +246,9 @@ def save_bg_meta(num, name) -> bool:
     if background_window is None:
         return False
 
-    dropdowns = [control for control in all_controls(background_window) if control.AutomationId == "DropDown"]
+    dropdowns = [
+        control for control in all_controls(background_window) if control.AutomationId == "DropDown"
+    ]
     if len(dropdowns) < 2:
         return False
     dropdowns = sorted(dropdowns, key=lambda control: ctrl_rect(control)[0])
@@ -271,14 +275,14 @@ def save_bg_meta(num, name) -> bool:
 def set_source() -> None:
     pyautogui.write(str(SOURCE_DIR))
     time.sleep(DELAY)
-    pyautogui.press('enter')
+    pyautogui.press("enter")
     time.sleep(DELAY)
 
 
 def set_target() -> None:
     pyautogui.write(str(OUTPUT_DIR))
     time.sleep(DELAY)
-    pyautogui.press('enter')
+    pyautogui.press("enter")
     time.sleep(DELAY)
 
 
@@ -286,26 +290,26 @@ def save_file(name, num) -> None:
     base_name = Path(name).stem
     file_name = f"{base_name}_{num}"
 
-    pyautogui.hotkey('ctrl', 'a')
+    pyautogui.hotkey("ctrl", "a")
     time.sleep(DELAY)
-    pyautogui.press('delete')
+    pyautogui.press("delete")
     time.sleep(DELAY)
 
     pyautogui.write(file_name)
     time.sleep(DELAY)
-    pyautogui.press('enter')
-    pyautogui.press('enter')
+    pyautogui.press("enter")
+    pyautogui.press("enter")
     time.sleep(DELAY)
 
-    pyautogui.press('enter')
-    pyautogui.press('enter')
+    pyautogui.press("enter")
+    pyautogui.press("enter")
     time.sleep(DELAY * 10)
 
 
 def close_popups() -> None:
     for window in auto.GetRootControl().GetChildren():
         if window.Name != APP_WINDOW_NAME:
-            pyautogui.press('escape')
+            pyautogui.press("escape")
             time.sleep(DELAY)
             break
 
@@ -319,17 +323,17 @@ def open_xps(name) -> bool:
     time.sleep(DELAY)
     time.sleep(DELAY)
 
-    pyautogui.hotkey('ctrl', 'a')
+    pyautogui.hotkey("ctrl", "a")
     time.sleep(DELAY)
-    pyautogui.press('delete')
+    pyautogui.press("delete")
     time.sleep(DELAY)
 
     set_source()
 
     pyautogui.write(name)
     time.sleep(DELAY)
-    pyautogui.press('enter')
-    pyautogui.press('enter')
+    pyautogui.press("enter")
+    pyautogui.press("enter")
     time.sleep(DELAY)
     return True
 
@@ -348,7 +352,11 @@ def has_peak_window(num) -> bool:
 
 
 def find_peak_offset(main_window) -> int:
-    files = [file.name for file in SOURCE_DIR.iterdir() if file.is_file() and file.suffix.lower() == '.xps']
+    files = [
+        file.name
+        for file in SOURCE_DIR.iterdir()
+        if file.is_file() and file.suffix.lower() == ".xps"
+    ]
     calib_file = files[0]
     open_xps(calib_file)
 
@@ -435,13 +443,17 @@ def export_region(num, name) -> bool:
     return True
 
 
-def main():
+def main() -> None:
     subprocess.Popen(str(APP_PATH))
     time.sleep(DELAY * 30)
 
     main_window = auto.WindowControl(searchDepth=1, Name=APP_WINDOW_NAME)
     peak_offset = find_peak_offset(main_window)
-    files = [file.name for file in SOURCE_DIR.iterdir() if file.is_file() and file.suffix.lower() == '.xps']
+    files = [
+        file.name
+        for file in SOURCE_DIR.iterdir()
+        if file.is_file() and file.suffix.lower() == ".xps"
+    ]
 
     for file in files:
         open_xps(file)

@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from core.objects import Spectrum, Region, Peak, Background
 from core.collection import CoreCollection
-from core.math_models import PseudoVoigtPeakModel, ConstantBackgroundModel
+from core.math_models import ConstantBackgroundModel, PseudoVoigtPeakModel
+from core.objects import Background, Peak, Region, Spectrum
 
 
 @pytest.fixture

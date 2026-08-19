@@ -19,12 +19,16 @@ from .dto import BaseDTO, RegionDTO, SpectrumDTO
 
 @dataclass(frozen=True)
 class ComponentEvaluationResult(BaseDTO):
+    """Evaluated intensity of a single component over a region."""
+
     y: NDArray
     kind: Literal["peak", "background"]
 
 
 @dataclass(frozen=True)
 class RegionEvaluationResult(RegionDTO):
+    """Evaluated region: peaks, background, model, and residuals."""
+
     peaks: tuple[ComponentEvaluationResult, ...]
     background: ComponentEvaluationResult | None
     model: NDArray
@@ -33,6 +37,8 @@ class RegionEvaluationResult(RegionDTO):
 
 @dataclass(frozen=True)
 class SpectrumEvaluationResult(SpectrumDTO):
+    """Evaluated spectrum containing per-region evaluation results."""
+
     regions: tuple[RegionEvaluationResult, ...]
 
 

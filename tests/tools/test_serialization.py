@@ -42,7 +42,7 @@ def test_serialize_deserialize_simple_collection(simple_collection):
         restored_obj = restored_collection.objects_index[obj_id]
 
         # Verify object types match
-        assert type(original_obj) == type(restored_obj)
+        assert type(original_obj) is type(restored_obj)
 
         # Verify IDs match
         assert original_obj.id_ == restored_obj.id_
@@ -80,7 +80,9 @@ def test_serialize_deserialize_with_metadata(simple_collection):
     spectrum_id = next(
         obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Spectrum)
     )
-    peak_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
+    peak_id = next(
+        obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak)
+    )
 
     metadata_service.set_metadata(
         spectrum_id, SpectrumMetadata(name="Test", group="Group1", file="test.dat")
@@ -180,7 +182,7 @@ def test_dump_and_load_file(simple_collection, tmp_path):
         assert obj_id in restored_collection.objects_index
         original_obj = simple_collection.objects_index[obj_id]
         restored_obj = restored_collection.objects_index[obj_id]
-        assert type(original_obj) == type(restored_obj)
+        assert type(original_obj) is type(restored_obj)
         assert original_obj.id_ == restored_obj.id_
 
 
@@ -222,7 +224,9 @@ def test_dump_and_load_with_metadata(simple_collection, tmp_path):
     spectrum_id = next(
         obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Spectrum)
     )
-    peak_id = next(obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
+    peak_id = next(
+        obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Peak)
+    )
 
     metadata_service.set_metadata(
         spectrum_id, SpectrumMetadata(name="Test", group="Group1", file="test.dat")
@@ -417,7 +421,9 @@ def test_json_serialization_inf_nan_handling():
 
     from core.math_models import PseudoVoigtPeakModel
 
-    peak = Peak(model=PseudoVoigtPeakModel(), region_id="r1", component_id="p1", amp=1, cen=5, sig=1, frac=0)
+    peak = Peak(
+        model=PseudoVoigtPeakModel(), region_id="r1", component_id="p1", amp=1, cen=5, sig=1, frac=0
+    )
     # Set parameter with inf bounds
     param = peak.get_param("amp")
     param.set(lower=-np.inf, upper=np.inf)
@@ -433,7 +439,9 @@ def test_json_serialization_inf_nan_handling():
     restored_collection = result[0]
 
     # Verify parameter bounds are restored correctly
-    restored_peak = next(obj for obj in restored_collection.objects_index.values() if isinstance(obj, Peak))
+    restored_peak = next(
+        obj for obj in restored_collection.objects_index.values() if isinstance(obj, Peak)
+    )
     amp_param = restored_peak.get_param("amp")
     assert amp_param.lower == -np.inf
     assert amp_param.upper == np.inf
@@ -483,7 +491,7 @@ def test_load_mode_new_returns_tuple(simple_collection, tmp_path):
     dump(simple_collection, file_path)
     result = load(file_path, mode="new")
     assert isinstance(result, tuple)
-    new_collection, new_metadata_service = result
+    new_collection, _new_metadata_service = result
     assert len(new_collection.objects_index) == len(simple_collection.objects_index)
 
 

@@ -31,9 +31,7 @@ def test_run_segmenter_skips_spectra_that_already_have_regions(
         def run_segmenter(self, *args: Any, **kwargs: Any) -> CompositeChange:
             raise AssertionError("segmenter should not run")
 
-    change = _analysis(simple_collection, nn=_BoomNN(model_path=None)).run_segmenter(
-        [spectrum_id]
-    )
+    change = _analysis(simple_collection, nn=_BoomNN(model_path=None)).run_segmenter([spectrum_id])
     assert change is None
 
 
@@ -53,9 +51,7 @@ def test_run_segmenter_returns_composite_for_empty_spectrum(
     orch = AppOrchestrator(empty_collection, AppParameters())
     orch.create_spectrum(x, y, spectrum_id="s1")
 
-    fake = CompositeChange(
-        changes=[CreatePeak(region_id="r-new", model_name="pseudo-voigt")]
-    )
+    fake = CompositeChange(changes=[CreatePeak(region_id="r-new", model_name="pseudo-voigt")])
     monkeypatch.setattr(
         orch._nn,
         "run_segmenter",

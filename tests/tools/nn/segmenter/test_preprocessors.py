@@ -39,8 +39,10 @@ def test_segmenter_preprocessor_value_ranges(spectrum_like: _SpectrumLike) -> No
     model_input, _ = pre(spectrum_like)
     arr = model_input[ONNXSegmenterAdapter.INPUT_KEY][0]  # (2, num)
     ch0, ch1 = arr[0], arr[1]
-    assert ch0.min() >= 0 and ch0.max() <= spectrum_like.y.max() + 1e-5
-    assert ch1.min() >= 0 and ch1.max() <= 1.0 + 1e-5
+    assert ch0.min() >= 0
+    assert ch0.max() <= spectrum_like.y.max() + 1e-5
+    assert ch1.min() >= 0
+    assert ch1.max() <= 1.0 + 1e-5
 
 
 def test_segmenter_preprocessor_default_num() -> None:

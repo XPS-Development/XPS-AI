@@ -53,7 +53,9 @@ def test_segmenter_pipeline_run_with_mock_adapter(fixture_spectrum: _SpectrumLik
     assert len(result) >= 1
     for sr in result:
         assert isinstance(sr, SegmenterResult)
-        assert hasattr(sr, "region") and hasattr(sr, "peaks")
+        assert hasattr(sr, "region")
+        assert hasattr(sr, "peaks")
         assert sr.region.start < sr.region.stop
-        assert sr.region.start >= 0 and sr.region.stop <= len(fixture_spectrum.x)
+        assert sr.region.start >= 0
+        assert sr.region.stop <= len(fixture_spectrum.x)
         assert isinstance(sr.peaks, tuple)

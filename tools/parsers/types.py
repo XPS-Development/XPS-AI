@@ -1,14 +1,11 @@
-"""
-Shared types for spectrum parsers.
-"""
+"""Shared types for spectrum parsers."""
 
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.metadata import SpectrumMetadata
-
-from numpy.typing import NDArray
 
 
 @dataclass
@@ -30,6 +27,7 @@ class ParsedSpectrum:
     metadata: SpectrumMetadata
 
     def __post_init__(self) -> None:
+        """Validate array shapes and ensure ``x`` is increasing."""
         if self.x.ndim != 1 or self.y.ndim != 1:
             raise ValueError("x and y must be 1D arrays")
         if len(self.x) != len(self.y):

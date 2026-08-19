@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from core.services import SpectrumService
-from core.objects import Spectrum
 from core.math_models import NormalizationContext
+from core.objects import Spectrum
+from core.services import SpectrumService
 
 
 @pytest.fixture

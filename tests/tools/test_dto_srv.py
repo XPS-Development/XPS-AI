@@ -1,7 +1,9 @@
-import pytest
-import numpy as np
+from dataclasses import FrozenInstanceError
 
-from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO, ParameterDTO
+import numpy as np
+import pytest
+
+from tools.dto import ComponentDTO, ParameterDTO, RegionDTO, SpectrumDTO
 
 
 @pytest.fixture
@@ -36,7 +38,7 @@ def test_get_component_parameters_are_parameter_dtos(srv, peak_id):
 def test_get_component_is_immutable(srv, peak_id):
     dto = srv.get_component(peak_id)
 
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         dto.parameters["cen"].value = 10.0
 
 
@@ -88,8 +90,8 @@ def test_get_spectrum_returns_spectrum_dto(srv, spectrum_id):
 
 def test_region_spectrum_array_immutable(srv, region_id, spectrum_id):
     dto = srv.get_region(region_id)
-    with pytest.raises(Exception):
-        x, y = dto.x, dto.y
+    y = dto.y
+    with pytest.raises(ValueError, match="read-only"):
         y += 1
 
     # copies are mutable
@@ -97,8 +99,8 @@ def test_region_spectrum_array_immutable(srv, region_id, spectrum_id):
     y += 1
 
     dto = srv.get_spectrum(spectrum_id)
-    with pytest.raises(Exception):
-        x, y = dto.x, dto.y
+    y = dto.y
+    with pytest.raises(ValueError, match="read-only"):
         y += 1
 
     # copies are mutable

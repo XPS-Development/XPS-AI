@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from app.automatization import AutomatizationAdapter
 from app.command.changes import (
     BaseChange,
     CompositeChange,
@@ -20,6 +19,7 @@ from app.command.changes import (
 )
 
 if TYPE_CHECKING:
+    from app.automatization import AutomatizationAdapter
     from app.orchestration import AppParameters, QueryService
 
 
@@ -80,15 +80,9 @@ class EditingUseCases:
         BaseChange
             ``CreatePeak`` with guessed or explicit parameters.
         """
-        if (
-            self._params.automatic_methods
-            and model_name == "pseudo-voigt"
-            and parameters is None
-        ):
+        if self._params.automatic_methods and model_name == "pseudo-voigt" and parameters is None:
             region_repr = self._query.get_region_dto_repr(region_id, normalized=False)
-            return self._automatization.create_pseudo_voigt_peak(
-                region_repr[0], region_repr[1]
-            )
+            return self._automatization.create_pseudo_voigt_peak(region_repr[0], region_repr[1])
         return CreatePeak(
             region_id=region_id,
             model_name=model_name,
@@ -170,9 +164,7 @@ class EditingUseCases:
             background intensities when automatic methods are on and a
             background exists.
         """
-        change = UpdateRegionSlice(
-            region_id=region_id, start=start, stop=stop, mode=mode
-        )
+        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
 
         if not self._params.automatic_methods:
             return change

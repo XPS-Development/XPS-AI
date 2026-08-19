@@ -1,6 +1,4 @@
-"""
-Shared spectrum- and region-level context menus for the plot and properties panel.
-"""
+"""Shared spectrum- and region-level context menus for the plot and properties panel."""
 
 from dataclasses import dataclass
 
@@ -10,7 +8,6 @@ from PySide6.QtWidgets import QMenu, QWidget
 from .component_creation_dialog import ComponentCreationDialog
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
-
 
 # TODO: refactor as a modular context menu factory
 

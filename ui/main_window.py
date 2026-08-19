@@ -1,3 +1,5 @@
+"""Main window: spectrum tree, plot area, properties, and menus."""
+
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -230,7 +232,6 @@ class MainWindow(QMainWindow):
         spectra files supported by the import service (.txt, .dat, .vms,
         .vamas) via :meth:`ControllerWrapper.import_spectra`.
         """
-
         filename, selected_filter = QFileDialog.getOpenFileName(
             self,
             "Open or import",
@@ -291,14 +292,14 @@ class MainWindow(QMainWindow):
         """Export peak parameters from currently selected spectrum as CSV."""
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
-            self._show_info("No spectrum selected", "Select a spectrum before exporting peak parameters.")
+            self._show_info(
+                "No spectrum selected", "Select a spectrum before exporting peak parameters."
+            )
             return
         export_peaks(self._controller, [spectrum_id], parent=self)
 
     def _on_export_all_selected_spectra_triggered(self) -> None:
-        """
-        Export all selected spectra.
-        """
+        """Export all selected spectra."""
         if self._spectrum_tree_panel is None:
             return
         spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
@@ -308,14 +309,14 @@ class MainWindow(QMainWindow):
         export_spectra(self._controller, spectrum_ids, parent=self)
 
     def _on_export_peaks_all_selected_spectra_triggered(self) -> None:
-        """
-        Export peak parameters from all selected spectra.
-        """
+        """Export peak parameters from all selected spectra."""
         if self._spectrum_tree_panel is None:
             return
         spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
         if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select one or more spectra before exporting peaks.")
+            self._show_info(
+                "No spectrum selected", "Select one or more spectra before exporting peaks."
+            )
             return
         export_peaks(self._controller, spectrum_ids, parent=self)
 
@@ -399,7 +400,7 @@ class MainWindow(QMainWindow):
             self._action_redo.setEnabled(can_redo)
 
     def _update_window_title(self) -> None:
-        """Set the window title based on save path"""
+        """Set the window title based on save path."""
         path: Path | None = self._controller.get_default_save_path()
 
         if path is None:

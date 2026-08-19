@@ -32,7 +32,6 @@ def guess_pseudo_voigt_sig_parameter(x: NDArray, y: NDArray, max_idx: int) -> fl
     float
         Sigma parameter for pseudo-voigt model at max_idx.
     """
-
     half_max = (y[max_idx] - y.min()) / 2 + y.min()
     try:
         l_hm_idx = np.where(y[:max_idx] <= half_max)[0][-1]
@@ -99,7 +98,6 @@ def calculate_background_intensities(
     dict[str, float]
         Parameters i1 and i2 for background model.
     """
-
     if mode == "value":
         start = find_closest_index(start, x)
         stop = find_closest_index(stop, x)
@@ -149,7 +147,8 @@ def guess_pseudo_voigt_params_at_max(
 
 
 def guess_peak_position_by_residuals(x: NDArray, residuals: NDArray) -> int:
-    """Guess peak position by residuals.
+    """Guess peak position as the index of the maximum residual.
+
     The peak position is the index of the maximum residual.
 
     Parameters
@@ -170,7 +169,8 @@ def guess_peak_position_by_residuals(x: NDArray, residuals: NDArray) -> int:
 def create_pseudo_voigt_peak_parameters(
     region: RegionLike, components: tuple[ComponentLike, ...]
 ) -> dict[str, float]:
-    """Create pseudo-voigt peak parameters for a region.
+    """Create initial pseudo-Voigt peak parameters for a region.
+
     This method can be used to create initial peak parameters for pseudo-voigt model.
 
     Parameters

@@ -1,6 +1,4 @@
-"""
-Parser for two-column .dat spectrum files (x, y).
-"""
+"""Parser for two-column .dat spectrum files (x, y)."""
 
 from pathlib import Path
 

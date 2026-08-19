@@ -5,12 +5,14 @@ Uses tools.optimization for lmfit-based fitting. Caller provides DTOs;
 service returns BaseChange instances for CommandExecutor.
 """
 
-from typing import Any, Sequence
+from collections.abc import Sequence
 
 from tools.dto import ComponentDTO, RegionDTO
 from tools.optimization import (
     OptimizedComponent,
     build_contexts,
+)
+from tools.optimization import (
     optimize as run_optimize,
 )
 
@@ -56,7 +58,7 @@ class OptimizationService:
     def optimize_regions(
         self,
         region_reprs: Sequence[tuple[RegionDTO, tuple[ComponentDTO, ...]]],
-        **kwargs: Any,
+        **kwargs,
     ) -> CompositeChange:
         """
         Run optimization and return Change objects for parameter updates.

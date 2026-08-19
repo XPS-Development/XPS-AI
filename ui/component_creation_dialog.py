@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 
 from core.math_models import ModelRegistry, ParameterSpec
@@ -62,7 +63,7 @@ class ComponentCreationDialog(QDialog):
         controller: ControllerWrapper,
         *,
         region_id: str,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Add component")
@@ -86,7 +87,9 @@ class ComponentCreationDialog(QDialog):
         self._params_table = QTableWidget()
         self._params_table.setAlternatingRowColors(True)
         self._params_table.setColumnCount(6)
-        self._params_table.setHorizontalHeaderLabels(["name", "value", "lower", "upper", "vary", "expr"])
+        self._params_table.setHorizontalHeaderLabels(
+            ["name", "value", "lower", "upper", "vary", "expr"]
+        )
         self._params_table.horizontalHeader().setStretchLastSection(True)
 
         self._type_label = QLabel("Component type")
@@ -126,7 +129,9 @@ class ComponentCreationDialog(QDialog):
         try:
             self._component_type_combo.clear()
             # If region already has a background, disable background replacement.
-            background_exists = self._controller.query.get_background_id(self._region_id) is not None
+            background_exists = (
+                self._controller.query.get_background_id(self._region_id) is not None
+            )
             self._component_type_combo.addItem("peak")
             if not background_exists:
                 self._component_type_combo.addItem("background")
@@ -266,7 +271,9 @@ class ComponentCreationDialog(QDialog):
             # Background replacement is disabled in this dialog when a background exists.
             if before_bg_id is not None:
                 raise RuntimeError("Background already exists; replacement is disabled.")
-            self._controller.create_background(self._region_id, model_name, parameters=value_by_param)
+            self._controller.create_background(
+                self._region_id, model_name, parameters=value_by_param
+            )
             component_id = str(self._controller.query.get_background_id(self._region_id))
             if not component_id:
                 raise RuntimeError("Failed to identify created background id.")

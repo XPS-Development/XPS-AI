@@ -24,7 +24,8 @@ class SegmenterPreprocessor:
     """
 
     def __init__(self, num: int = 256) -> None:
-        """
+        """Set the interpolation grid size.
+
         Parameters
         ----------
         num : int, optional

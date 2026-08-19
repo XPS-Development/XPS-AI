@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
+from app.command.changes import CompositeChange, UpdateMultipleParameterValues
+from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from app.optimization import (
     OptimizationService,
     components_to_changes,
 )
 from core.services import CoreContext
-from app.command.changes import UpdateMultipleParameterValues, CompositeChange
-from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from tools.optimization import OptimizedComponent
 
 
@@ -19,7 +19,9 @@ def srv():
 def test_components_to_changes():
     """components_to_changes produces UpdateMultipleParameterValues from OptimizedComponent."""
     components = [
-        OptimizedComponent(component_id="p1", parameters={"amp": 1.0, "cen": 5.0}, normalized=False),
+        OptimizedComponent(
+            component_id="p1", parameters={"amp": 1.0, "cen": 5.0}, normalized=False
+        ),
         OptimizedComponent(component_id="b1", parameters={"const": 2.0}, normalized=False),
     ]
     result = components_to_changes(components)

@@ -48,20 +48,30 @@
 #
 ################################################################################
 
-from __future__ import division
-import xml.etree.ElementTree        # required by py2exe
-import xml.etree.cElementTree as ET
+import xml.etree.ElementTree as ET
 from io import StringIO
-from numpy import array, linspace, arange, zeros, ceil, amax, amin, argmax, argmin, abs
-from numpy import polyfit, polyval, seterr, trunc, mean
+
+from numpy import (
+    abs,
+    amax,
+    amin,
+    arange,
+    array,
+    linspace,
+    mean,
+    polyfit,
+    polyval,
+    seterr,
+    trunc,
+    zeros,
+)
 from numpy.linalg import norm
-from scipy.interpolate import interp1d
 
 DEBUG = False
 OPTION = 2
 
 # We do not allow divide by zeros at all: raise an error if it happens.
-seterr(divide='raise')
+seterr(divide="raise")
 
 ################################################################################
 #
@@ -70,34 +80,33 @@ seterr(divide='raise')
 ################################################################################
 
 
-class SPECS(object):
-    """ Represent a SPECSLab .xml output as a python object. Construct with:
+class SPECS:
+    """Represent a SPECSLab .xml output as a python object. Construct with:
 
-        specs_obj = specs.SPECS(my_xml_file)
+    specs_obj = specs.SPECS(my_xml_file)
 
     """
 
-    def __init__(self, filename):
-        """ Constructor, takes the xml file path. """
-        
+    def __init__(self, filename) -> None:
+        """Constructor, takes the xml file path."""
         tree = ET.ElementTree()
-        
+
         try:
-          self.xmlroot = tree.parse(filename)
+            self.xmlroot = tree.parse(filename)
         except NameError:
-          print("SPECS init error: could not open this file as an xml tree.")
-          return None
+            print("SPECS init error: could not open this file as an xml tree.")
+            return None
         except ET.ParseError:
-          # We probably need to decode from Windows cp1252 string encoding.
-          f = open(filename, 'r')
-          contents = f.readlines()
-          f.close()
-          contents = "".join(contents).decode("cp1252").encode("utf-8")
-          self.xmlroot = tree.parse(StringIO(contents))
+            # We probably need to decode from Windows cp1252 string encoding.
+            f = open(filename)
+            contents = f.readlines()
+            f.close()
+            contents = "".join(contents).decode("cp1252").encode("utf-8")
+            self.xmlroot = tree.parse(StringIO(contents))
 
         # The version impacts on properties of the document so we need to read it
         # here.
-        self.xmlversion = self.xmlroot.get('version')
+        self.xmlversion = self.xmlroot.get("version")
 
         # For convenience, store groups as a list and provide a member function
         # to access by name - same for regions.
@@ -105,14 +114,14 @@ class SPECS(object):
         for group in list(self.xmlroot[0]):
             # All the subelements will be individual groups (called a RegionGroup in
             # SPECS parlance) but we must check in case the file format changes.
-            if group.get('type_name') == "RegionGroup":
+            if group.get("type_name") == "RegionGroup":
                 self.groups.append(SPECSGroup(group))
 
 
-class SPECSGroup(object):
-    """ Encapsulates a "RegionGroup" struct from the SPECS XML format. """
+class SPECSGroup:
+    """Encapsulates a "RegionGroup" struct from the SPECS XML format."""
 
-    def __init__(self, xmlgroup):
+    def __init__(self, xmlgroup) -> None:
 
         self.name = xmlgroup[0].text
 
@@ -121,17 +130,17 @@ class SPECSGroup(object):
 
         self.regions = []
         for region in list(xmlgroup[1]):
-            if region.get('type_name') == "RegionData":
+            if region.get("type_name") == "RegionData":
                 self.regions.append(SPECSRegion(region))
 
 
-class SPECSRegion(object):
-    """ Encapsulates a "RegionData" struct from the SPECS XML format. """
+class SPECSRegion:
+    """Encapsulates a "RegionData" struct from the SPECS XML format."""
 
-    def __init__(self, xmlregion):
+    def __init__(self, xmlregion) -> None:
 
         self.name = xmlregion[0].text
-        self.num_cycles = int(xmlregion[7].attrib['length'])
+        self.num_cycles = int(xmlregion[7].attrib["length"])
 
         self.raw_counts = []
         self.scaling_factors = []
@@ -143,8 +152,7 @@ class SPECSRegion(object):
         # Improvement from v1: we search directly for the named sequence rather
         # than iterating generally.
         for elem in xmlregion.findall(".//sequence[@type_name='CountsSeq']"):
-            self.raw_counts.append(
-                array([int(x) for x in elem[0].text.split()]))
+            self.raw_counts.append(array([int(x) for x in elem[0].text.split()]))
 
         # Scaling factors for the counts.
         # for elem in xmlregion.findall(".//sequence[@name='scaling_factors']"):
@@ -155,10 +163,9 @@ class SPECSRegion(object):
         for ycs in xmlregion.findall(".//sequence[@type_name='YCurveSeq']"):
             for ycurve in ycs:
                 if "Extended Channel" in ycurve[0].text:
-                    for channel in ycurve.iter('sequence'):
-                        if channel.attrib['name'] == "data":
-                            tmp = array(
-                                [float(x) for x in channel[0].text.split()])
+                    for channel in ycurve.iter("sequence"):
+                        if channel.attrib["name"] == "data":
+                            tmp = array([float(x) for x in channel[0].text.split()])
                             self.extended_channels.append(tmp)
 
         # Grab the transmission function. This is *not* to be trusted but SPECS
@@ -167,8 +174,7 @@ class SPECSRegion(object):
         trans = xmlregion.find(".//sequence[@name='transmission']")
         if trans is not None and len(trans) > 0:
             try:
-                self.transmission = array(
-                    [float(x) for x in trans[0].text.split()])
+                self.transmission = array([float(x) for x in trans[0].text.split()])
             except ValueError:
                 # SPECS sometimes says the transmission is "Infinity", obviously not a
                 # useful number so we explicitly set the transmission to be None here.
@@ -180,37 +186,33 @@ class SPECSRegion(object):
         # Note: should ONLY BE ONE of these, so use find rather than findall.
         rdef = xmlregion.find(".//struct[@type_name='RegionDef']")
         for elem in rdef:
-            if elem.attrib['name'] == "scan_mode":
+            if elem.attrib["name"] == "scan_mode":
                 self.scan_mode = elem[0].text
-            elif elem.attrib['name'] == "dwell_time":
+            elif elem.attrib["name"] == "dwell_time":
                 self.dwell_time = float(elem.text)
-            elif elem.attrib['name'] == "analyzer_lens":
+            elif elem.attrib["name"] == "analyzer_lens":
                 self.analyzer_lens = elem.text
-            elif elem.attrib['name'] == "scan_delta":
+            elif elem.attrib["name"] == "scan_delta":
                 self.scan_delta = float(elem.text)
-            elif elem.attrib['name'] == "excitation_energy":
+            elif elem.attrib["name"] == "excitation_energy":
                 self.excitation_energy = float(elem.text)
-            elif elem.attrib['name'] == "pass_energy":
+            elif elem.attrib["name"] == "pass_energy":
                 self.pass_energy = float(elem.text)
-            elif elem.attrib['name'] == "kinetic_energy":
+            elif elem.attrib["name"] == "kinetic_energy":
                 self.kinetic_energy = float(elem.text)
-            elif elem.attrib['name'] == "values_per_curve":
+            elif elem.attrib["name"] == "values_per_curve":
                 self.values_per_curve = int(elem.text)
-            elif elem.attrib['name'] == "effective_workfunction":
+            elif elem.attrib["name"] == "effective_workfunction":
                 self.effective_workfunction = float(elem.text)
 
         # The kinetic energy and binding energy axes:
-        ke_upper = self.kinetic_energy + (self.values_per_curve -
-                                          1) * self.scan_delta
-        self.kinetic_axis = linspace(
-            self.kinetic_energy, ke_upper, self.values_per_curve)
+        ke_upper = self.kinetic_energy + (self.values_per_curve - 1) * self.scan_delta
+        self.kinetic_axis = linspace(self.kinetic_energy, ke_upper, self.values_per_curve)
         self.binding_axis = self.excitation_energy - self.kinetic_axis
 
         # Excitation axis (for NEXAFS)
-        exc_upper = self.excitation_energy + (
-            self.values_per_curve - 1) * self.scan_delta
-        self.excitation_axis = linspace(
-            self.excitation_energy, exc_upper, self.values_per_curve)
+        exc_upper = self.excitation_energy + (self.values_per_curve - 1) * self.scan_delta
+        self.excitation_axis = linspace(self.excitation_energy, exc_upper, self.values_per_curve)
 
         # Time axis
         self.time_axis = arange(self.values_per_curve) * self.dwell_time
@@ -227,27 +229,22 @@ class SPECSRegion(object):
 
         detectors = xmlregion.find(".//sequence[@type_name='DetectorSeq']")
         for elem in detectors:
-            if elem.attrib['type_name'] == "Detector":
+            if elem.attrib["type_name"] == "Detector":
                 for subelem in elem.iter():
                     if "name" in subelem.attrib.keys():
-                        if subelem.attrib['name'] == "position":
-                            self.detector_channel_positions.append(
-                                float(subelem.text))
-                        if subelem.attrib['name'] == "shift":
-                            self.detector_channel_shifts.append(
-                                float(subelem.text))
-                        if subelem.attrib['name'] == 'gain':
-                            self.detector_channel_gains.append(
-                                float(subelem.text))
+                        if subelem.attrib["name"] == "position":
+                            self.detector_channel_positions.append(float(subelem.text))
+                        if subelem.attrib["name"] == "shift":
+                            self.detector_channel_shifts.append(float(subelem.text))
+                        if subelem.attrib["name"] == "gain":
+                            self.detector_channel_gains.append(float(subelem.text))
 
         self.detector_channel_shifts = array(self.detector_channel_shifts)
-        self.detector_channel_positions = array(
-            self.detector_channel_positions)
+        self.detector_channel_positions = array(self.detector_channel_positions)
         self.detector_channel_gains = array(self.detector_channel_gains)
 
         # Use the pass energy to calculate detector calibration.
-        self.detector_channel_offsets = self.pass_energy * \
-            self.detector_channel_shifts
+        self.detector_channel_offsets = self.pass_energy * self.detector_channel_shifts
 
         num_detectors = len(self.detector_channel_offsets)
 
@@ -261,29 +258,30 @@ class SPECSRegion(object):
         # Multidetector systems"). Don't really need si or t.
         try:
             so = self.detector_channel_offsets[-1]
-            #si = self.detector_channel_offsets[0]
+            # si = self.detector_channel_offsets[0]
             h = int(trunc(so / self.scan_delta + 0.5))
         except IndexError:
             print("IndexError in unpacking: ", num_detectors)
-        #t = int(trunc(-si / self.scan_delta + 0.5))
+        # t = int(trunc(-si / self.scan_delta + 0.5))
 
         # Now use the h value to calculate the index offsets for each of the channels.
         # (This isn't used for ConstantFinalState)
         start_energies = []
         for i in range(num_detectors):
-            start_energies.append(self.kinetic_energy - h * self.scan_delta +
-                                  self.detector_channel_offsets[i])
+            start_energies.append(
+                self.kinetic_energy - h * self.scan_delta + self.detector_channel_offsets[i]
+            )
         idxs = []
         for i in range(num_detectors):
-            idxs.append(int(trunc((self.kinetic_energy -
-                        start_energies[i]) / self.scan_delta + 0.5)))
+            idxs.append(
+                int(trunc((self.kinetic_energy - start_energies[i]) / self.scan_delta + 0.5))
+            )
 
         # We now need to separate the raw counts into channels and assign each counts value
         # to a nominal energy value again according to the SPECS document referenced above,
         # using the "Nearest-Neighbour" method.
-        self.counts = zeros((self.values_per_curve))
-        self.channel_counts = zeros(
-            (self.values_per_curve, len(self.detector_channel_offsets)))
+        self.counts = zeros(self.values_per_curve)
+        self.channel_counts = zeros((self.values_per_curve, len(self.detector_channel_offsets)))
 
         for c in self.raw_counts:
             tmp_channels = []
@@ -302,10 +300,11 @@ class SPECSRegion(object):
                     for j in range(num_detectors):
                         try:
                             self.counts[i] += tmp_channels[j][i + idxs[j]]
-                            self.channel_counts[
-                                i, j] += tmp_channels[j][i + idxs[j]]
+                            self.channel_counts[i, j] += tmp_channels[j][i + idxs[j]]
                         except IndexError:
-                            print("SPECSRegion: Darn, an index error unpacking the channeltron data. This was not supposed to happen!")
+                            print(
+                                "SPECSRegion: Darn, an index error unpacking the channeltron data. This was not supposed to happen!"
+                            )
 
         # Trim the extended channels if they are present. There should not be any
         # calibration issue here - SPECS just treats the extended channels as if
@@ -316,19 +315,18 @@ class SPECSRegion(object):
         for i in range(len(self.extended_channels)):
             if self.mcd_tail == 0:
                 c = self.extended_channels[i]
-                self.extended_channels[i] = c[self.mcd_head:len(c)]
+                self.extended_channels[i] = c[self.mcd_head : len(c)]
             else:
-                self.extended_channels[i] = self.extended_channels[
-                    i][self.mcd_head:-self.mcd_tail]
+                self.extended_channels[i] = self.extended_channels[i][
+                    self.mcd_head : -self.mcd_tail
+                ]
 
         # If there are extended channels, reshape them into an array.
         if self.extended_channels:
             if DEBUG:
                 print("Extended channels: ", len(self.extended_channels))
-                print("Extended channel data length: ", len(
-                    self.extended_channels[0]))
-            tmparr = zeros(
-                (len(self.extended_channels[0]), len(self.extended_channels)))
+                print("Extended channel data length: ", len(self.extended_channels[0]))
+            tmparr = zeros((len(self.extended_channels[0]), len(self.extended_channels)))
             for i, tmpex in enumerate(self.extended_channels):
                 tmparr[:, i] = tmpex
             self.extended_channels = tmparr
@@ -340,6 +338,7 @@ class SPECSRegion(object):
             if elem[0].text == "Comment":
                 self.comment = elem[1].text
 
+
 ################################################################################
 #
 # FUNCTIONS
@@ -348,21 +347,22 @@ class SPECSRegion(object):
 
 
 def preedge_calculate(x, y):
-    """ P = specs.preedge_calculate(x,y)
+    """P = specs.preedge_calculate(x,y).
 
     Calculates the best-fit linear pre-edge for a dataset (x,y). Finds the biggest peak,
     then finds the pre-edge region using a sequence of linear fits starting from the end
     point.
 
     """
-
     # Make sure we've been passed arrays and not lists.
     x = array(x)
     y = array(y)
 
     # Sanity check: Do we actually have data to process here?
     if not (x.any() and y.any()):
-        print("specs.preedge_calculate: One of the arrays x or y is empty. Returning zero background.")
+        print(
+            "specs.preedge_calculate: One of the arrays x or y is empty. Returning zero background."
+        )
         return zeros(x.shape)
 
     # Next ensure the energy values are *decreasing* in the array,
@@ -384,8 +384,8 @@ def preedge_calculate(x, y):
         # Best linear fit to the last i values
         xs = x[-i:]
         ys = y[-i:]
-        #p = polyfit(xs,ys,1)
-        #grads.append(p[0])
+        # p = polyfit(xs,ys,1)
+        # grads.append(p[0])
         # Try a new algorithm that should be faster than polyfit
         xs = xs - mean(xs)
         ys = ys - mean(ys)
@@ -401,7 +401,9 @@ def preedge_calculate(x, y):
     # edge (like in a survey scan - the SE background is very big). So, may have
     # to return a zero background.
     if not dgrads.any():
-        print("specs.preedge_calculate: No pre-edge gradients. The spectrum must be very large at the low kinetic energy end. Returning zero background.")
+        print(
+            "specs.preedge_calculate: No pre-edge gradients. The spectrum must be very large at the low kinetic energy end. Returning zero background."
+        )
         return zeros(x.shape)
 
     # Find the minimum index of the absolute of the gradient of gradients.
@@ -418,7 +420,7 @@ def preedge_calculate(x, y):
 
 
 def shirley_calculate(x, y, tol=1e-5, maxit=10):
-    """ S = specs.shirley_calculate(x,y, tol=1e-5, maxit=10)
+    """S = specs.shirley_calculate(x,y, tol=1e-5, maxit=10).
 
     Calculate the best auto-Shirley background S for a dataset (x,y). Finds the biggest peak
     and then uses the minimum value either side of this peak as the terminal points of the
@@ -428,14 +430,15 @@ def shirley_calculate(x, y, tol=1e-5, maxit=10):
     of iterations.
 
     """
-
     # Make sure we've been passed arrays and not lists.
     x = array(x)
     y = array(y)
 
     # Sanity check: Do we actually have data to process here?
     if not (x.any() and y.any()):
-        print("specs.shirley_calculate: One of the arrays x or y is empty. Returning zero background.")
+        print(
+            "specs.shirley_calculate: One of the arrays x or y is empty. Returning zero background."
+        )
         return zeros(x.shape)
 
     # Next ensure the energy values are *decreasing* in the array,
@@ -453,15 +456,17 @@ def shirley_calculate(x, y, tol=1e-5, maxit=10):
     # It's possible that maxidx will be 0 or -1. If that is the case,
     # we can't use this algorithm, we return a zero background.
     if maxidx == 0 or maxidx >= len(y) - 1:
-        print("specs.shirley_calculate: Boundaries too high for algorithm: returning a zero background.")
+        print(
+            "specs.shirley_calculate: Boundaries too high for algorithm: returning a zero background."
+        )
         return zeros(x.shape)
 
     # Locate the minima either side of maxidx.
     lmidx = abs(y[0:maxidx] - amin(y[0:maxidx])).argmin()
     rmidx = abs(y[maxidx:] - amin(y[maxidx:])).argmin() + maxidx
-    xl = x[lmidx]
+    x[lmidx]
     yl = y[lmidx]
-    xr = x[rmidx]
+    x[rmidx]
     yr = y[rmidx]
 
     # Max integration index
@@ -480,15 +485,13 @@ def shirley_calculate(x, y, tol=1e-5, maxit=10):
         # Calculate new k = (yl - yr) / (int_(xl)^(xr) J(x') - yr - B(x') dx')
         ksum = 0.0
         for i in range(lmidx, imax):
-            ksum += (x[i] - x[i + 1]) * 0.5 * (y[i] + y[i + 1]
-                                               - 2 * yr - B[i] - B[i + 1])
+            ksum += (x[i] - x[i + 1]) * 0.5 * (y[i] + y[i + 1] - 2 * yr - B[i] - B[i + 1])
         k = (yl - yr) / ksum
         # Calculate new B
         for i in range(lmidx, rmidx):
             ysum = 0.0
             for j in range(i, imax):
-                ysum += (x[j] - x[j + 1]) * 0.5 * (y[j] +
-                                                   y[j + 1] - 2 * yr - B[j] - B[j + 1])
+                ysum += (x[j] - x[j + 1]) * 0.5 * (y[j] + y[j + 1] - 2 * yr - B[j] - B[j + 1])
             Bnew[i] = k * ysum
         # If Bnew is close to B, exit.
         if norm(Bnew - B) < tol:

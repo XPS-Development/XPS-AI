@@ -8,14 +8,15 @@ sees regions created by the segmenter.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from app.command.changes import CompositeChange
-from app.nn_service import NNService
-from app.optimization import OptimizationService
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from app.nn_service import NNService
+    from app.optimization import OptimizationService
     from app.orchestration import AppParameters, QueryService
     from tools.dto import ComponentDTO, RegionDTO
 

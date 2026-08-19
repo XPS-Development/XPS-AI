@@ -184,7 +184,9 @@ def test_create_region_command_apply_undo(ctx, spectrum_id):
 
 def test_create_region_command_value_mode_apply_undo(ctx, spectrum_id):
     """CreateRegion with mode='value' creates region from x-axis values; undo removes it."""
-    change = CreateRegion(spectrum_id=spectrum_id, start=-5.0, stop=5.0, region_id="r2", mode="value")
+    change = CreateRegion(
+        spectrum_id=spectrum_id, start=-5.0, stop=5.0, region_id="r2", mode="value"
+    )
     cmd = CreateRegionCommand.from_change(change, ctx)
     cmd.apply(ctx)
     assert ctx.query.check_object_exists("r2")

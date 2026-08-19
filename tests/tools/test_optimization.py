@@ -89,7 +89,9 @@ class TestBuildContexts:
         """All vary=False subtracts from y and excludes the component; expr does not block that."""
         x = np.linspace(0, 10, 30)
         y = np.zeros_like(x)
-        leader = _make_component("lead123456", "r1", {"amp": 1.0, "cen": 5.0, "sig": 1.0, "frac": 0.0})
+        leader = _make_component(
+            "lead123456", "r1", {"amp": 1.0, "cen": 5.0, "sig": 1.0, "frac": 0.0}
+        )
         slave_params = {
             "amp": ParameterDTO(
                 name="amp",
@@ -99,9 +101,15 @@ class TestBuildContexts:
                 vary=False,
                 expr="lead123456 * 0.5",
             ),
-            "cen": ParameterDTO(name="cen", value=5.0, lower=-np.inf, upper=np.inf, vary=False, expr=None),
-            "sig": ParameterDTO(name="sig", value=1.0, lower=0.0, upper=np.inf, vary=False, expr=None),
-            "frac": ParameterDTO(name="frac", value=0.0, lower=0.0, upper=1.0, vary=False, expr=None),
+            "cen": ParameterDTO(
+                name="cen", value=5.0, lower=-np.inf, upper=np.inf, vary=False, expr=None
+            ),
+            "sig": ParameterDTO(
+                name="sig", value=1.0, lower=0.0, upper=np.inf, vary=False, expr=None
+            ),
+            "frac": ParameterDTO(
+                name="frac", value=0.0, lower=0.0, upper=1.0, vary=False, expr=None
+            ),
         }
         slave = ComponentDTO(
             id_="slave12345",
@@ -179,7 +187,9 @@ class TestOptimizationPlanner:
         y = np.zeros_like(x)
 
         cmp1 = _make_component("p1", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0})
-        cmp2 = _make_component("p2", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0}, amp_expr="2 * p1")
+        cmp2 = _make_component(
+            "p2", "r1", {"amp": 1, "cen": 5, "sig": 1, "frac": 0}, amp_expr="2 * p1"
+        )
 
         ctx = OptimizationContext("r1", "s1", False, x, y, (cmp1, cmp2))
 
@@ -242,7 +252,9 @@ class TestLmfitOptimizer:
         x = np.linspace(-5, 5, 100)
         y = 0.8 * np.exp(-(x**2) / 2)
 
-        cmp1 = _make_component("peakAA01xx", "r1", {"amp": 0.8, "cen": 0.0, "sig": 1.0, "frac": 0.0})
+        cmp1 = _make_component(
+            "peakAA01xx", "r1", {"amp": 0.8, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+        )
         cmp2 = _make_component(
             "peakBB01xx",
             "r1",

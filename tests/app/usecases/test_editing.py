@@ -27,9 +27,7 @@ def _editing(
     )
 
 
-def test_create_peak_auto_returns_guessed_pseudo_voigt(
-    simple_collection, region_id
-) -> None:
+def test_create_peak_auto_returns_guessed_pseudo_voigt(simple_collection, region_id) -> None:
     """automatic_methods and parameters=None yield CreatePeak with guessed PV params."""
     change = _editing(simple_collection, automatic_methods=True).create_peak(
         region_id, "pseudo-voigt", parameters=None
@@ -42,9 +40,7 @@ def test_create_peak_auto_returns_guessed_pseudo_voigt(
     assert set(change.parameters) == {"amp", "cen", "sig", "frac"}
 
 
-def test_create_peak_explicit_when_automatic_methods_false(
-    simple_collection, region_id
-) -> None:
+def test_create_peak_explicit_when_automatic_methods_false(simple_collection, region_id) -> None:
     """automatic_methods=False keeps explicit CreatePeak parameters."""
     params = {"amp": 5.0, "cen": 0.0, "sig": 1.5, "frac": 0.5}
     change = _editing(simple_collection, automatic_methods=False).create_peak(
@@ -56,9 +52,7 @@ def test_create_peak_explicit_when_automatic_methods_false(
     assert change.peak_id == "p-new"
 
 
-def test_create_background_auto_guesses_intensities(
-    simple_collection, region_id
-) -> None:
+def test_create_background_auto_guesses_intensities(simple_collection, region_id) -> None:
     """automatic_methods and parameters=None yield CreateBackground with i1/i2."""
     change = _editing(simple_collection, automatic_methods=True).create_background(
         region_id, "shirley", parameters=None
@@ -118,13 +112,11 @@ def test_update_region_slice_plain_when_automatic_methods_false(
     assert change.stop == 170
 
 
-def test_replace_background_model_auto_fills_parameters(
-    simple_collection, region_id
-) -> None:
+def test_replace_background_model_auto_fills_parameters(simple_collection, region_id) -> None:
     """automatic_methods and parameters=None fill ReplaceBackgroundModel params."""
-    change = _editing(
-        simple_collection, automatic_methods=True
-    ).replace_background_model(region_id, "shirley", parameters=None)
+    change = _editing(simple_collection, automatic_methods=True).replace_background_model(
+        region_id, "shirley", parameters=None
+    )
 
     assert isinstance(change, ReplaceBackgroundModel)
     assert change.region_id == region_id
@@ -139,9 +131,9 @@ def test_replace_background_model_explicit_when_automatic_methods_false(
 ) -> None:
     """automatic_methods=False keeps explicit ReplaceBackgroundModel parameters."""
     params = {"i1": 1.0, "i2": 2.0}
-    change = _editing(
-        simple_collection, automatic_methods=False
-    ).replace_background_model(region_id, "shirley", parameters=params)
+    change = _editing(simple_collection, automatic_methods=False).replace_background_model(
+        region_id, "shirley", parameters=params
+    )
 
     assert isinstance(change, ReplaceBackgroundModel)
     assert change.parameters == params

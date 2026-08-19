@@ -1,3 +1,5 @@
+"""Immutable DTO projections of core objects for tools and UI."""
+
 from dataclasses import dataclass
 from typing import Literal
 
@@ -88,7 +90,7 @@ class DTOService:
     and UI layers.
     """
 
-    def __init__(self, ctx: CoreContext):
+    def __init__(self, ctx: CoreContext) -> None:
         """
         Initialize DTO service with access to core domain services.
 
@@ -101,7 +103,7 @@ class DTOService:
         self.comp_srv = ctx.component
         self.data_srv = ctx.data
 
-    def get_component(self, component_id: str, *, normalized: bool = False):
+    def get_component(self, component_id: str, *, normalized: bool = False) -> ComponentDTO:
         """
         Construct an immutable DTO projection of a component.
 
@@ -117,7 +119,6 @@ class DTOService:
         ComponentDTO
             Immutable component projection with parameters and model metadata.
         """
-
         core_params = self.comp_srv.get_parameters(component_id, normalized=normalized)
         model = self.comp_srv.get_model(component_id)
         params = {k: ParameterDTO(**v) for k, v in core_params.items()}
@@ -183,7 +184,6 @@ class DTOService:
         tuple[RegionDTO, tuple[ComponentDTO, ...]]
             Region DTO and its component DTOs.
         """
-
         reg_dto = self.get_region(region_id, normalized=normalized)
         cmp_dtos = tuple(
             self.get_component(cid, normalized=normalized)
@@ -207,7 +207,6 @@ class DTOService:
         SpectrumDTO
             Immutable spectrum data projection.
         """
-
         x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalized)
         x.flags.writeable = False
         y.flags.writeable = False
@@ -244,7 +243,6 @@ class DTOService:
         ]
             Full immutable spectrum representation.
         """
-
         spectrum_dto = self.get_spectrum(spectrum_id, normalized=normalized)
         reg_reprs = tuple(
             self.get_region_repr(rid, normalized=normalized)

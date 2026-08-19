@@ -1,3 +1,5 @@
+"""Spectrum tree model and widget grouped by file and group metadata."""
+
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -11,7 +13,7 @@ from .export_options_dialog import export_peaks, export_spectra
 
 @dataclass
 class SpectrumTreeItem:
-    """
+    r"""
     Node in the spectrum tree hierarchy.
 
     Each item represents either a file, a group within a file, or a single
@@ -34,7 +36,7 @@ class SpectrumTreeItem:
     label: str
     kind: str
     parent: Optional["SpectrumTreeItem"] = None
-    spectrum_id: Optional[str] = None
+    spectrum_id: str | None = None
     _row: int = 0
     children: list["SpectrumTreeItem"] = field(default_factory=list)
 
@@ -45,15 +47,17 @@ class SpectrumTreeItem:
         return None
 
     def row(self) -> int:
+        """Return this item's row among its siblings."""
         return self._row
 
     def append_child(self, item: "SpectrumTreeItem") -> None:
+        """Append ``item`` as a child and set its row index."""
         item._row = len(self.children)
         self.children.append(item)
 
 
 class SpectrumTreeModel(QAbstractItemModel):
-    """
+    r"""
     Tree model exposing File → Group → Spectrum hierarchy.
 
     The model reads all spectra and their metadata from a
@@ -72,7 +76,8 @@ class SpectrumTreeModel(QAbstractItemModel):
     # Required model API
     # ------------------------------------------------------------------
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+        """Return the number of child rows under ``parent``."""
         if not parent.isValid():
             item = self._root_item
         else:
@@ -81,11 +86,13 @@ class SpectrumTreeModel(QAbstractItemModel):
             return 0
         return len(item.children)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802
+    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+        """Return the number of columns (always 1)."""
         del parent
         return 1
 
-    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: N802
+    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
+        """Return the index of the child at ``row`` under ``parent``."""
         if column != 0 or row < 0:
             return QModelIndex()
 
@@ -102,7 +109,8 @@ class SpectrumTreeModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, column, child_item)
 
-    def parent(self, index: QModelIndex) -> QModelIndex:  # noqa: N802
+    def parent(self, index: QModelIndex) -> QModelIndex:
+        """Return the parent index of ``index``."""
         if not index.isValid():
             return QModelIndex()
 
@@ -116,7 +124,8 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         return self.createIndex(parent_item.row(), 0, parent_item)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:  # noqa: N802
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        """Return the label for display and edit roles."""
         if not index.isValid():
             return None
 
@@ -129,7 +138,8 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:  # noqa: N802
+    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+        """Return enabled and selectable flags for valid indexes."""
         if not index.isValid():
             return Qt.NoItemFlags
         return Qt.ItemIsEnabled | Qt.ItemIsSelectable
@@ -140,7 +150,6 @@ class SpectrumTreeModel(QAbstractItemModel):
 
     def refresh(self) -> None:
         """Rebuild tree from controller data."""
-
         self.beginResetModel()
         self._root_item.children.clear()
 
@@ -178,7 +187,9 @@ class SpectrumTreeModel(QAbstractItemModel):
                 for name, spectrum_id in sorted(spectra):
                     label_name = name or "No name"
                     label_name = (
-                        f"{label_name} {spectrum_id[:5]}" if params.show_spectrum_id_in_tree else label_name
+                        f"{label_name} {spectrum_id[:5]}"
+                        if params.show_spectrum_id_in_tree
+                        else label_name
                     )
                     spectrum_item = SpectrumTreeItem(
                         _label=name,
@@ -192,7 +203,7 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         self.endResetModel()
 
-    def item_from_index(self, index: QModelIndex) -> Optional[SpectrumTreeItem]:
+    def item_from_index(self, index: QModelIndex) -> SpectrumTreeItem | None:
         """
         Return the :class:`SpectrumTreeItem` associated with an index.
 
@@ -239,15 +250,11 @@ class SpectrumTreeWidget(QTreeView):
 
     @property
     def model(self) -> SpectrumTreeModel:
-        """
-        Return the underlying spectrum tree model.
-        """
+        """Return the underlying spectrum tree model."""
         return self._model
 
     def refresh(self) -> None:
-        """
-        Refresh tree contents from the controller while preserving expand/collapse state.
-        """
+        """Refresh tree contents from the controller while preserving expand/collapse state."""
         expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
         self._restore_expanded_stable_keys(expanded)
@@ -306,7 +313,9 @@ class SpectrumTreeWidget(QTreeView):
     # Selection helpers
     # ------------------------------------------------------------------
 
-    def _collect_spectra_in_subtree(self, item: SpectrumTreeItem, acc: list[str], seen: set[str]) -> None:
+    def _collect_spectra_in_subtree(
+        self, item: SpectrumTreeItem, acc: list[str], seen: set[str]
+    ) -> None:
         """
         Collect spectrum identifiers from the subtree rooted at ``item``.
 
@@ -322,7 +331,11 @@ class SpectrumTreeWidget(QTreeView):
         seen : set[str]
             Set of already collected identifiers used to preserve uniqueness.
         """
-        if item.kind == "spectrum" and item.spectrum_id is not None and item.spectrum_id not in seen:
+        if (
+            item.kind == "spectrum"
+            and item.spectrum_id is not None
+            and item.spectrum_id not in seen
+        ):
             seen.add(item.spectrum_id)
             acc.append(item.spectrum_id)
         for child in item.children:
@@ -437,9 +450,15 @@ class SpectrumTreeWidget(QTreeView):
                 export_peaks_action = export_menu.addAction("Export peaks")
                 export_peaks_action.triggered.connect(lambda: self._handle_export_peaks(item))
                 export_all_spectra_action = export_menu.addAction("Export all selected spectra")
-                export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
-                export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
-                export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
+                export_all_spectra_action.triggered.connect(
+                    self._handle_export_all_selected_spectra
+                )
+                export_all_peaks_action = export_menu.addAction(
+                    "Export peaks from all selected spectra"
+                )
+                export_all_peaks_action.triggered.connect(
+                    self._handle_export_peaks_all_selected_spectra
+                )
         elif item.kind == "group":
             rename_action = menu.addAction("Rename group")
             rename_action.triggered.connect(lambda: self._handle_rename(item))
@@ -448,8 +467,12 @@ class SpectrumTreeWidget(QTreeView):
             export_menu = menu.addMenu("Export...")
             export_all_spectra_action = export_menu.addAction("Export all selected spectra")
             export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
-            export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
-            export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
+            export_all_peaks_action = export_menu.addAction(
+                "Export peaks from all selected spectra"
+            )
+            export_all_peaks_action.triggered.connect(
+                self._handle_export_peaks_all_selected_spectra
+            )
         elif item.kind == "file":
             rename_action = menu.addAction("Rename file")
             rename_action.triggered.connect(lambda: self._handle_rename(item))
@@ -458,8 +481,12 @@ class SpectrumTreeWidget(QTreeView):
             export_menu = menu.addMenu("Export...")
             export_all_spectra_action = export_menu.addAction("Export all selected spectra")
             export_all_spectra_action.triggered.connect(self._handle_export_all_selected_spectra)
-            export_all_peaks_action = export_menu.addAction("Export peaks from all selected spectra")
-            export_all_peaks_action.triggered.connect(self._handle_export_peaks_all_selected_spectra)
+            export_all_peaks_action = export_menu.addAction(
+                "Export peaks from all selected spectra"
+            )
+            export_all_peaks_action.triggered.connect(
+                self._handle_export_peaks_all_selected_spectra
+            )
         if menu.isEmpty():
             return
 
@@ -474,7 +501,6 @@ class SpectrumTreeWidget(QTreeView):
         item : SpectrumTreeItem
             Tree item to rename.
         """
-
         new_label, ok = QInputDialog.getText(self, "Rename", "New name:", text=item._label)
         if not ok:
             return
@@ -544,9 +570,7 @@ class SpectrumTreeWidget(QTreeView):
         export_spectra(self._controller, [item.spectrum_id], parent=self)
 
     def _handle_export_peaks(self, item: SpectrumTreeItem) -> None:
-        """
-        Export peak parameters of spectrum item.
-        """
+        """Export peak parameters of spectrum item."""
         if item.spectrum_id is None:
             return
         export_peaks(self._controller, [item.spectrum_id], parent=self)

@@ -2,26 +2,26 @@
 
 import pytest
 
-from app.command.core import (
-    UndoRedoStack,
-    CommandRegistry,
-    CommandExecutor,
-    create_default_registry,
-)
 from app.command.changes import (
+    CompositeChange,
+    RemoveObject,
+    SetMetadata,
+    UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
-    RemoveObject,
-    UpdateMultipleParameterValues,
-    CompositeChange,
-    SetMetadata,
 )
 from app.command.commands import (
     Command,
+    CompositeCommand,
+    UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
     UpdateRegionSliceCommand,
-    UpdateMultipleParameterValuesCommand,
-    CompositeCommand,
+)
+from app.command.core import (
+    CommandExecutor,
+    CommandRegistry,
+    UndoRedoStack,
+    create_default_registry,
 )
 
 
