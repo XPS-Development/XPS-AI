@@ -1,6 +1,6 @@
 """Parametric peak and background models with a name-based registry."""
 
-from typing import ClassVar
+from typing import Any, ClassVar, cast
 
 from .base_models import (
     BaseBackgroundModel,
@@ -27,9 +27,10 @@ class ModelRegistry:
     _registry: ClassVar[dict[str, ParametricModelLike]] = {}
 
     @classmethod
-    def register(cls, model_cls: type[ParametricModelLike]) -> None:
+    def register(cls, model_cls: type[Any]) -> None:
         """Register a model class by instantiating it under ``model_cls.name``."""
-        cls._registry[model_cls.name] = model_cls()
+        instance = cast(ParametricModelLike, model_cls())
+        cls._registry[instance.name] = instance
 
     @classmethod
     def get(cls, name: str) -> ParametricModelLike:

@@ -101,8 +101,12 @@ class SPECS:
             f = open(filename)
             contents = f.readlines()
             f.close()
-            contents = "".join(contents).decode("cp1252").encode("utf-8")
-            self.xmlroot = tree.parse(StringIO(contents))
+            # `readlines()` returns `str` in text mode, so we can't `.decode()` it.
+            # Re-encode from cp1252 to utf-8 to match the original intention.
+            fixed = "".join(contents).encode("cp1252", errors="ignore").decode(
+                "utf-8", errors="ignore"
+            )
+            self.xmlroot = tree.parse(StringIO(fixed))
 
         # The version impacts on properties of the document so we need to read it
         # here.

@@ -77,7 +77,7 @@ class SegmenterPostprocessor:
         x: NDArray,
         x_int: NDArray,
         y: NDArray,
-    ) -> SegmenterResult:
+    ) -> list[SegmenterResult]:
         """
         Convert segmenter model output to list of RegionBounds.
 
@@ -92,8 +92,8 @@ class SegmenterPostprocessor:
 
         Returns
         -------
-        list of RegionBounds
-            Each with start, stop (original indices) and peak_positions (x values).
+        list[SegmenterResult]
+            Each region prediction with its peak/background guesses.
         """
         region_raw = model_output.get(ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[0])
         max_raw = model_output.get(ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[1])

@@ -1,7 +1,7 @@
 """Domain objects: spectra, regions, peaks, backgrounds, and runtime parameters."""
 
 from dataclasses import asdict, dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 from uuid import uuid4
 
 import numpy as np
@@ -105,7 +105,7 @@ class RuntimeParameter:
         lower: float | None = None,
         upper: float | None = None,
         vary: bool | None = None,
-        expr: str | None = _EXPR_MISSING,
+        expr: str | object | None = _EXPR_MISSING,
     ) -> None:
         """
         Mutate parameter attributes while preserving invariants.
@@ -138,7 +138,7 @@ class RuntimeParameter:
             self.vary = bool(vary)
 
         if expr is not _EXPR_MISSING:
-            self.expr = expr
+            self.expr = cast(str | None, expr)
 
     def clone(self, **overrides: str | float | bool) -> "RuntimeParameter":
         """
@@ -279,7 +279,9 @@ class Component:
 
         self.id_: str = component_id or f"{component_prefix}{uuid4().hex}"
         self.model = model
-        self.parent_id = parent_id
+        # `CoreObject.parent_id` is typed as `str | None` in the protocol.
+        # Regions/spectra always have a parent, while spectra have `None`.
+        self.parent_id: str | None = parent_id
 
         # Initialize parameters
         self.parameters: dict[str, RuntimeParameter] = {}
@@ -484,8 +486,8 @@ class Region:
     """
 
     slice_: slice
-    parent_id: str
-    id_: str | None = None
+    parent_id: str | None
+    id_: str = field(default_factory=lambda: f"r{uuid4().hex}")
 
     def __post_init__(self) -> None:
         """Validate the slice and assign an id if missing."""
@@ -493,8 +495,8 @@ class Region:
             raise TypeError("slice must be a slice object")
         if self.slice_.step not in (None, 1):
             raise ValueError("slice step must be None or 1")
-        if self.id_ is None:
-            self.id_ = f"r{uuid4().hex}"
+        # `id_` is always a string: either provided explicitly or generated
+        # by `default_factory`.
 
 
 @dataclass
@@ -559,8 +561,8 @@ class Spectrum:
     x: NDArray
     y: NDArray
 
-    id_: str | None = None
-    parent_id = None
+    id_: str = field(default_factory=lambda: f"s{uuid4().hex}")
+    parent_id: str | None = None
 
     norm_ctx: NormalizationContext = field(init=False)
 
@@ -568,8 +570,8 @@ class Spectrum:
         """Validate arrays, build the normalization context, and assign an id."""
         self._validate()
         self.norm_ctx = NormalizationContext.from_array(self.y)
-        if self.id_ is None:
-            self.id_ = f"s{uuid4().hex}"
+        # `id_` is always a string: either provided explicitly or generated
+        # by `default_factory`.
 
     def _validate(self) -> None:
         if not isinstance(self.x, np.ndarray) or not isinstance(self.y, np.ndarray):

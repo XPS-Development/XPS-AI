@@ -30,7 +30,7 @@ class PreprocessorLike(Protocol):
         *,
         x_int: NDArray | None = None,
         y_int: NDArray | None = None,
-    ) -> ModelInputT:
+    ) -> tuple[ModelInputT, dict[str, NDArray]]:
         """Produce model input from spectrum-like data."""
         ...
 
@@ -52,7 +52,8 @@ class PostprocessorLike(Protocol):
         *,
         x: NDArray,
         x_int: NDArray,
-    ) -> object:
+        y: NDArray,
+    ) -> list[SegmenterResult]:
         """Convert model output to the pipeline result type."""
         ...
 
@@ -65,7 +66,9 @@ class InferencePipeline:
     returns the postprocessor result type (e.g. list[RegionBounds]).
     """
 
-    def run(self, spectrum: SpectrumLike) -> object:
+    def run(
+        self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike
+    ) -> object:
         """Run the full pipeline on a spectrum-like input."""
         raise NotImplementedError("Subclasses must implement run method")
 

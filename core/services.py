@@ -1,7 +1,7 @@
 """Core services for querying, mutating, and evaluating domain objects."""
 
 from dataclasses import asdict, dataclass
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, overload
 
 from numpy.typing import NDArray
 
@@ -91,11 +91,17 @@ class BaseCoreService:
 
     def _get_first_parent(self, obj_id: str) -> CoreObject:
         """Retrieve the first parent of an object."""
-        return self.collection.get_parent(obj_id)
+        parent = self.collection.get_parent(obj_id)
+        if parent is None:
+            raise KeyError(f"No parent found for object {obj_id!r}")
+        return parent
 
     def _get_typed_parent(self, obj_id: str, tp: type[T]) -> T:
         """Retrieve the parent of an object by type."""
-        return self.collection.get_typed_parent(obj_id, tp)
+        parent = self.collection.get_typed_parent(obj_id, tp)
+        if parent is None:
+            raise KeyError(f"No parent of type {tp.__name__} found for object {obj_id!r}")
+        return parent
 
     def attach(self, obj: CoreObject) -> None:
         """
@@ -153,7 +159,7 @@ class CollectionQueryService(BaseCoreService):
         str
             Identifier of the core object's first parent.
         """
-        return self._get(obj_id).parent_id
+        return self._get_first_parent(obj_id).id_
 
     def get_subtree(self, obj_id: str) -> tuple[str, ...]:
         """
@@ -303,6 +309,8 @@ class SpectrumService(BaseCoreService):
     @staticmethod
     def _create_spectrum_obj(x: NDArray, y: NDArray, spectrum_id: str | None = None) -> Spectrum:
         """Create a new spectrum object."""
+        if spectrum_id is None:
+            return Spectrum(x=x, y=y)
         return Spectrum(x=x, y=y, id_=spectrum_id)
 
     def create_spectrum(
@@ -369,6 +377,8 @@ class RegionService(BaseCoreService):
         region_id: str | None = None,
     ) -> Region:
         """Create a new region object."""
+        if region_id is None:
+            return Region(slice_=slice(start, stop), parent_id=spectrum_id)
         return Region(slice_=slice(start, stop), parent_id=spectrum_id, id_=region_id)
 
     def _get_bound_indices(self, spectrum_id: str) -> tuple[int, int]:
@@ -376,7 +386,9 @@ class RegionService(BaseCoreService):
         spectrum = self._get_typed(spectrum_id, Spectrum)
         return 0, len(spectrum.x)
 
-    def _convert_value_to_index(self, spectrum_id: str, value: float | None = None) -> int:
+    def _convert_value_to_index(
+        self, spectrum_id: str, value: float | None = None
+    ) -> int | None:
         """Convert a value to an index."""
         if value is None:
             return None
@@ -429,11 +441,19 @@ class RegionService(BaseCoreService):
         """
         if mode == "value":
             start = self._convert_value_to_index(spectrum_id, start)
-            stop = self._convert_value_to_index(spectrum_id, stop) + 1
+            stop_idx = self._convert_value_to_index(spectrum_id, stop)
+            stop = stop_idx + 1 if stop_idx is not None else None
+        else:
+            # Indices mode: accept float inputs but coerce them to ints.
+            start = int(start) if start is not None else None
+            stop = int(stop) if stop is not None else None
 
         if not self._check_slice(spectrum_id, start, stop):
             start, stop = self._get_bound_indices(spectrum_id)
 
+        # After fallback both are guaranteed to be valid indices.
+        assert start is not None
+        assert stop is not None
         region = self._create_region_obj(spectrum_id, start, stop, region_id)
         self.attach(region)
         return region.id_
@@ -465,19 +485,32 @@ class RegionService(BaseCoreService):
             If indices are outside spectrum bounds or start >= stop.
         """
         region = self._get_typed(region_id, Region)
+        assert region.parent_id is not None
 
         if mode == "value":
             start = self._convert_value_to_index(region.parent_id, start)
-            stop = self._convert_value_to_index(region.parent_id, stop) + 1
+            stop_idx = self._convert_value_to_index(region.parent_id, stop)
+            stop = stop_idx + 1 if stop_idx is not None else None
+        else:
+            start = int(start) if start is not None else None
+            stop = int(stop) if stop is not None else None
 
         if not self._check_slice(region.parent_id, start, stop):
             start, stop = self._get_bound_indices(region.parent_id)
 
+        assert start is not None
+        assert stop is not None
         region.slice_ = slice(start, stop)
+
+    @overload
+    def get_slice(self, region_id: str, mode: Literal["index"] = "index") -> tuple[int, int]: ...
+
+    @overload
+    def get_slice(self, region_id: str, mode: Literal["value"]) -> tuple[float, float]: ...
 
     def get_slice(
         self, region_id: str, mode: Literal["value", "index"] = "index"
-    ) -> tuple[int | float, int | float]:
+    ) -> tuple[int, int] | tuple[float, float]:
         """
         Retrieve the start and stop values or indices of an existing region.
 
@@ -494,11 +527,14 @@ class RegionService(BaseCoreService):
             Start and stop values or indices of the region in the spectrum.
         """
         region = self._get_typed(region_id, Region)
+        assert region.parent_id is not None
         spectrum = self._get_typed(region.parent_id, Spectrum)
         if mode == "value":
-            return (spectrum.x[region.slice_.start], spectrum.x[region.slice_.stop - 1])
-        else:
-            return (region.slice_.start, region.slice_.stop)
+            start_val = spectrum.x[region.slice_.start]
+            stop_val = spectrum.x[region.slice_.stop - 1]
+            return (float(start_val), float(stop_val))
+
+        return (int(region.slice_.start), int(region.slice_.stop))
 
 
 class DataQueryService(BaseCoreService):
@@ -530,11 +566,13 @@ class DataQueryService(BaseCoreService):
         elif spectrum_id is not None and region_id is not None:
             raise ValueError("Only one of spectrum_id or region_id should be provided")
         elif spectrum_id is not None:
-            spectrum = self._get(spectrum_id)
+            spectrum = self._get_typed(spectrum_id, Spectrum)
             return spectrum.norm_ctx
         elif region_id is not None:
             region = self._get_typed(region_id, Region)
+            assert region.parent_id is not None
             return self._get_typed(region.parent_id, Spectrum).norm_ctx
+        raise AssertionError("Unreachable normalization context branch")
 
     def get_spectrum_data(
         self, spectrum_id: str, normalized: bool = False
@@ -588,6 +626,7 @@ class DataQueryService(BaseCoreService):
             Sliced x and y arrays for the region.
         """
         region = self._get_typed(region_id, Region)
+        assert region.parent_id is not None
         x, y = self.get_spectrum_data(region.parent_id, normalized=normalized)
 
         sl = region.slice_
@@ -613,7 +652,7 @@ class ComponentService(BaseCoreService):
         model_name: str,
         parameters: dict[str, float] | None = None,
         component_id: str | None = None,
-        expected_type: type[Peak] | type[Background] = Component,
+        expected_type: type[Peak] | type[Background] | type[Component] = Component,
     ) -> Peak | Background:
         """
         Instantiate a component using a registered parametric model.
@@ -644,17 +683,20 @@ class ComponentService(BaseCoreService):
 
         model = ModelRegistry.get(model_name)
 
-        init_params = dict(
-            model=model,
-            region_id=region_id,
-            component_id=component_id,
-            **parameters,
-        )
-
         if isinstance(model, BaseBackgroundModel):
-            obj = Background(**init_params)
+            obj = Background(
+                model=model,
+                region_id=region_id,
+                component_id=component_id,
+                **parameters,
+            )
         elif isinstance(model, BasePeakModel):
-            obj = Peak(**init_params)
+            obj = Peak(
+                model=model,
+                region_id=region_id,
+                component_id=component_id,
+                **parameters,
+            )
         else:
             raise TypeError(f"Unsupported model type: {type(model)}")
 
@@ -666,7 +708,9 @@ class ComponentService(BaseCoreService):
     def _get_norm_ctx(self, component_id: str) -> NormalizationContext:
         """Retrieve the normalization context of a component."""
         component = self._get_typed(component_id, Component)
+        assert component.parent_id is not None
         reg = self._get_typed(component.parent_id, Region)
+        assert reg.parent_id is not None
         spec = self._get_typed(reg.parent_id, Spectrum)
         return spec.norm_ctx
 
@@ -828,7 +872,11 @@ class ComponentService(BaseCoreService):
         return params
 
     def set_parameter(
-        self, component_id: str, param: str, normalized: bool = False, **kwargs: float | str | bool
+        self,
+        component_id: str,
+        param: str,
+        normalized: bool = False,
+        **kwargs: float | str | bool | None,
     ) -> None:
         """
         Update attributes of a single component parameter.
@@ -851,7 +899,8 @@ class ComponentService(BaseCoreService):
         if normalized and param in model.normalization_target_parameters:
             for key, value in kwargs.items():
                 if value is not None and key in self.DEFAULT_NORMALIZATION_FIELDS:
-                    value = model.denormalize_value(value, ctx)
+                    # Normalization routines work with numeric values only.
+                    value = model.denormalize_value(float(value), ctx)
                 kwargs[key] = value
 
         component.set_param(param, **kwargs)

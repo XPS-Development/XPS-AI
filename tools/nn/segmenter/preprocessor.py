@@ -36,7 +36,7 @@ class SegmenterPreprocessor:
     def __call__(
         self,
         data: SpectrumLike,
-    ) -> ModelInputT:
+    ) -> tuple[ModelInputT, dict[str, NDArray]]:
         """
         Produce segmenter model input from spectrum-like data.
 

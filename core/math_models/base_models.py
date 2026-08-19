@@ -30,9 +30,9 @@ class ParametricModelLike(Protocol[T]):
     name: str
     parameter_schema: tuple[ParameterSpec, ...]
     independent_vars: tuple[str, ...]
-    normalization_target_parameters = tuple[str, ...]
-    use_offset: bool = True
-    use_scale: bool = True
+    normalization_target_parameters: tuple[str, ...]
+    use_offset: bool
+    use_scale: bool
 
     @staticmethod
     def evaluate(x: NDArray[T], y: NDArray[T] | None, **kwargs: float) -> NDArray[T]:
@@ -65,7 +65,7 @@ class ParametricModel(ParameterNormalizationPolicy, ABC):
 class EvaluationLikeFn(Protocol[T]):
     """Callable that evaluates a model given ``x``, ``y``, and named parameters."""
 
-    def __call__(self, x: NDArray[T], y: NDArray[T], **kwargs: float) -> NDArray[T]:
+    def __call__(self, x: NDArray[T], y: NDArray[T] | None, **kwargs: float) -> NDArray[T]:
         """Return model intensities at ``x``."""
         ...
 

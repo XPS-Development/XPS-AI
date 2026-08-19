@@ -14,7 +14,7 @@ from typing import Any, Literal
 import numpy as np
 
 from core.collection import CoreCollection
-from core.math_models import ModelRegistry
+from core.math_models import BaseBackgroundModel, BasePeakModel, ModelRegistry
 from core.metadata import (
     BackgroundMetadata,
     Metadata,
@@ -433,6 +433,8 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
     # Determine component type and create
     obj_type = obj_data["type"]
     if obj_type == "Peak":
+        if not isinstance(model, BasePeakModel):
+            raise TypeError(f"Model {model_name!r} is not a Peak model")
         component = Peak(
             model=model,
             region_id=obj_data["parent_id"],
@@ -440,6 +442,8 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
             **param_values,
         )
     elif obj_type == "Background":
+        if not isinstance(model, BaseBackgroundModel):
+            raise TypeError(f"Model {model_name!r} is not a Background model")
         component = Background(
             model=model,
             region_id=obj_data["parent_id"],
@@ -564,9 +568,12 @@ def deserialize(
     if mode == "append" and collection is None:
         collection = CoreCollection()
 
+    assert collection is not None
+
     objects_data = data.get("objects", [])
     if not objects_data:
         if mode == "new":
+            assert metadata_service is not None
             return (collection, metadata_service)
         return collection
 
@@ -606,6 +613,7 @@ def deserialize(
                 metadata_service.set_metadata(obj_id, metadata)
 
     if mode == "new":
+        assert metadata_service is not None
         return (collection, metadata_service)
     return collection
 

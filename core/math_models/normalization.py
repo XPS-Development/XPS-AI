@@ -29,9 +29,9 @@ class NormalizationContext:
 class ParameterNormalizationPolicy:
     """Mixin that maps parameter values through a :class:`NormalizationContext`."""
 
-    normalization_target_parameters = tuple[str, ...]
-    use_offset = True
-    use_scale = True
+    normalization_target_parameters: tuple[str, ...] = tuple()
+    use_offset: bool = True
+    use_scale: bool = True
 
     def normalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         """Map a physical value into normalized units."""

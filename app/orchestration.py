@@ -714,10 +714,11 @@ class AppOrchestrator:
         normalized: bool = False,
     ) -> None:
         """Update multiple parameter values at once; executed as a command."""
+        parameters_f: dict[str, float] = {k: float(v) for k, v in parameters.items()}
         self.execute(
             UpdateMultipleParameterValues(
                 component_id=component_id,
-                parameters=parameters,
+                parameters=parameters_f,
                 normalized=normalized,
             )
         )

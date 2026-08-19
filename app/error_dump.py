@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from traceback import format_exception
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection
@@ -66,7 +66,8 @@ def _notify_orchestrator_error_ui(exc: BaseException, dump_path: Path) -> None:
     app = QApplication.instance()
     if app is None:
         return
-    parent = app.activeWindow()
+    app_any = cast(Any, app)
+    parent = app_any.activeWindow() if hasattr(app_any, "activeWindow") else None
     QMessageBox.critical(
         parent,
         "Error",
@@ -99,7 +100,10 @@ def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
             return func(*args, **kwargs)
         except Exception as exc:
             dump_path = save_error_dump(exc)
-            logger.exception("Error in %s", func.__qualname__)
+            func_name = getattr(
+                func, "__qualname__", getattr(func, "__name__", type(func).__name__)
+            )
+            logger.exception("Error in %s", func_name)
             _notify_orchestrator_error_ui(exc, dump_path)
             raise
 

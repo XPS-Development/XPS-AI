@@ -80,3 +80,9 @@ known-first-party = ["app", "core", "ui", "tools"]
 quote-style = "double"
 indent-style = "space"
 line-ending = "auto"
+
+[tool.ty.src]
+exclude = ["model/**", "tools/converters/**"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"

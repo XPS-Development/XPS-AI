@@ -6,7 +6,7 @@ Adapters load the model and run inference; input/output are model-specific
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import onnxruntime as ort
@@ -74,6 +74,10 @@ class ONNXSegmenterAdapter:
         inp = model_input.get(self.INPUT_KEY)
         if inp is None:
             raise KeyError(f"Model input must contain key {self.INPUT_KEY!r}")
-        out: list[NDArray] = self._session.run(None, {self.INPUT_KEY: inp})
-        arr = out[0]
+        out = self._session.run(None, {self.INPUT_KEY: inp})
+
+        # onnxruntime typing is quite loose (can include SparseTensor), but
+        # for our exported model we always expect dense ndarrays.
+        arr_raw = out[0]
+        arr = np.asarray(arr_raw)
         return {key: np.asarray(arr[0, i, :]) for i, key in enumerate(self.CHANNEL_MASK_KEYS)}

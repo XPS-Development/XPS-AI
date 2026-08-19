@@ -6,6 +6,7 @@ the core data model. Changes describe "what" to do; they are turned
 into Command objects by CommandRegistry for execution and undo/redo.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -83,7 +84,7 @@ class UpdateMultipleParameterValues:
     """
 
     component_id: str
-    parameters: dict[str, str | bool | float]
+    parameters: dict[str, float]
     normalized: bool = False
 
 
@@ -193,7 +194,7 @@ class CompositeChange:
     Handled specially by CommandRegistry to build a CompositeCommand.
     """
 
-    changes: list["BaseChange"]
+    changes: Sequence["BaseChange"]
 
 
 # Union type for typed dispatch in CommandRegistry and CommandExecutor.

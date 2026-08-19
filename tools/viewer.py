@@ -8,8 +8,8 @@ typing without coupling to DTOs.
 
 from typing import Protocol
 
-import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
 from core.types import ComponentLike, RegionLike, SpectrumLike

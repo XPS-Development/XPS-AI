@@ -102,11 +102,15 @@ def calculate_background_intensities(
         start = find_closest_index(start, x)
         stop = find_closest_index(stop, x)
 
-    i1_arr = y[max(start - avg_on, 0) : start]
-    i2_arr = y[stop : min(stop + avg_on, len(y))]
+    # For numpy indexing we always need integer indices.
+    start_i = int(start)
+    stop_i = int(stop)
 
-    i1 = np.mean(i1_arr) if len(i1_arr) > 0 else y[start]
-    i2 = np.mean(i2_arr) if len(i2_arr) > 0 else y[stop - 1]
+    i1_arr = y[max(start_i - avg_on, 0) : start_i]
+    i2_arr = y[stop_i : min(stop_i + avg_on, len(y))]
+
+    i1 = np.mean(i1_arr) if len(i1_arr) > 0 else y[start_i]
+    i2 = np.mean(i2_arr) if len(i2_arr) > 0 else y[stop_i - 1]
 
     return dict(i1=i1, i2=i2)
 
@@ -163,7 +167,8 @@ def guess_peak_position_by_residuals(x: NDArray, residuals: NDArray) -> int:
     int
         Index of the peak maximum.
     """
-    return np.argmax(residuals)
+    # np.argmax returns a numpy integer type.
+    return int(np.argmax(residuals))
 
 
 def create_pseudo_voigt_peak_parameters(

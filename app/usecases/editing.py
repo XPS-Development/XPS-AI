@@ -176,10 +176,19 @@ class EditingUseCases:
         background_dto = self._query.get_component_dto(background_id)
         spectrum_id = self._query.get_parent_id(region_id)
         spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
+
+        # If start/stop are omitted, `UpdateRegionSlice` will keep the current
+        # slice boundaries. For automatic background syncing we must therefore
+        # feed `update_intensities` the effective slice, not `(None, None)`.
+        if start is None or stop is None:
+            eff_start, eff_stop = self._query.get_region_slice(region_id, mode=mode)
+        else:
+            eff_start, eff_stop = start, stop
+
         bg_change = self._automatization.update_intensities(
             background_dto=background_dto,
             spectrum_dto=spectrum,
-            new_slice=(start, stop),
+            new_slice=(eff_start, eff_stop),
             slice_mode=mode,
         )
         return CompositeChange(changes=[change, bg_change])

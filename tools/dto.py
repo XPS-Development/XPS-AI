@@ -1,7 +1,7 @@
 """Immutable DTO projections of core objects for tools and UI."""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from numpy.typing import NDArray
 
@@ -36,7 +36,7 @@ class BaseDTO:
     """
 
     id_: str
-    parent_id: str
+    parent_id: str | None
     normalized: bool
 
 
@@ -121,7 +121,25 @@ class DTOService:
         """
         core_params = self.comp_srv.get_parameters(component_id, normalized=normalized)
         model = self.comp_srv.get_model(component_id)
-        params = {k: ParameterDTO(**v) for k, v in core_params.items()}
+
+        # `core_params` comes from `asdict(RuntimeParameter)` and `ty` sees it as a
+        # wide union. Construct DTO fields explicitly with numeric casts.
+        params: dict[str, ParameterDTO] = {}
+        for pname, raw in core_params.items():
+            value = float(raw["value"])
+            lower = float(raw["lower"])
+            upper = float(raw["upper"])
+            vary = bool(cast(bool, raw["vary"]))
+            expr = cast(str | None, raw.get("expr"))
+
+            params[pname] = ParameterDTO(
+                name=pname,
+                value=value,
+                lower=lower,
+                upper=upper,
+                vary=vary,
+                expr=expr,
+            )
 
         return ComponentDTO(
             id_=component_id,
@@ -210,11 +228,10 @@ class DTOService:
         x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalized)
         x.flags.writeable = False
         y.flags.writeable = False
-        parent_id = self.query_srv.get_parent(spectrum_id)
 
         return SpectrumDTO(
             id_=spectrum_id,
-            parent_id=parent_id,
+            parent_id=None,
             normalized=normalized,
             x=x,
             y=y,

@@ -387,9 +387,12 @@ class LmfitOptimizer:
         output: list[OptimizedComponent] = []
         for cmp in self._component_index.values():
             params: dict[str, float] = {}
+            params_obj = getattr(result, "params", None)
+            if params_obj is None:
+                raise RuntimeError("lmfit MinimizerResult missing `params` attribute")
             for pname in cmp.parameters:
                 opt_pname = f"{cmp.id_}_{pname}"
-                params[pname] = result.params[opt_pname].value
+                params[pname] = params_obj[opt_pname].value
             output.append(
                 OptimizedComponent(
                     component_id=cmp.id_,
