@@ -85,6 +85,8 @@ class SegmenterPipeline(InferencePipeline):
         pred_threshold: float = 0.5,
         smooth: bool = True,
         interp_num: int = 256,
+        peak_model_name: str = "pseudo-voigt",
+        background_model_name: str = "shirley",
     ) -> None:
         """Initialize preprocessor, adapter, and postprocessor.
 
@@ -98,10 +100,19 @@ class SegmenterPipeline(InferencePipeline):
             Whether to smooth the peak mask (default True).
         interp_num : int, optional
             Interpolation points (default 256).
+        peak_model_name : str, optional
+            Registered peak model for initial parameter guesses.
+        background_model_name : str, optional
+            Registered background model for initial parameter guesses.
         """
         self.preprocessor = SegmenterPreprocessor(num=interp_num)
         self.adapter = ONNXSegmenterAdapter(model_path=model_path)
-        self.postprocessor = SegmenterPostprocessor(threshold=pred_threshold, smooth=smooth)
+        self.postprocessor = SegmenterPostprocessor(
+            threshold=pred_threshold,
+            smooth=smooth,
+            peak_model_name=peak_model_name,
+            background_model_name=background_model_name,
+        )
 
     def run(
         self, normalized_spectrum: SpectrumDTO, original_spectrum: SpectrumDTO

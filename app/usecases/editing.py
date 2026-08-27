@@ -61,7 +61,7 @@ class EditingUseCases:
         peak_id: str | None = None,
     ) -> BaseChange:
         """
-        Build a change that creates a peak, optionally guessing pseudo-voigt params.
+        Build a change that creates a peak, optionally guessing parameters.
 
         Parameters
         ----------
@@ -70,8 +70,8 @@ class EditingUseCases:
         model_name
             Registered peak model name.
         parameters
-            Explicit parameter values. If None and automatic methods are on
-            for ``pseudo-voigt``, parameters are guessed from residuals.
+            Explicit parameter values. If None and automatic methods are on,
+            parameters are guessed from residuals via the model.
         peak_id
             Optional explicit peak identifier (ignored on the automatic path).
 
@@ -80,9 +80,13 @@ class EditingUseCases:
         BaseChange
             ``CreatePeak`` with guessed or explicit parameters.
         """
-        if self._params.automatic_methods and model_name == "pseudo-voigt" and parameters is None:
+        if self._params.automatic_methods and parameters is None:
             region_repr = self._query.get_region_dto_repr(region_id, normalized=False)
-            return self._automatization.create_pseudo_voigt_peak(region_repr[0], region_repr[1])
+            return self._automatization.create_peak(
+                region_repr[0],
+                region_repr[1],
+                model_name=model_name,
+            )
         return CreatePeak(
             region_id=region_id,
             model_name=model_name,

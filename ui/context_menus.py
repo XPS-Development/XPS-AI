@@ -158,10 +158,12 @@ class RegionContextMenuActions:
         self.set_background.setEnabled(not has_background)
 
     def _on_add_peak(self) -> None:
-        self._controller.create_peak(self._region_id, "pseudo-voigt", parameters=None)
+        model_name = self._controller.get_app_parameters().default_peak_model
+        self._controller.create_peak(self._region_id, model_name, parameters=None)
 
     def _on_set_background(self) -> None:
-        self._controller.create_background(self._region_id, "shirley", parameters=None)
+        model_name = self._controller.get_app_parameters().default_background_model
+        self._controller.create_background(self._region_id, model_name, parameters=None)
 
     def _on_add_component(self) -> None:
         dialog = ComponentCreationDialog(

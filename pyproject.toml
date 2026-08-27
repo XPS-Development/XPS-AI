@@ -36,7 +36,7 @@ testpaths = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["app", "core", "ui", "tools", "debug", "formats", "inference", "tests"]
+src = ["app", "core", "ui", "debug", "formats", "inference", "tests"]
 # Training entry points live outside model/ and are unmaintained with it.
 extend-exclude = ["model", "notebooks", "run_train.py", "train_lightning.py"]
 
@@ -74,7 +74,7 @@ ignore = [
 convention = "numpy"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "core", "ui", "tools", "debug", "formats", "inference"]
+known-first-party = ["app", "core", "ui", "debug", "formats", "inference"]
 
 [tool.ruff.format]
 quote-style = "double"

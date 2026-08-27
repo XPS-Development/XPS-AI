@@ -10,11 +10,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from core.math_models import ModelRegistry
 from core.numerics import recalculate_idx
-from tools.automatization import (
-    calculate_background_intensities,
-    guess_pseudo_voigt_params_at_max,
-)
 
 from ..types import (
     BackgroundDetectionResult,
@@ -42,18 +39,16 @@ class SegmenterPostprocessor:
     peak_positions in x-space). Requires original x and interpolated x_int for index mapping.
     """
 
-    DEFAULT_PEAK_MODEL = "pseudo-voigt"
-    DEFAULT_BACKGROUND_MODEL = "shirley"
-    DEFAULT_FRACTION = 0.0
-
     def __init__(
         self,
         threshold: float = 0.5,
         smooth: bool = True,
         window_length: int = 10,
         min_border_distance: int = 5,
+        peak_model_name: str = "pseudo-voigt",
+        background_model_name: str = "shirley",
     ) -> None:
-        """Configure mask thresholding and smoothing.
+        """Configure mask thresholding, smoothing, and default models.
 
         Parameters
         ----------
@@ -65,11 +60,17 @@ class SegmenterPostprocessor:
             Window length for smoothing (default 10).
         min_border_distance : int, optional
             Minimum distance between borders to keep them separate (default 5).
+        peak_model_name : str, optional
+            Registered peak model for ``guess_initial``.
+        background_model_name : str, optional
+            Registered background model for ``guess_initial``.
         """
         self._threshold = threshold
         self._smooth = smooth
         self._window_length = window_length
         self._min_border_distance = min_border_distance
+        self._peak_model_name = peak_model_name
+        self._background_model_name = background_model_name
 
     def __call__(
         self,
@@ -136,14 +137,14 @@ class SegmenterPostprocessor:
     def _guess_peaks(
         self, x: NDArray, y: NDArray, max_idxs: NDArray
     ) -> tuple[PeakDetectionResult, ...]:
-        """Guess peak parameters for pseudo-voigt model."""
-        parameters = tuple(guess_pseudo_voigt_params_at_max(x, y, idx) for idx in max_idxs)
+        """Guess peak parameters via the configured peak model."""
+        peak_model = ModelRegistry.get(self._peak_model_name)
         return tuple(
             PeakDetectionResult(
-                model_name=self.DEFAULT_PEAK_MODEL,
-                parameters=dict(amp=amp, cen=cen, sig=sig, frac=frac),
+                model_name=self._peak_model_name,
+                parameters=peak_model.guess_initial(x, y, peak_index=int(idx)),
             )
-            for amp, cen, sig, frac in parameters
+            for idx in max_idxs
         )
 
     def _get_parameters_from_masks(
@@ -170,6 +171,7 @@ class SegmenterPostprocessor:
             else:
                 connected_region_borders.append(b_int)
 
+        bg_model = ModelRegistry.get(self._background_model_name)
         result: list[SegmenterResult] = []
         borders = np.array(connected_region_borders)
         for i in range(0, len(borders) - 1, 2):
@@ -179,8 +181,8 @@ class SegmenterPostprocessor:
                 reg = RegionDetectionResult(start=int(f), stop=int(t))
                 peaks = self._guess_peaks(x, y, local_max_idxs)
                 background = BackgroundDetectionResult(
-                    model_name=self.DEFAULT_BACKGROUND_MODEL,
-                    parameters=calculate_background_intensities(x, y, f, t),
+                    model_name=self._background_model_name,
+                    parameters=bg_model.guess_initial(x, y, start=int(f), stop=int(t)),
                 )
                 result.append(SegmenterResult(region=reg, peaks=peaks, background=background))
         return result

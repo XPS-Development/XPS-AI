@@ -1,7 +1,7 @@
 """Array numerics shared by domain services and library code.
 
 Pure NumPy/SciPy helpers for grid interpolation and index lookup. Keep this
-module free of ``app`` / ``ui`` / ``tools`` imports.
+module free of ``app`` / ``ui`` imports.
 """
 
 import numpy as np

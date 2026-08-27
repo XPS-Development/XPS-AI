@@ -39,6 +39,11 @@ class ParametricModelLike(Protocol[T]):
         """Evaluate the model on ``x`` (and optional ``y``) with named parameters."""
         ...
 
+    @staticmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """Return initial parameter values keyed by ``parameter_schema`` names."""
+        ...
+
     def normalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         """Map a physical parameter value into normalized space."""
         ...
@@ -49,7 +54,7 @@ class ParametricModelLike(Protocol[T]):
 
 
 class ParametricModel(ParameterNormalizationPolicy, ABC):
-    """Abstract parametric model with a name, schema, and evaluate method."""
+    """Abstract parametric model with a name, schema, evaluate, and guess_initial."""
 
     name: str
     parameter_schema: tuple[ParameterSpec, ...]
@@ -59,6 +64,18 @@ class ParametricModel(ParameterNormalizationPolicy, ABC):
     @abstractmethod
     def evaluate(*args, **kwargs) -> NDArray:
         """Evaluate the model; subclasses define the concrete signature."""
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """
+        Return initial parameter values keyed by ``parameter_schema`` names.
+
+        Peak models expect ``peak_index`` (and optional ``frac``). Background
+        models expect ``start`` / ``stop`` on the full spectrum arrays, with
+        optional ``mode`` and ``avg_on``.
+        """
         ...
 
 
@@ -87,6 +104,12 @@ class BasePeakModel(ParametricModel):
         """Evaluate the peak model on ``x``."""
         ...
 
+    @staticmethod
+    @abstractmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """Guess peak parameters; requires ``peak_index``."""
+        ...
+
 
 class BaseBackgroundModel(ParametricModel):
     """Parametric model used as a background component."""
@@ -95,4 +118,10 @@ class BaseBackgroundModel(ParametricModel):
     @abstractmethod
     def evaluate(x: NDArray, y: NDArray | None, **kwargs: float) -> NDArray:
         """Evaluate the background model on ``x``."""
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """Guess background parameters; requires ``start`` and ``stop``."""
         ...

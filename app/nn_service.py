@@ -30,6 +30,8 @@ class NNService:
         pred_threshold: float = 0.5,
         smooth: bool = True,
         interp_num: int = 256,
+        peak_model_name: str = "pseudo-voigt",
+        background_model_name: str = "shirley",
     ) -> None:
         """
         Initialize the NN service with a segmenter pipeline.
@@ -44,12 +46,18 @@ class NNService:
             Whether to smooth the peak mask (default True).
         interp_num : int, optional
             Interpolation points (default 256).
+        peak_model_name : str, optional
+            Registered peak model used for initial parameter guesses.
+        background_model_name : str, optional
+            Registered background model used for initial parameter guesses.
         """
         self._pipeline = SegmenterPipeline(
             model_path=model_path,
             pred_threshold=pred_threshold,
             smooth=smooth,
             interp_num=interp_num,
+            peak_model_name=peak_model_name,
+            background_model_name=background_model_name,
         )
 
     def load_model(self, model_path: str | Path) -> None:

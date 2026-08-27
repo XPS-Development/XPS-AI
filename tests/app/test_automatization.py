@@ -1,5 +1,5 @@
 """
-Tests for app.automatization module (AutomatizationService and Change outputs).
+Tests for app.automatization module (AutomatizationAdapter and Change outputs).
 
 App-level tests: service uses CoreContext and returns Command-layer Change objects
 (CompositeChange, CreatePeak, CreateBackground) for the command executor.
@@ -33,6 +33,9 @@ class _DummyModel:
     def __init__(self, name: str) -> None:
         self.name = name
 
+    def evaluate(self, x, y=None, **params):  # type: ignore[no-untyped-def]
+        return np.zeros_like(x)
+
 
 def _dummy_background_dto(model_name: str = "shirley") -> ComponentDTO:
     return ComponentDTO(
@@ -54,24 +57,19 @@ def test_update_intensities_returns_update_change_with_parameters(
 
     captured: dict[str, object] = {}
 
-    def _fake_calc_bg_intensities(  # type: ignore[no-untyped-def]
-        x,
-        y,
-        start,
-        stop,
-        mode,
-        avg_on,
-    ):
+    def _fake_guess_initial(x, y, **kwargs):  # type: ignore[no-untyped-def]
         captured["x"] = x
         captured["y"] = y
-        captured["start"] = start
-        captured["stop"] = stop
-        captured["mode"] = mode
-        captured["avg_on"] = avg_on
+        captured.update(kwargs)
         return {"i1": 1.0, "i2": 2.0}
 
+    class _FakeModel:
+        def guess_initial(self, x, y, **kwargs):  # type: ignore[no-untyped-def]
+            return _fake_guess_initial(x, y, **kwargs)
+
     monkeypatch.setattr(
-        "app.automatization.calculate_background_intensities", _fake_calc_bg_intensities
+        "app.automatization.ModelRegistry.get",
+        lambda name: _FakeModel(),
     )
 
     new_slice = (25, 175)
@@ -96,24 +94,10 @@ def test_update_intensities_returns_update_change_with_parameters(
 
 
 def test_get_bg_parameters_constant_returns_const(
-    adapter: AutomatizationAdapter, monkeypatch: pytest.MonkeyPatch
+    adapter: AutomatizationAdapter,
 ) -> None:
-    """get_bg_parameters with constant model returns const based on i1, i2."""
+    """get_bg_parameters with constant model returns const based on edge intensities."""
     spectrum_dto = _dummy_spectrum_dto()
-
-    def _fake_calc_bg_intensities(  # type: ignore[no-untyped-def]
-        x,
-        y,
-        start,
-        stop,
-        mode,
-        avg_on,
-    ):
-        return {"i1": 10.0, "i2": 20.0}
-
-    monkeypatch.setattr(
-        "app.automatization.calculate_background_intensities", _fake_calc_bg_intensities
-    )
 
     params = adapter.get_bg_parameters(
         model_name="constant",
@@ -123,13 +107,14 @@ def test_get_bg_parameters_constant_returns_const(
         avg_on=3,
     )
 
-    assert params == {"const": 10.0}
+    assert set(params.keys()) == {"const"}
+    assert np.isfinite(params["const"])
 
 
-def test_create_pseudo_voigt_peak_returns_create_peak(
+def test_create_peak_returns_create_peak(
     adapter: AutomatizationAdapter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """create_pseudo_voigt_peak returns CreatePeak with model_name and parameters."""
+    """create_peak returns CreatePeak with model_name and parameters."""
     region = RegionDTO(
         id_="region-1",
         parent_id="spec-1",
@@ -143,39 +128,33 @@ def test_create_pseudo_voigt_peak_returns_create_peak(
             parent_id=region.id_,
             normalized=False,
             parameters={},
-            model=_DummyModel("background-1"),
-            kind="background",
-        ),
-        ComponentDTO(
-            id_="c2",
-            parent_id=region.id_,
-            normalized=False,
-            parameters={},
-            model=_DummyModel("background-2"),
+            model=_DummyModel("shirley"),
             kind="background",
         ),
     )
 
     captured: dict[str, object] = {}
 
-    def _fake_create_params(region_arg, components_arg):  # type: ignore[no-untyped-def]
-        captured["region"] = region_arg
-        captured["components"] = components_arg
+    def _fake_guess_initial(x, y, **kwargs):  # type: ignore[no-untyped-def]
+        captured["peak_index"] = kwargs.get("peak_index")
         return {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
 
+    class _FakeModel:
+        def guess_initial(self, x, y, **kwargs):  # type: ignore[no-untyped-def]
+            return _fake_guess_initial(x, y, **kwargs)
+
     monkeypatch.setattr(
-        "app.automatization.create_pseudo_voigt_peak_parameters",
-        _fake_create_params,
+        "app.automatization.ModelRegistry.get",
+        lambda name: _FakeModel(),
     )
 
-    change = adapter.create_pseudo_voigt_peak(region, components)  # type: ignore[arg-type]
+    change = adapter.create_peak(region, components, model_name="pseudo-voigt")
     assert isinstance(change, CreatePeak)
     assert change.region_id == region.id_
     assert change.model_name == "pseudo-voigt"
     assert change.parameters is not None
     assert set(change.parameters.keys()) == {"amp", "cen", "sig", "frac"}
-    assert captured["region"] is region
-    assert captured["components"] == components
+    assert captured["peak_index"] is not None
 
 
 def test_create_background_shirley_returns_create_background(
