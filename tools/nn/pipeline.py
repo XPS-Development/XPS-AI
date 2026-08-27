@@ -5,8 +5,9 @@ Composes preprocessor, adapter, and postprocessor. Stays free of app concepts
 (no spectrum_id); the app layer maps RegionBounds to CreateRegion / CreatePeak.
 """
 
-from typing import Any, Protocol
 from pathlib import Path
+from typing import Protocol
+
 from numpy.typing import NDArray
 
 from core.types import SpectrumLike
@@ -29,13 +30,17 @@ class PreprocessorLike(Protocol):
         *,
         x_int: NDArray | None = None,
         y_int: NDArray | None = None,
-    ) -> ModelInputT: ...
+    ) -> tuple[ModelInputT, dict[str, NDArray]]:
+        """Produce model input from spectrum-like data."""
+        ...
 
 
 class AdapterLike(Protocol):
     """Protocol for adapters used by the pipeline."""
 
-    def run(self, model_input: ModelInputT) -> ModelOutputT: ...
+    def run(self, model_input: ModelInputT) -> ModelOutputT:
+        """Run inference and return raw model output."""
+        ...
 
 
 class PostprocessorLike(Protocol):
@@ -47,7 +52,10 @@ class PostprocessorLike(Protocol):
         *,
         x: NDArray,
         x_int: NDArray,
-    ) -> Any: ...
+        y: NDArray,
+    ) -> list[SegmenterResult]:
+        """Convert model output to the pipeline result type."""
+        ...
 
 
 class InferencePipeline:
@@ -58,10 +66,8 @@ class InferencePipeline:
     returns the postprocessor result type (e.g. list[RegionBounds]).
     """
 
-    def run(self, spectrum: SpectrumLike) -> Any:
-        """
-        Run the full pipeline on a spectrum-like input.
-        """
+    def run(self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike) -> object:
+        """Run the full pipeline on a spectrum-like input."""
         raise NotImplementedError("Subclasses must implement run method")
 
 
@@ -80,7 +86,8 @@ class SegmenterPipeline(InferencePipeline):
         smooth: bool = True,
         interp_num: int = 256,
     ) -> None:
-        """
+        """Initialize preprocessor, adapter, and postprocessor.
+
         Parameters
         ----------
         model_path : str or None, optional

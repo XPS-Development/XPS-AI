@@ -11,7 +11,8 @@ from typing import Literal
 
 from core.collection import CoreCollection
 from core.services import MetadataService
-from tools.serialization import dump as dump_collection, load as load_collection
+from tools.serialization import dump as dump_collection
+from tools.serialization import load as load_collection
 
 
 class SerializationService:
@@ -24,9 +25,7 @@ class SerializationService:
     """
 
     def __init__(self) -> None:
-        """
-        Initialize the serialization service.
-        """
+        """Initialize the serialization service."""
         self._dirty = False
 
     @property

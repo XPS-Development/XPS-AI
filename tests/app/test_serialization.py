@@ -1,7 +1,5 @@
 """Tests for app SerializationService."""
 
-from pathlib import Path
-
 from app.serialization import SerializationService
 from core.collection import CoreCollection
 from core.services import MetadataService

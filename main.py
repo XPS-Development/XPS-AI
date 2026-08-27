@@ -1,10 +1,16 @@
+"""Application entry point: start the Qt main window."""
+
 import sys
 import traceback
 
 from PySide6.QtCore import QEvent, QObject
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from app.error_dump import enable_user_exception_ui, orchestrator_error_user_feedback_done, save_error_dump
+from app.error_dump import (
+    enable_user_exception_ui,
+    orchestrator_error_user_feedback_done,
+    save_error_dump,
+)
 from ui.controller import ControllerWrapper
 from ui.main_window import MainWindow
 

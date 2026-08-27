@@ -1,5 +1,7 @@
+"""Immutable DTO projections of core objects for tools and UI."""
+
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from numpy.typing import NDArray
 
@@ -34,7 +36,7 @@ class BaseDTO:
     """
 
     id_: str
-    parent_id: str
+    parent_id: str | None
     normalized: bool
 
 
@@ -88,7 +90,7 @@ class DTOService:
     and UI layers.
     """
 
-    def __init__(self, ctx: CoreContext):
+    def __init__(self, ctx: CoreContext) -> None:
         """
         Initialize DTO service with access to core domain services.
 
@@ -101,7 +103,7 @@ class DTOService:
         self.comp_srv = ctx.component
         self.data_srv = ctx.data
 
-    def get_component(self, component_id: str, *, normalized: bool = False):
+    def get_component(self, component_id: str, *, normalized: bool = False) -> ComponentDTO:
         """
         Construct an immutable DTO projection of a component.
 
@@ -117,10 +119,27 @@ class DTOService:
         ComponentDTO
             Immutable component projection with parameters and model metadata.
         """
-
         core_params = self.comp_srv.get_parameters(component_id, normalized=normalized)
         model = self.comp_srv.get_model(component_id)
-        params = {k: ParameterDTO(**v) for k, v in core_params.items()}
+
+        # `core_params` comes from `asdict(RuntimeParameter)` and `ty` sees it as a
+        # wide union. Construct DTO fields explicitly with numeric casts.
+        params: dict[str, ParameterDTO] = {}
+        for pname, raw in core_params.items():
+            value = float(raw["value"])
+            lower = float(raw["lower"])
+            upper = float(raw["upper"])
+            vary = bool(cast(bool, raw["vary"]))
+            expr = cast(str | None, raw.get("expr"))
+
+            params[pname] = ParameterDTO(
+                name=pname,
+                value=value,
+                lower=lower,
+                upper=upper,
+                vary=vary,
+                expr=expr,
+            )
 
         return ComponentDTO(
             id_=component_id,
@@ -183,7 +202,6 @@ class DTOService:
         tuple[RegionDTO, tuple[ComponentDTO, ...]]
             Region DTO and its component DTOs.
         """
-
         reg_dto = self.get_region(region_id, normalized=normalized)
         cmp_dtos = tuple(
             self.get_component(cid, normalized=normalized)
@@ -207,15 +225,13 @@ class DTOService:
         SpectrumDTO
             Immutable spectrum data projection.
         """
-
         x, y = self.data_srv.get_spectrum_data(spectrum_id, normalized=normalized)
         x.flags.writeable = False
         y.flags.writeable = False
-        parent_id = self.query_srv.get_parent(spectrum_id)
 
         return SpectrumDTO(
             id_=spectrum_id,
-            parent_id=parent_id,
+            parent_id=None,
             normalized=normalized,
             x=x,
             y=y,
@@ -244,7 +260,6 @@ class DTOService:
         ]
             Full immutable spectrum representation.
         """
-
         spectrum_dto = self.get_spectrum(spectrum_id, normalized=normalized)
         reg_reprs = tuple(
             self.get_region_repr(rid, normalized=normalized)

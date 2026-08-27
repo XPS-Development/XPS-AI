@@ -1,21 +1,25 @@
+"""Domain objects: spectra, regions, peaks, backgrounds, and runtime parameters."""
+
+from dataclasses import asdict, dataclass, field
+from typing import Protocol, cast, runtime_checkable
 from uuid import uuid4
-from dataclasses import dataclass, field, asdict
 
 import numpy as np
-
-from .math_models import NormalizationContext, BasePeakModel, BaseBackgroundModel, ParametricModelLike
-
-from typing import Protocol, Dict, Any, Optional, runtime_checkable
 from numpy.typing import NDArray
+
+from .math_models import (
+    BaseBackgroundModel,
+    BasePeakModel,
+    NormalizationContext,
+    ParametricModelLike,
+)
 
 _EXPR_MISSING: object = object()
 
 
 @dataclass
 class RuntimeParameter:
-    """
-    Mutable value object representing a single adjustable model parameter
-    at runtime.
+    """Mutable value object for a single adjustable model parameter.
 
     ``RuntimeParameter`` stores the current numerical value of a parameter
     together with its optimization metadata: bounds, variation flag, and
@@ -64,9 +68,10 @@ class RuntimeParameter:
     lower: float = -np.inf
     upper: float = np.inf
     vary: bool = True
-    expr: Optional[str] = None
+    expr: str | None = None
 
     def __post_init__(self) -> None:
+        """Clip ``value`` and repair inverted bounds after dataclass init."""
         if self.lower > self.upper:
             self.lower = -np.inf
             self.upper = np.inf
@@ -76,7 +81,7 @@ class RuntimeParameter:
         """Clip value to the inclusive interval [lower, upper]."""
         return min(max(value, self.lower), self.upper)
 
-    def _set_bound(self, lower: Optional[float] = None, upper: Optional[float] = None) -> None:
+    def _set_bound(self, lower: float | None = None, upper: float | None = None) -> None:
         if lower is not None and upper is not None:
             if lower > upper:
                 raise ValueError
@@ -96,11 +101,11 @@ class RuntimeParameter:
     def set(
         self,
         *,
-        value: Optional[float] = None,
-        lower: Optional[float] = None,
-        upper: Optional[float] = None,
-        vary: Optional[bool] = None,
-        expr: Optional[str] = _EXPR_MISSING,
+        value: float | None = None,
+        lower: float | None = None,
+        upper: float | None = None,
+        vary: bool | None = None,
+        expr: str | object | None = _EXPR_MISSING,
     ) -> None:
         """
         Mutate parameter attributes while preserving invariants.
@@ -133,7 +138,7 @@ class RuntimeParameter:
             self.vary = bool(vary)
 
         if expr is not _EXPR_MISSING:
-            self.expr = expr
+            self.expr = cast(str | None, expr)
 
     def clone(self, **overrides: str | float | bool) -> "RuntimeParameter":
         """
@@ -175,6 +180,7 @@ class RuntimeParameter:
         dst.set(**params)
 
     def __repr__(self) -> str:
+        """Return a compact representation of the parameter state."""
         return (
             f"<RuntimeParameter {self.name}: "
             f"value={self.value}, "
@@ -185,8 +191,10 @@ class RuntimeParameter:
 
 @runtime_checkable
 class CoreObject(Protocol):
+    """Minimal identity protocol shared by all core objects."""
+
     id_: str
-    parent_id: Optional[str]
+    parent_id: str | None
 
 
 class Component:
@@ -264,17 +272,19 @@ class Component:
         *,
         model: ParametricModelLike,
         parent_id: str,
-        component_id: Optional[str] = None,
+        component_id: str | None = None,
         component_prefix: str = "c",
         **param_values: float,
     ) -> None:
 
         self.id_: str = component_id or f"{component_prefix}{uuid4().hex}"
         self.model = model
-        self.parent_id = parent_id
+        # `CoreObject.parent_id` is typed as `str | None` in the protocol.
+        # Regions/spectra always have a parent, while spectra have `None`.
+        self.parent_id: str | None = parent_id
 
         # Initialize parameters
-        self.parameters: Dict[str, RuntimeParameter] = {}
+        self.parameters: dict[str, RuntimeParameter] = {}
         schema = {p.name: p for p in model.parameter_schema}
 
         unknown = set(param_values) - set(schema)
@@ -292,7 +302,7 @@ class Component:
                 expr=spec.expr,
             )
 
-    def set_param(self, name: str, **kwargs: Any) -> None:
+    def set_param(self, name: str, **kwargs) -> None:
         """
         Update attributes of a runtime parameter.
 
@@ -336,6 +346,7 @@ class Component:
         return self.parameters[name]
 
     def __repr__(self) -> str:
+        """Return a compact representation of the component."""
         params = ", ".join(f"{n}={p.value:.4g}" for n, p in self.parameters.items())
         pid = self.parent_id[:8] if self.parent_id else "None"
         return f"<{type(self).__name__} parent_id={pid} id={self.id_[:8]} model={self.model.name} {params}>"
@@ -374,9 +385,9 @@ class Peak(Component):
         *,
         model: BasePeakModel,
         region_id: str,
-        component_id: Optional[str] = None,
+        component_id: str | None = None,
         **param_values: float,
-    ):
+    ) -> None:
         super().__init__(
             model=model,
             parent_id=region_id,
@@ -417,9 +428,9 @@ class Background(Component):
         *,
         model: BaseBackgroundModel,
         region_id: str,
-        component_id: Optional[str] = None,
+        component_id: str | None = None,
         **param_values: float,
-    ):
+    ) -> None:
         super().__init__(
             model=model,
             parent_id=region_id,
@@ -475,16 +486,17 @@ class Region:
     """
 
     slice_: slice
-    parent_id: str
-    id_: Optional[str] = None
+    parent_id: str | None
+    id_: str = field(default_factory=lambda: f"r{uuid4().hex}")
 
     def __post_init__(self) -> None:
+        """Validate the slice and assign an id if missing."""
         if not isinstance(self.slice_, slice):
             raise TypeError("slice must be a slice object")
         if self.slice_.step not in (None, 1):
             raise ValueError("slice step must be None or 1")
-        if self.id_ is None:
-            self.id_ = f"r{uuid4().hex}"
+        # `id_` is always a string: either provided explicitly or generated
+        # by `default_factory`.
 
 
 @dataclass
@@ -549,16 +561,17 @@ class Spectrum:
     x: NDArray
     y: NDArray
 
-    id_: Optional[str] = None
-    parent_id = None
+    id_: str = field(default_factory=lambda: f"s{uuid4().hex}")
+    parent_id: str | None = None
 
     norm_ctx: NormalizationContext = field(init=False)
 
     def __post_init__(self) -> None:
+        """Validate arrays, build the normalization context, and assign an id."""
         self._validate()
         self.norm_ctx = NormalizationContext.from_array(self.y)
-        if self.id_ is None:
-            self.id_ = f"s{uuid4().hex}"
+        # `id_` is always a string: either provided explicitly or generated
+        # by `default_factory`.
 
     def _validate(self) -> None:
         if not isinstance(self.x, np.ndarray) or not isinstance(self.y, np.ndarray):

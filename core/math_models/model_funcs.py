@@ -1,13 +1,12 @@
-import numpy as np
-from scipy.integrate import trapezoid
+"""Closed-form peak and background evaluation functions."""
 
-from typing import Sequence, List
+import numpy as np
 from numpy.typing import NDArray
+from scipy.integrate import trapezoid
 
 
 def gauss(x: NDArray, center: float, sigma: float) -> NDArray:
-    """
-    Normalized Gaussian function.
+    """Return a normalized Gaussian evaluated at ``x``.
 
     Parameters
     ----------
@@ -27,8 +26,7 @@ def gauss(x: NDArray, center: float, sigma: float) -> NDArray:
 
 
 def lorentz(x: NDArray, center: float, sigma: float) -> NDArray:
-    """
-    Normalized Lorentzian function.
+    """Return a normalized Lorentzian evaluated at ``x``.
 
     Parameters
     ----------
@@ -70,10 +68,14 @@ def pvoigt(x: NDArray, amplitude: float, center: float, sigma: float, fraction: 
         Pseudo-Voigt function evaluated at x.
     """
     sigma_g = sigma / np.sqrt(2 * np.log(2))  # convert to Gaussian sigma for same FWHM
-    return amplitude * ((1 - fraction) * gauss(x, center, sigma_g) + fraction * lorentz(x, center, sigma))
+    return amplitude * (
+        (1 - fraction) * gauss(x, center, sigma_g) + fraction * lorentz(x, center, sigma)
+    )
 
 
-def static_shirley_background(x: NDArray, y: NDArray, i1: float, i2: float, iters: int = 8) -> NDArray:
+def static_shirley_background(
+    x: NDArray, y: NDArray, i1: float, i2: float, iters: int = 8
+) -> NDArray:
     """
     Calculate iterative Shirley background.
 
@@ -99,7 +101,10 @@ def static_shirley_background(x: NDArray, y: NDArray, i1: float, i2: float, iter
     for _ in range(iters):
         y_adj = y - i1 - background
         k = (i2 - i1) / trapezoid(y_adj, x)
-        shirley_to_i = lambda i: k * trapezoid(y_adj[: i + 1], x[: i + 1])
+
+        def shirley_to_i(i: int, k_val: float = k, y_val: NDArray = y_adj) -> float:
+            return k_val * trapezoid(y_val[: i + 1], x[: i + 1])
+
         background = np.array([shirley_to_i(i) for i in range(len(x))])
     return background + i1
 

@@ -24,7 +24,8 @@ class SegmenterPreprocessor:
     """
 
     def __init__(self, num: int = 256) -> None:
-        """
+        """Set the interpolation grid size.
+
         Parameters
         ----------
         num : int, optional
@@ -35,7 +36,7 @@ class SegmenterPreprocessor:
     def __call__(
         self,
         data: SpectrumLike,
-    ) -> ModelInputT:
+    ) -> tuple[ModelInputT, dict[str, NDArray]]:
         """
         Produce segmenter model input from spectrum-like data.
 

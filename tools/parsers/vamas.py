@@ -33,7 +33,6 @@
 #
 ################################################################################
 
-from __future__ import division
 from pathlib import Path
 
 import numpy as np
@@ -44,9 +43,8 @@ from .types import ParsedSpectrum
 
 
 class VAMAS:
-    def __init__(self, filename):
+    def __init__(self, filename) -> None:
         """Can only init by providing a VAMAS file."""
-
         f = open(filename)
         if f:
             lines = f.readlines()
@@ -55,9 +53,8 @@ class VAMAS:
         else:
             print("Error (vamas.py, VAMAS.__init__): File %s failed to open.")
 
-    def LoadFromText(self, lines):
+    def LoadFromText(self, lines) -> None:
         """Reads VAMAS text. Format taken from Dench et al, Surf. Interface Anal. 13 (1988) p 63."""
-
         content = iter(lines)
 
         # First read content of the header.
@@ -67,7 +64,7 @@ class VAMAS:
         # Now grab all the blocks
 
         self.blocks = []
-        for i in range(self.header.num_blocks):
+        for _i in range(self.header.num_blocks):
             self.blocks.append(VAMASBlock(self.header, content))  # Block is an object
 
         # Should now get the experiment terminator: check.
@@ -80,13 +77,11 @@ class VAMAS:
 
 
 class VAMASHeader:
-
-    def __init__(self, content):
+    def __init__(self, content) -> None:
         """Parameter 'content' should be an iterator containing lines of text."""
-
         self.LoadFromIterator(content)
 
-    def LoadFromIterator(self, content):
+    def LoadFromIterator(self, content) -> None:
 
         self.format = next(content).strip()
         self.institution = next(content).strip()
@@ -96,7 +91,7 @@ class VAMASHeader:
 
         counter = int(next(content))  # number of comment lines
         self.comments = []
-        for i in range(counter):
+        for _i in range(counter):
             self.comments.append(next(content).strip())
 
         self.experiment_mode = next(content).strip()
@@ -119,19 +114,19 @@ class VAMASHeader:
         counter = int(next(content))  # Number of experimental variables
         self.experimental_variable_names = []
         self.experimental_variable_units = []
-        for i in range(counter):
+        for _i in range(counter):
             self.experimental_variable_names.append(next(content).strip())
             self.experimental_variable_units.append(next(content).strip())
 
         counter = int(next(content))  # Number of parameters on the inclusion
         # or exclusion list
         self.param_inclusion_exclusion_list = []
-        for i in range(counter):
+        for _i in range(counter):
             self.param_inclusion_exclusion_list.append(next(content).strip())
 
         counter = int(next(content))  # Number of manually entered items in block
         self.manually_entered_items_list = []
-        for i in range(counter):
+        for _i in range(counter):
             self.manually_entered_items_list.append(next(content).strip())
 
         counter = int(next(content))  # Number of future upgrade experiment entries
@@ -140,23 +135,23 @@ class VAMASHeader:
         )  # Same for future upgrade blocks - use this later.
 
         self.future_upgrade_experiment_entries = []
-        for i in range(counter):
+        for _i in range(counter):
             self.future_upgrade_experiment_entries.append(next(content).strip())
 
         self.num_blocks = int(next(content))
 
 
 class VAMASBlock:
-    def __init__(self, header, content):
+    def __init__(self, header, content) -> None:
         """Parameter 'header' should be an initialized VAMASHeader object. Parameter
-        'content' should be an iterator containing lines of text."""
-
+        'content' should be an iterator containing lines of text.
+        """
         self.LoadFromIterator(header, content)
         if header.scan_mode == "REGULAR":
             self.MakeAxes()
         self.ReorderOrdinates()
 
-    def LoadFromIterator(self, header, content):
+    def LoadFromIterator(self, header, content) -> None:
 
         self.header = header  # So we always have a link back to the header data.
         self.name = next(content).strip()
@@ -172,7 +167,7 @@ class VAMASBlock:
         counter = int(next(content))  # Number of lines in block comment
 
         self.comments = []
-        for i in range(counter):
+        for _i in range(counter):
             self.comments.append(next(content).strip())
 
         self.technique = next(content).strip()
@@ -183,7 +178,7 @@ class VAMASBlock:
 
         self.experimental_variables = []
 
-        for i in range(len(header.experimental_variable_names)):
+        for _i in range(len(header.experimental_variable_names)):
             self.experimental_variables.append(float(next(content)))
 
         self.analysis_source = next(content).strip()
@@ -250,7 +245,7 @@ class VAMASBlock:
 
         self.corresponding_variable_labels = []
         self.corresponding_variable_units = []
-        for i in range(self.num_corresponding_variables):
+        for _i in range(self.num_corresponding_variables):
             self.corresponding_variable_labels.append(next(content).strip())
             self.corresponding_variable_units.append(next(content).strip())
 
@@ -278,32 +273,31 @@ class VAMASBlock:
         self.additional_param_labels = []
         self.additional_param_units = []
         self.additional_param_values = []
-        for i in range(counter):
+        for _i in range(counter):
             self.additional_param_labels.append(next(content).strip())
             self.additional_param_units.append(next(content).strip())
             self.additional_param_values.append(float(next(content)))
 
         self.future_upgrade_block_entries = []
-        for i in range(header.num_future_upgrade_block_entries):
+        for _i in range(header.num_future_upgrade_block_entries):
             self.future_upgrade_block_entries.append(next(content).strip())
 
         self.num_ordinate_values = int(next(content))
 
         self.minimum_ordinate_values = []
         self.maximum_ordinate_values = []
-        for i in range(self.num_corresponding_variables):
+        for _i in range(self.num_corresponding_variables):
             self.minimum_ordinate_values.append(float(next(content)))
             self.maximum_ordinate_values.append(float(next(content)))
 
         # The ordinates are next (FINALLY!). Just read them as a list and process later.
 
         self.ordinates = []
-        for i in range(self.num_ordinate_values):
+        for _i in range(self.num_ordinate_values):
             self.ordinates.append(float(next(content)))
 
-    def MakeAxes(self):
-        """Uses the abscissa data to construct binding energy and kinetic energy labels"""
-
+    def MakeAxes(self) -> None:
+        """Uses the abscissa data to construct binding energy and kinetic energy labels."""
         # So, the VAMAS file provides the number of ordinate values which is a multiple of the number of corresponding variables with number of ordinates for each variable.
         # We also have the abscissa start and the increment. We can use this to generate a generic energy axis.
         # On top of that, we can use the abscissa label to guess whether the abscissa is kinetic or binding (for electron spectroscopy) and then generate the other one using the photon energy and work function.
@@ -337,10 +331,9 @@ class VAMASBlock:
         # As a last item, calculate the dwell time per set of corresponding variables.
         self.dwell_time = float(num_ords) / self.signal_collection_time
 
-    def ReorderOrdinates(self):
+    def ReorderOrdinates(self) -> None:
         """Creates a list of lists by reordering the ordinate values. In the VAMAS file if there are N corresponding variables, the ordinates are listed as 1_1, .... 1_N, 2_1, .... , 2_N, etc where for each abscissa value all the corresponding values are listed in sequence. ReorderOrdinates creates a list [[1_1, 2_1, ...], ... , [1_N, 2_N, ...]], i.e. a list each for all the corresponding variables."""
-
-        num_ords = int(float(self.num_ordinate_values) / float(self.num_corresponding_variables))
+        int(float(self.num_ordinate_values) / float(self.num_corresponding_variables))
 
         self.data = []
 
@@ -373,7 +366,6 @@ def parse_vamas(
     list[ParsedSpectrum]
         One ParsedSpectrum per block in the file.
     """
-
     vamas = VAMAS(path)
     result = []
 

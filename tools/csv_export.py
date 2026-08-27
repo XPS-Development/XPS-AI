@@ -1,17 +1,14 @@
-"""
-CSV-like export helpers for ObjectLike projections.
-"""
+"""CSV-like export helpers for ObjectLike projections."""
 
 import csv
+from collections.abc import Iterable
 from io import StringIO
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
 from tools.evaluation import spectrum_bundle
-
 
 SpectrumRepr = tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]
 
@@ -99,9 +96,7 @@ def _serialize_spectrum_csv(
     include_difference: bool = True,
     precision: int | None = None,
 ) -> str:
-    """
-    Serialize a spectrum representation as CSV-like text.
-    """
+    """Serialize a spectrum representation as CSV-like text."""
     _validate_separator(separator)
 
     spectrum, region_reprs = spectrum_repr
@@ -169,9 +164,7 @@ def _serialize_spectrum_peak_parameters_csv(
     use_xps_peak_names: bool = False,
     precision: int | None = None,
 ) -> str:
-    """
-    Serialize peak parameters from component tuple as CSV-like text.
-    """
+    """Serialize peak parameters from component tuple as CSV-like text."""
     _validate_separator(separator)
     peaks = tuple(component for component in components if component.kind == "peak")
     if len(peaks) == 0:
@@ -194,10 +187,10 @@ def _serialize_spectrum_peak_parameters_csv(
     return stream.getvalue()
 
 
-def _iter_xy_pairs(x_values: Iterable[float], y_values: Iterable[float]) -> Iterable[tuple[float, float]]:
-    """
-    Iterate over x/y pairs and validate equal lengths.
-    """
+def _iter_xy_pairs(
+    x_values: Iterable[float], y_values: Iterable[float]
+) -> Iterable[tuple[float, float]]:
+    """Iterate over x/y pairs and validate equal lengths."""
     x_list = list(x_values)
     y_list = list(y_values)
     if len(x_list) != len(y_list):
@@ -206,9 +199,7 @@ def _iter_xy_pairs(x_values: Iterable[float], y_values: Iterable[float]) -> Iter
 
 
 def _validate_separator(separator: str) -> None:
-    """
-    Validate CSV separator.
-    """
+    """Validate CSV separator."""
     if len(separator) != 1:
         raise ValueError("separator must be a single character")
 
@@ -279,10 +270,10 @@ def _pseudo_voigt_xps_alias_values(component: ComponentLike) -> list[tuple[str, 
     ]
 
 
-def _peak_parameter_values(component: ComponentLike, use_xps_peak_names: bool) -> list[tuple[str, float]]:
-    """
-    Return export parameter/value pairs for a peak component.
-    """
+def _peak_parameter_values(
+    component: ComponentLike, use_xps_peak_names: bool
+) -> list[tuple[str, float]]:
+    """Return export parameter/value pairs for a peak component."""
     if component.kind != "peak":
         raise ValueError("components must contain only peak entries for peak export")
     if use_xps_peak_names and component.model.name == "pseudo-voigt":
@@ -291,18 +282,14 @@ def _peak_parameter_values(component: ComponentLike, use_xps_peak_names: bool) -
 
 
 def _write_text(path: str | Path, text: str) -> None:
-    """
-    Write UTF-8 text to disk, creating parent directories as needed.
-    """
+    """Write UTF-8 text to disk, creating parent directories as needed."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
 
 
 def _format_value(value: object, precision: int | None) -> object:
-    """
-    Format numeric value with optional precision.
-    """
+    """Format numeric value with optional precision."""
     if precision is None:
         return value
     if isinstance(value, (float, np.floating)):

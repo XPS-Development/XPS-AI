@@ -1,7 +1,7 @@
 import pytest
 
-from core.objects import Peak, Background, Spectrum, Region
 from core.math_models import ModelRegistry
+from core.objects import Background, Peak, Region, Spectrum
 from core.services import ComponentService
 
 
@@ -62,7 +62,7 @@ def test_replace_background_replaces_existing(srv, region_id):
 
 def test_replace_background_fails_if_multiple_backgrounds(srv, region_id):
     # руками создаём неконсистентное состояние
-    bg1 = srv.replace_background(region_id, "linear")
+    srv.replace_background(region_id, "linear")
     bg2 = srv._create_component_obj(region_id, "linear")
 
     srv.collection.add(bg2)

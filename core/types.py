@@ -6,7 +6,8 @@ SpectrumLike) that domain objects, DTOs, and library API consumers can use
 for duck typing without tight coupling to concrete implementations.
 """
 
-from typing import Literal, Protocol
+from collections.abc import Mapping
+from typing import Final, Literal, Protocol
 
 from numpy.typing import NDArray
 
@@ -21,12 +22,12 @@ class ParameterLike(Protocol):
     normalization, denormalization, and DTO construction.
     """
 
-    name: str
-    value: float
-    lower: float
-    upper: float
-    vary: bool
-    expr: str | None
+    name: Final[str]
+    value: Final[float]
+    lower: Final[float]
+    upper: Final[float]
+    vary: Final[bool]
+    expr: Final[str | None]
 
 
 class BaseLike(Protocol):
@@ -36,9 +37,9 @@ class BaseLike(Protocol):
     Shared by all core object projections (region, spectrum, component).
     """
 
-    id_: str
-    parent_id: str | None
-    normalized: bool
+    id_: Final[str]
+    parent_id: Final[str | None]
+    normalized: Final[bool]
 
 
 class ComponentLike(BaseLike, Protocol):
@@ -48,9 +49,9 @@ class ComponentLike(BaseLike, Protocol):
     Satisfied by ComponentDTO and domain Component objects.
     """
 
-    parameters: dict[str, ParameterLike]
-    model: ParametricModelLike
-    kind: Literal["peak", "background"]
+    parameters: Final[Mapping[str, ParameterLike]]
+    model: Final[ParametricModelLike]
+    kind: Final[Literal["peak", "background"]]
 
 
 class RegionLike(BaseLike, Protocol):
@@ -60,8 +61,8 @@ class RegionLike(BaseLike, Protocol):
     Satisfied by RegionDTO and similar projections.
     """
 
-    x: NDArray
-    y: NDArray
+    x: Final[NDArray]
+    y: Final[NDArray]
 
 
 class SpectrumLike(BaseLike, Protocol):
@@ -71,5 +72,5 @@ class SpectrumLike(BaseLike, Protocol):
     Satisfied by SpectrumDTO and similar projections.
     """
 
-    x: NDArray
-    y: NDArray
+    x: Final[NDArray]
+    y: Final[NDArray]

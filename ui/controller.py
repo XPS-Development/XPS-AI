@@ -1,5 +1,8 @@
+"""Qt controller wrapping :class:`AppOrchestrator` with UI signals."""
+
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from PySide6.QtCore import QObject, Signal
 
@@ -257,7 +260,9 @@ class ControllerWrapper(QObject):
         """
         return self._orchestrator.query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
 
-    def get_region_repr(self, region_id: str, *, normalized: bool = False) -> tuple[Any, tuple[Any, ...]]:
+    def get_region_repr(
+        self, region_id: str, *, normalized: bool = False
+    ) -> tuple[Any, tuple[Any, ...]]:
         """
         Return region-like and its component-like objects.
 
@@ -282,9 +287,7 @@ class ControllerWrapper(QObject):
     # ------------------------------------------------------------------
 
     def undo(self) -> None:
-        """
-        Undo the last executed command and emit signals.
-        """
+        """Undo the last executed command and emit signals."""
         cmd = self._orchestrator.peek_undo_command()
         if cmd is None:
             return
@@ -293,9 +296,7 @@ class ControllerWrapper(QObject):
         self._emit_undo_redo_state()
 
     def redo(self) -> None:
-        """
-        Redo the last undone command and emit signals.
-        """
+        """Redo the last undone command and emit signals."""
         cmd = self._orchestrator.peek_redo_command()
         if cmd is None:
             return
@@ -809,9 +810,9 @@ class ControllerWrapper(QObject):
         self,
         path: str | Path,
         *,
-        mode: str = "replace",
+        mode: Literal["append", "replace"] = "replace",
     ) -> None:
-        """
+        r"""
         Load collection and metadata from disk and emit signals.
 
         Plain vs gzip is auto-detected from the path or file header.
@@ -823,7 +824,7 @@ class ControllerWrapper(QObject):
         mode : {\"append\", \"replace\", \"new\"}, default=\"replace\"
             Loading mode passed to the orchestrator.
         """
-        self._orchestrator.load_collection(path, mode=mode)  # type: ignore[arg-type]
+        self._orchestrator.load_collection(path, mode=mode)
         self.emit_full_ui_refresh()
 
     def set_default_save_path(self, path: str | Path) -> None:
@@ -978,7 +979,11 @@ class ControllerWrapper(QObject):
             return (h, p, pr, d)
         if isinstance(
             cmd,
-            (UpdateParameterCommand, UpdateRegionSliceCommand, UpdateMultipleParameterValuesCommand),
+            (
+                UpdateParameterCommand,
+                UpdateRegionSliceCommand,
+                UpdateMultipleParameterValuesCommand,
+            ),
         ):
             return (False, True, True, True)
         if isinstance(cmd, SetMetadataCommand):
@@ -993,7 +998,9 @@ class ControllerWrapper(QObject):
             return (False, True, True, True)
         return (True, True, True, True)
 
-    def _ui_flags_for_remove_object_command(self, cmd: RemoveObjectCommand) -> tuple[bool, bool, bool, bool]:
+    def _ui_flags_for_remove_object_command(
+        self, cmd: RemoveObjectCommand
+    ) -> tuple[bool, bool, bool, bool]:
         """
         Return (hierarchy, plot, properties, document) for a remove-object command.
 

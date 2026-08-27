@@ -12,7 +12,6 @@ from tools.nn.pipeline import SegmenterPipeline
 from tools.nn.segmenter import SegmenterResult
 from tools.nn.types import BackgroundDetectionResult, PeakDetectionResult
 
-
 # model.onnx at project root (skip if missing)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 MODEL_PATH = PROJECT_ROOT / "model.onnx"
@@ -39,7 +38,8 @@ def test_segmenter_pipeline_real_model(
     assert isinstance(results, list)
     for sr in results:
         assert isinstance(sr, SegmenterResult)
-        assert hasattr(sr, "region") and hasattr(sr, "peaks")
+        assert hasattr(sr, "region")
+        assert hasattr(sr, "peaks")
         assert sr.region.start < sr.region.stop
         assert isinstance(sr.peaks, tuple)
         assert sr.background is not None

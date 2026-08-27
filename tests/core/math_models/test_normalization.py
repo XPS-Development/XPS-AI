@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-
 from core.math_models.normalization import NormalizationContext, ParameterNormalizationPolicy
 
 
@@ -15,7 +14,7 @@ def test_normalization_context_from_array():
 
 def test_normalization_context_invalid_scale():
     arr = np.array([2.0, 2.0, 2.0])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="zero or negative scale"):
         NormalizationContext.from_array(arr)
 
 

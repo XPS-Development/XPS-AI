@@ -1,8 +1,12 @@
 import numpy as np
 from scipy import stats
 
-from core.math_models.models import PseudoVoigtPeakModel
-from core.math_models.models import ConstantBackgroundModel, LinearBackgroundModel, ShirleyBackgroundModel
+from core.math_models.models import (
+    ConstantBackgroundModel,
+    LinearBackgroundModel,
+    PseudoVoigtPeakModel,
+    ShirleyBackgroundModel,
+)
 from core.math_models.normalization import NormalizationContext
 
 

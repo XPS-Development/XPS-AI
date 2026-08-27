@@ -6,39 +6,40 @@ with .changes.
 """
 
 from core.services import CoreContext
+
 from .changes import (
     BaseChange,
+    CompositeChange,
+    CreateBackground,
+    CreatePeak,
+    CreateRegion,
+    CreateSpectrum,
+    FullRemoveObject,
+    RemoveMetadata,
+    RemoveObject,
+    ReplaceBackgroundModel,
+    ReplacePeakModel,
+    SetMetadata,
+    UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
-    RemoveObject,
-    RemoveMetadata,
-    FullRemoveObject,
-    CreateSpectrum,
-    CreateRegion,
-    CreatePeak,
-    CreateBackground,
-    ReplacePeakModel,
-    ReplaceBackgroundModel,
-    UpdateMultipleParameterValues,
-    SetMetadata,
-    CompositeChange,
 )
 from .commands import (
     Command,
+    CompositeCommand,
+    CreateBackgroundCommand,
+    CreatePeakCommand,
+    CreateRegionCommand,
+    CreateSpectrumCommand,
+    FullRemoveObjectCommand,
+    RemoveMetadataCommand,
+    RemoveObjectCommand,
+    ReplaceBackgroundModelCommand,
+    ReplacePeakModelCommand,
+    SetMetadataCommand,
+    UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
     UpdateRegionSliceCommand,
-    RemoveObjectCommand,
-    RemoveMetadataCommand,
-    FullRemoveObjectCommand,
-    CreateSpectrumCommand,
-    CreateRegionCommand,
-    CreatePeakCommand,
-    CreateBackgroundCommand,
-    ReplacePeakModelCommand,
-    ReplaceBackgroundModelCommand,
-    UpdateMultipleParameterValuesCommand,
-    SetMetadataCommand,
-    CompositeCommand,
 )
 
 
@@ -163,9 +164,7 @@ class UndoRedoStack:
 
 
 class CommandRegistry:
-    """
-    Registry mapping Change types to Command types for extensible command creation.
-    """
+    """Registry mapping Change types to Command types for extensible command creation."""
 
     def __init__(self) -> None:
         self._registry: dict[type[BaseChange], type[Command]] = {}
@@ -243,9 +242,7 @@ def create_default_registry() -> CommandRegistry:
 
 
 class CommandExecutor:
-    """
-    Applies Change objects via CommandRegistry, runs commands, and manages undo/redo.
-    """
+    """Applies Change objects via CommandRegistry, runs commands, and manages undo/redo."""
 
     def __init__(
         self,

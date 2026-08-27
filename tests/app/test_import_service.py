@@ -1,10 +1,8 @@
 """Tests for import service."""
 
-import pytest
-
-from app.import_service import import_spectra
 from app.command.changes import CompositeChange, CreateSpectrum, SetMetadata
 from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
+from app.import_service import import_spectra
 
 
 def test_import_spectra_returns_composite_change():
@@ -36,7 +34,9 @@ def test_import_spectra_execute_via_command_executor(empty_collection):
 
     assert len(empty_collection.objects_index) >= 1
     spectrum_ids = [
-        oid for oid, obj in empty_collection.objects_index.items() if obj.__class__.__name__ == "Spectrum"
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if obj.__class__.__name__ == "Spectrum"
     ]
     assert len(spectrum_ids) == 1
     metadata = ctx.metadata.get_metadata(spectrum_ids[0])

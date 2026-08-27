@@ -8,7 +8,6 @@ Adapters load the model and run inference; input/output are model-specific
 from pathlib import Path
 
 import numpy as np
-from numpy.typing import NDArray
 import onnxruntime as ort
 
 from ..types import ModelInputT, ModelOutputT
@@ -26,17 +25,22 @@ class ONNXSegmenterAdapter:
     CHANNEL_MASK_KEYS: tuple[str, str] = ("region_mask", "max_mask")
 
     def __init__(self, model_path: str | Path | None = None) -> None:
-        """
+        """Load the ONNX session if a model path is given.
+
         Parameters
         ----------
         model_path : str or Path or None, optional
             Path to ONNX model file. If None or empty, session is not created
             until load() or run() with a loaded session.
         """
-        self._model_path: Path | None = Path(model_path) if model_path and str(model_path).strip() else None
+        self._model_path: Path | None = (
+            Path(model_path) if model_path and str(model_path).strip() else None
+        )
         self._session = None
         if self._model_path and self._model_path.exists():
-            self._session = ort.InferenceSession(str(self._model_path), providers=["CPUExecutionProvider"])
+            self._session = ort.InferenceSession(
+                str(self._model_path), providers=["CPUExecutionProvider"]
+            )
 
     @property
     def session(self) -> ort.InferenceSession | None:
@@ -66,6 +70,10 @@ class ONNXSegmenterAdapter:
         inp = model_input.get(self.INPUT_KEY)
         if inp is None:
             raise KeyError(f"Model input must contain key {self.INPUT_KEY!r}")
-        out: list[NDArray] = self._session.run(None, {self.INPUT_KEY: inp})
-        arr = out[0]
+        out = self._session.run(None, {self.INPUT_KEY: inp})
+
+        # onnxruntime typing is quite loose (can include SparseTensor), but
+        # for our exported model we always expect dense ndarrays.
+        arr_raw = out[0]
+        arr = np.asarray(arr_raw)
         return {key: np.asarray(arr[0, i, :]) for i, key in enumerate(self.CHANNEL_MASK_KEYS)}

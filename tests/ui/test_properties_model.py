@@ -31,7 +31,7 @@ def test_properties_model_column_count_and_headers(mock_controller: MagicMock) -
 
 
 def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
-    """PARAMETER_ROW serves value/lower/upper/vary/expr across columns 1–5."""
+    """PARAMETER_ROW serves value/lower/upper/vary/expr across columns 1-5."""
     del mock_controller  # unused; build a minimal tree without refresh()
     model = PropertiesModel(MagicMock(selected_spectrum_id=None))
     model._root_item.children.clear()

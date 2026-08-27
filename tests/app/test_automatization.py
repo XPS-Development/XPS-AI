@@ -70,7 +70,9 @@ def test_update_intensities_returns_update_change_with_parameters(
         captured["avg_on"] = avg_on
         return {"i1": 1.0, "i2": 2.0}
 
-    monkeypatch.setattr("app.automatization.calculate_background_intensities", _fake_calc_bg_intensities)
+    monkeypatch.setattr(
+        "app.automatization.calculate_background_intensities", _fake_calc_bg_intensities
+    )
 
     new_slice = (25, 175)
     change = adapter.update_intensities(
@@ -109,7 +111,9 @@ def test_get_bg_parameters_constant_returns_const(
     ):
         return {"i1": 10.0, "i2": 20.0}
 
-    monkeypatch.setattr("app.automatization.calculate_background_intensities", _fake_calc_bg_intensities)
+    monkeypatch.setattr(
+        "app.automatization.calculate_background_intensities", _fake_calc_bg_intensities
+    )
 
     params = adapter.get_bg_parameters(
         model_name="constant",

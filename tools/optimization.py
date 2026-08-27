@@ -7,8 +7,8 @@ for use as a standalone library or via the app layer. Uses core.types protocols 
 """
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
 
 import numpy as np
 from lmfit import Parameters, minimize
@@ -16,7 +16,6 @@ from lmfit.minimizer import MinimizerResult
 
 from core.types import ComponentLike, RegionLike
 from tools.evaluation import component_y
-
 
 _COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 
@@ -50,9 +49,9 @@ def resolve_component_reference(token: str, component_ids: Iterable[str]) -> str
 
 
 def _component_fully_fixed(cmp: ComponentLike) -> bool:
-    """
-    True if every parameter has ``vary=False`` (lmfit holds values fixed; expr is ignored for vary).
+    """Return True if every parameter has ``vary=False``.
 
+    Lmfit holds values fixed; expr is ignored for vary.
     Such components are subtracted from region ``y`` and omitted from the fit.
     """
     if not cmp.parameters:
@@ -235,9 +234,7 @@ def _build_expression_plan(
 
 
 class OptimizationPlanner:
-    """
-    Groups optimization contexts into independent tasks based on parameter dependencies.
-    """
+    """Groups optimization contexts into independent tasks based on parameter dependencies."""
 
     @staticmethod
     def _connected_components(graph: dict[str, set[str]]) -> list[set[str]]:
@@ -307,9 +304,7 @@ class OptimizationPlanner:
 
 
 class LmfitOptimizer:
-    """
-    Maps ComponentLike parameters to lmfit.Parameters and resolves component-scoped expressions.
-    """
+    """Maps ComponentLike parameters to lmfit.Parameters and resolves component-scoped expressions."""
 
     def __init__(self) -> None:
         self._component_index: dict[str, ComponentLike] = {}
@@ -374,6 +369,7 @@ class LmfitOptimizer:
         params: Parameters,
         contexts: tuple[OptimizationContext, ...],
     ) -> np.ndarray:
+        """Return concatenated residuals for all optimization contexts."""
         residuals: list[np.ndarray] = []
         for ctx in contexts:
             y_model = np.zeros_like(ctx.y)
@@ -391,9 +387,12 @@ class LmfitOptimizer:
         output: list[OptimizedComponent] = []
         for cmp in self._component_index.values():
             params: dict[str, float] = {}
+            params_obj = getattr(result, "params", None)
+            if params_obj is None:
+                raise RuntimeError("lmfit MinimizerResult missing `params` attribute")
             for pname in cmp.parameters:
                 opt_pname = f"{cmp.id_}_{pname}"
-                params[pname] = result.params[opt_pname].value
+                params[pname] = params_obj[opt_pname].value
             output.append(
                 OptimizedComponent(
                     component_id=cmp.id_,
@@ -408,7 +407,7 @@ class LmfitOptimizer:
         contexts: tuple[OptimizationContext, ...],
         *,
         expression_plan: OptimizationExpressionPlan | None = None,
-        **kwargs: Any,
+        **kwargs,
     ) -> tuple[OptimizedComponent, ...]:
         """
         Run lmfit minimization and return optimized parameter values per component.
@@ -438,7 +437,7 @@ class LmfitOptimizer:
 
 def optimize(
     contexts: Sequence[OptimizationContext],
-    **kwargs: Any,
+    **kwargs,
 ) -> tuple[OptimizedComponent, ...]:
     """
     Library API entry point: run optimization on contexts and return optimized components.

@@ -111,7 +111,8 @@ def test_postprocessor_smooth_vs_no_smooth(
     assert len(result_no) >= 1
     assert len(result_yes) >= 1
     for sr in result_no + result_yes:
-        assert sr.region.start >= 0 and sr.region.stop <= len(x_original)
+        assert sr.region.start >= 0
+        assert sr.region.stop <= len(x_original)
         for peak in sr.peaks:
             assert "cen" in peak.parameters
             assert x_original.min() <= peak.parameters["cen"] <= x_original.max()

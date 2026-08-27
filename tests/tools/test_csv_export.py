@@ -31,7 +31,9 @@ def test_export_peak_parameters_csv_respects_separator(dto_service, peak_id: str
     assert "," not in csv_text.splitlines()[0]
 
 
-def test_export_peak_parameters_csv_raises_for_non_peak(dto_service, background_id: str, tmp_path) -> None:
+def test_export_peak_parameters_csv_raises_for_non_peak(
+    dto_service, background_id: str, tmp_path
+) -> None:
     background_dto = dto_service.get_component(background_id)
     output = tmp_path / "non_peak.csv"
 
@@ -57,7 +59,9 @@ def test_export_peak_parameters_csv_uses_xps_aliases_for_pseudo_voigt(
     assert pytest.approx(float(values[4])) == 100.0 * peak_dto.parameters["frac"].value
 
 
-def test_export_spectrum_csv_returns_header_and_xy_rows(dto_service, spectrum_id: str, tmp_path) -> None:
+def test_export_spectrum_csv_returns_header_and_xy_rows(
+    dto_service, spectrum_id: str, tmp_path
+) -> None:
     spectrum_repr = dto_service.get_spectrum_repr(spectrum_id, normalized=False)
     spectrum_dto = spectrum_repr[0]
 
@@ -82,7 +86,9 @@ def test_export_spectrum_csv_respects_separator(dto_service, spectrum_id: str, t
     assert lines[0] == "x\ty"
 
 
-def test_export_spectrum_csv_raises_for_size_mismatch(dto_service, spectrum_id: str, tmp_path) -> None:
+def test_export_spectrum_csv_raises_for_size_mismatch(
+    dto_service, spectrum_id: str, tmp_path
+) -> None:
     spectrum_repr = dto_service.get_spectrum_repr(spectrum_id, normalized=False)
     spectrum_dto, reg_repr = spectrum_repr
     broken_spectrum = type(spectrum_dto)(
@@ -97,7 +103,9 @@ def test_export_spectrum_csv_raises_for_size_mismatch(dto_service, spectrum_id: 
         export_spectrum_csv(tmp_path / "broken.csv", (broken_spectrum, reg_repr))
 
 
-def test_export_spectrum_csv_includes_evaluated_columns(dto_service, spectrum_id: str, tmp_path) -> None:
+def test_export_spectrum_csv_includes_evaluated_columns(
+    dto_service, spectrum_id: str, tmp_path
+) -> None:
     spectrum_repr = dto_service.get_spectrum_repr(spectrum_id, normalized=False)
 
     output = tmp_path / "spectrum_eval.csv"

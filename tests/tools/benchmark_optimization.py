@@ -8,12 +8,10 @@ and the same component creation pattern as test_optimization.py.
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from tools.dto import ParameterDTO, ComponentDTO
 from core.math_models import PseudoVoigtPeakModel
 from core.math_models.model_funcs import pvoigt
-
+from tools.dto import ComponentDTO, ParameterDTO
 from tools.optimization import OptimizationContext, optimize
 
 RNG = np.random.default_rng(42)
@@ -147,7 +145,7 @@ def _compute_param_rmse(
     param_names: tuple[str, ...] = ("amp", "cen", "sig", "frac"),
 ) -> dict[str, float]:
     """Compute RMSE per parameter across peaks."""
-    n_peaks = len(true_params)
+    len(true_params)
     sq_errors: dict[str, list[float]] = {p: [] for p in param_names}
     for i, true in enumerate(true_params):
         comp_id = f"p{i + 1}"
@@ -313,7 +311,8 @@ class TestBenchmarkQualityExpr:
         opt_dict = {o.component_id: o.parameters for o in result}
         amp1, amp2 = opt_dict["p1"]["amp"], opt_dict["p2"]["amp"]
         assert np.isclose(amp2, 2 * amp1, rtol=0.15)
-        assert np.isfinite(amp1) and np.isfinite(amp2)
+        assert np.isfinite(amp1)
+        assert np.isfinite(amp2)
 
 
 # ---------------------------------------------------------------------------

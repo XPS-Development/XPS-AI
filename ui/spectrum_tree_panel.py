@@ -1,3 +1,5 @@
+"""Spectrum tree panel with search, auto-fit, and optimize controls."""
+
 from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
@@ -50,15 +52,11 @@ class SpectrumTreePanel(QWidget):
 
     @property
     def model(self) -> SpectrumTreeModel:
-        """
-        Return the underlying spectrum tree model.
-        """
+        """Return the underlying spectrum tree model."""
         return self._tree.model
 
     def refresh(self) -> None:
-        """
-        Refresh the tree contents from the controller while keeping the filter.
-        """
+        """Refresh the tree contents from the controller while keeping the filter."""
         self._tree.refresh()
         self._apply_filter(self._search_edit.text())
 

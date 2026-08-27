@@ -6,11 +6,11 @@ They encapsulate "how" to apply and undo changes against the core data model.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import asdict
-from typing import Any, Callable
 
 from core.metadata import Metadata
-from core.objects import Background, CoreObject, Peak, Region
+from core.objects import Background, CoreObject, Peak
 from core.services import ComponentService, CoreContext, RegionService, SpectrumService
 
 from .changes import (
@@ -20,6 +20,7 @@ from .changes import (
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
+    ParameterField,
     RemoveMetadata,
     RemoveObject,
     ReplaceBackgroundModel,
@@ -36,23 +37,26 @@ class Command(ABC):
 
     @classmethod
     @abstractmethod
-    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "Command": ...
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "Command":
+        """Build a command from a change DTO."""
+
     @abstractmethod
-    def apply(self, ctx: CoreContext) -> None: ...
+    def apply(self, ctx: CoreContext) -> None:
+        """Apply the command to the core model."""
+
     @abstractmethod
-    def undo(self, ctx: CoreContext) -> None: ...
+    def undo(self, ctx: CoreContext) -> None:
+        """Revert the command on the core model."""
 
 
 class UpdateParameterCommand(Command):
-    """
-    Command that updates a single parameter attribute; supports undo via stored old value.
-    """
+    """Command that updates a single parameter attribute; supports undo via stored old value."""
 
     def __init__(
         self,
         component_id: str,
         name: str,
-        parameter_field: str,
+        parameter_field: ParameterField,
         new_value: str | bool | float | None,
         old_value: str | bool | float | None = None,
         normalized: bool = False,
@@ -85,7 +89,7 @@ class UpdateParameterCommand(Command):
     @classmethod
     def from_change(
         cls,
-        change: UpdateParameter,
+        change: BaseChange,
         ctx: CoreContext,
     ) -> "UpdateParameterCommand":
         """
@@ -103,6 +107,9 @@ class UpdateParameterCommand(Command):
         UpdateParameterCommand
             Command instance with old value initialized for undo.
         """
+        if not isinstance(change, UpdateParameter):
+            raise TypeError(f"Expected UpdateParameter change, got {type(change).__name__}")
+
         param = ctx.component.get_parameter(change.component_id, change.name, change.normalized)
         old_value = param[change.parameter_field]
         return cls(
@@ -115,6 +122,7 @@ class UpdateParameterCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Set the parameter to the new value."""
         ctx.component.set_parameter(
             self.component_id,
             self.name,
@@ -123,6 +131,7 @@ class UpdateParameterCommand(Command):
         )
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous parameter value."""
         if self._old_value is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_parameter(
@@ -167,21 +176,35 @@ class UpdateRegionSliceCommand(Command):
         self.old_stop = old_stop
 
     @classmethod
-    def from_change(cls, change: UpdateRegionSlice, ctx: CoreContext) -> "UpdateRegionSliceCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "UpdateRegionSliceCommand":
         """
         Create an UpdateRegionSliceCommand from a change, initializing undo state.
 
         Converts value-mode start/stop to indices so the command works only with indices.
         """
+        if not isinstance(change, UpdateRegionSlice):
+            raise TypeError(f"Expected UpdateRegionSlice change, got {type(change).__name__}")
+
         old_start, old_stop = ctx.region.get_slice(change.region_id, mode="index")
         spectrum_id = ctx.query.get_parent(change.region_id)
 
         if change.mode == "value":
-            new_start = ctx.region._convert_value_to_index(spectrum_id, change.start)
-            new_stop = ctx.region._convert_value_to_index(spectrum_id, change.stop) + 1
+            new_start = (
+                old_start
+                if change.start is None
+                else ctx.region._convert_value_to_index(spectrum_id, change.start)
+            )
+            stop_idx = (
+                old_stop
+                if change.stop is None
+                else ctx.region._convert_value_to_index(spectrum_id, change.stop)
+            )
+            assert stop_idx is not None
+            new_stop = stop_idx + 1
+            assert new_start is not None
         else:
-            new_start = int(change.start) if change.start is not None else None
-            new_stop = int(change.stop) if change.stop is not None else None
+            new_start = old_start if change.start is None else int(change.start)
+            new_stop = old_stop if change.stop is None else int(change.stop)
 
         if not ctx.region._check_slice(spectrum_id, new_start, new_stop):
             new_start, new_stop = ctx.region._get_bound_indices(spectrum_id)
@@ -195,9 +218,11 @@ class UpdateRegionSliceCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Set the region slice to the new bounds."""
         ctx.region.update_slice(self.region_id, self.new_start, self.new_stop, mode="index")
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous region slice bounds."""
         ctx.region.update_slice(self.region_id, self.old_start, self.old_stop, mode="index")
 
 
@@ -232,7 +257,7 @@ class UpdateMultipleParameterValuesCommand(Command):
 
     @classmethod
     def from_change(
-        cls, change: UpdateMultipleParameterValues, ctx: CoreContext
+        cls, change: BaseChange, ctx: CoreContext
     ) -> "UpdateMultipleParameterValuesCommand":
         """
         Create an UpdateMultipleParameterValuesCommand from a change, storing old values.
@@ -249,8 +274,19 @@ class UpdateMultipleParameterValuesCommand(Command):
         UpdateMultipleParameterValuesCommand
             Command instance with old values stored for undo.
         """
+        if not isinstance(change, UpdateMultipleParameterValues):
+            raise TypeError(
+                f"Expected UpdateMultipleParameterValues change, got {type(change).__name__}"
+            )
+
         all_params = ctx.component.get_parameters(change.component_id, normalized=change.normalized)
-        old_values = {param_name: all_params[param_name]["value"] for param_name in change.parameters.keys()}
+        old_values: dict[str, float] = {}
+        for param_name in change.parameters.keys():
+            raw_val = all_params[param_name]["value"]
+            if not isinstance(raw_val, (int, float)):
+                raise TypeError(f"Expected numeric parameter value, got {type(raw_val).__name__}")
+            old_values[param_name] = float(raw_val)
+
         return cls(
             component_id=change.component_id,
             parameters=change.parameters,
@@ -259,9 +295,11 @@ class UpdateMultipleParameterValuesCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Write the new parameter values onto the component."""
         ctx.component.set_values(self.component_id, self.parameters, normalized=self.normalized)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous parameter values."""
         if self._old_values is None:
             raise RuntimeError("Command was not applied")
         ctx.component.set_values(self.component_id, self._old_values, normalized=self.normalized)
@@ -286,7 +324,7 @@ class SetMetadataCommand(Command):
         self._old_metadata = old_metadata
 
     @classmethod
-    def from_change(cls, change: SetMetadata, ctx: CoreContext) -> "SetMetadataCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "SetMetadataCommand":
         """
         Create a SetMetadataCommand from a change.
 
@@ -302,6 +340,9 @@ class SetMetadataCommand(Command):
         SetMetadataCommand
             Command instance.
         """
+        if not isinstance(change, SetMetadata):
+            raise TypeError(f"Expected SetMetadata change, got {type(change).__name__}")
+
         # NOTE: object may not exist in collection yet
         old_metadata = ctx.metadata.get_metadata(change.obj_id)
         return cls(
@@ -311,9 +352,11 @@ class SetMetadataCommand(Command):
         )
 
     def apply(self, ctx: CoreContext) -> None:
+        """Store the new metadata for the object."""
         ctx.metadata.set_metadata(self.obj_id, self.metadata)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore previous metadata, or remove it if none existed."""
         if self._old_metadata is None:
             ctx.metadata.remove_metadata(self.obj_id)
         else:
@@ -347,7 +390,7 @@ class RemoveMetadataCommand(Command):
         self._applied = False
 
     @classmethod
-    def from_change(cls, change: RemoveMetadata, ctx: CoreContext) -> "RemoveMetadataCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "RemoveMetadataCommand":
         """
         Create a RemoveMetadataCommand from a change, storing old metadata for undo.
 
@@ -363,15 +406,20 @@ class RemoveMetadataCommand(Command):
         RemoveMetadataCommand
             Command instance with old metadata stored for undo.
         """
+        if not isinstance(change, RemoveMetadata):
+            raise TypeError(f"Expected RemoveMetadata change, got {type(change).__name__}")
+
         if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         old_metadata = ctx.metadata.get_metadata(change.obj_id)
         return cls(obj_id=change.obj_id, old_metadata=old_metadata)
 
     def apply(self, ctx: CoreContext) -> None:
+        """Remove metadata for the object."""
         ctx.metadata.remove_metadata(self.obj_id)
 
     def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous metadata if it existed."""
         if self._old_metadata is not None:
             ctx.metadata.set_metadata(self.obj_id, self._old_metadata)
 
@@ -396,10 +444,11 @@ class RemoveObjectCommand(Command):
         self.objs: list[CoreObject] | None = None
 
     @classmethod
-    def from_change(cls, change: RemoveObject, ctx: CoreContext) -> "RemoveObjectCommand":
-        """
-        Create a RemoveObjectCommand from a change.
-        """
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "RemoveObjectCommand":
+        """Create a RemoveObjectCommand from a change."""
+        if not isinstance(change, RemoveObject):
+            raise TypeError(f"Expected RemoveObject change, got {type(change).__name__}")
+
         if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         return cls(obj_id=change.obj_id)
@@ -417,13 +466,11 @@ class RemoveObjectCommand(Command):
 
 
 class CreateObjectCommand(Command):
-    """
-    Base command for adding objects to the collection.
-    """
+    """Base command for adding objects to the collection."""
 
     create_obj_fn: Callable[..., CoreObject]
 
-    def __init__(self, **params: Any) -> None:
+    def __init__(self, **params) -> None:
         """
         Initialize an add object command.
 
@@ -451,7 +498,7 @@ class CreateSpectrumCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(SpectrumService._create_spectrum_obj)
 
     @classmethod
-    def from_change(cls, change: CreateSpectrum, ctx: CoreContext) -> "CreateSpectrumCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CreateSpectrumCommand":
         """
         Create a CreateSpectrumCommand from a change.
 
@@ -467,6 +514,8 @@ class CreateSpectrumCommand(CreateObjectCommand):
         CreateSpectrumCommand
             Command instance.
         """
+        if not isinstance(change, CreateSpectrum):
+            raise TypeError(f"Expected CreateSpectrum change, got {type(change).__name__}")
         return cls(**asdict(change))
 
 
@@ -476,7 +525,7 @@ class CreateRegionCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(RegionService._create_region_obj)
 
     @classmethod
-    def from_change(cls, change: CreateRegion, ctx: CoreContext) -> "CreateRegionCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CreateRegionCommand":
         """
         Create a CreateRegionCommand from a change.
 
@@ -492,15 +541,26 @@ class CreateRegionCommand(CreateObjectCommand):
         CreateRegionCommand
             Command instance.
         """
-        if change.mode == "value":
-            start = ctx.region._convert_value_to_index(change.spectrum_id, change.start)
-            stop = ctx.region._convert_value_to_index(change.spectrum_id, change.stop) + 1
+        if not isinstance(change, CreateRegion):
+            raise TypeError(f"Expected CreateRegion change, got {type(change).__name__}")
+
+        bounds_start, bounds_stop = ctx.region._get_bound_indices(change.spectrum_id)
+        if change.start is None or change.stop is None:
+            start = bounds_start
+            stop = bounds_stop
+        elif change.mode == "value":
+            start_idx = ctx.region._convert_value_to_index(change.spectrum_id, change.start)
+            assert start_idx is not None
+            start = start_idx
+            stop_idx = ctx.region._convert_value_to_index(change.spectrum_id, change.stop)
+            assert stop_idx is not None
+            stop = stop_idx + 1
         else:
-            start = int(change.start) if change.start is not None else None
-            stop = int(change.stop) if change.stop is not None else None
+            start = int(change.start)
+            stop = int(change.stop)
 
         if not ctx.region._check_slice(change.spectrum_id, start, stop):
-            start, stop = ctx.region._get_bound_indices(change.spectrum_id)
+            start, stop = bounds_start, bounds_stop
 
         # Command works with indices only; pass converted start/stop, drop mode.
         d = asdict(change)
@@ -517,7 +577,7 @@ class CreatePeakCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
-    def from_change(cls, change: CreatePeak, ctx: CoreContext) -> "CreatePeakCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CreatePeakCommand":
         """
         Create a CreatePeakCommand from a change.
 
@@ -533,6 +593,8 @@ class CreatePeakCommand(CreateObjectCommand):
         CreatePeakCommand
             Command instance.
         """
+        if not isinstance(change, CreatePeak):
+            raise TypeError(f"Expected CreatePeak change, got {type(change).__name__}")
         params = dict(asdict(change))
         params["component_id"] = params.pop("peak_id", None)
         return cls(**params, expected_type=Peak)
@@ -544,7 +606,7 @@ class CreateBackgroundCommand(CreateObjectCommand):
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
-    def from_change(cls, change: CreateBackground, ctx: CoreContext) -> "CreateBackgroundCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CreateBackgroundCommand":
         """
         Create a CreateBackgroundCommand from a change.
 
@@ -560,6 +622,8 @@ class CreateBackgroundCommand(CreateObjectCommand):
         CreateBackgroundCommand
             Command instance.
         """
+        if not isinstance(change, CreateBackground):
+            raise TypeError(f"Expected CreateBackground change, got {type(change).__name__}")
         params = dict(asdict(change))
         params["component_id"] = params.pop("background_id", None)
         return cls(**params, expected_type=Background)
@@ -571,7 +635,9 @@ class CompositeCommand(Command):
     @classmethod
     def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CompositeCommand":
         """Not used; CompositeCommand is built from CompositeChange by the registry."""
-        raise NotImplementedError("CompositeCommand is built from CompositeChange by CommandRegistry")
+        raise NotImplementedError(
+            "CompositeCommand is built from CompositeChange by CommandRegistry"
+        )
 
     def __init__(self, *, commands: list[Command]) -> None:
         """
@@ -599,10 +665,10 @@ class ReplacePeakModelCommand(CompositeCommand):
     """Command that replaces a peak's model; stores old peak for undo."""
 
     @staticmethod
-    def _parse_change(change: ReplacePeakModel, ctx: CoreContext) -> tuple[RemoveObject, CreatePeak]:
-        """
-        Adapter for ReplacePeakModel change to RemoveObject and CreatePeak.
-        """
+    def _parse_change(
+        change: ReplacePeakModel, ctx: CoreContext
+    ) -> tuple[RemoveObject, CreatePeak]:
+        """Adapter for ReplacePeakModel change to RemoveObject and CreatePeak."""
         rm_ch = RemoveObject(change.peak_id)
         create_ch = CreatePeak(
             region_id=ctx.query.get_parent(change.peak_id),
@@ -613,7 +679,7 @@ class ReplacePeakModelCommand(CompositeCommand):
         return rm_ch, create_ch
 
     @classmethod
-    def from_change(cls, change: ReplacePeakModel, ctx: CoreContext) -> "CompositeCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CompositeCommand":
         """
         Create a ReplacePeakModelCommand from a change, storing old peak.
 
@@ -629,6 +695,9 @@ class ReplacePeakModelCommand(CompositeCommand):
         ReplacePeakModelCommand
             Command instance with old peak stored for undo.
         """
+        if not isinstance(change, ReplacePeakModel):
+            raise TypeError(f"Expected ReplacePeakModel change, got {type(change).__name__}")
+
         rm_ch, create_ch = cls._parse_change(change, ctx)
         rm_cmd = RemoveObjectCommand.from_change(rm_ch, ctx)
         create_cmd = CreatePeakCommand.from_change(create_ch, ctx)
@@ -642,9 +711,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
     def _parse_change(
         change: ReplaceBackgroundModel, ctx: CoreContext
     ) -> tuple[RemoveObject | None, CreateBackground]:
-        """
-        Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground.
-        """
+        """Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground."""
         create_ch = CreateBackground(
             region_id=change.region_id,
             model_name=change.new_model_name,
@@ -656,7 +723,7 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
         return rm_ch, create_ch
 
     @classmethod
-    def from_change(cls, change: ReplaceBackgroundModel, ctx: CoreContext) -> "CompositeCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "CompositeCommand":
         """
         Create a ReplaceBackgroundModelCommand from a change.
 
@@ -672,6 +739,9 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
         ReplaceBackgroundModelCommand
             Command instance.
         """
+        if not isinstance(change, ReplaceBackgroundModel):
+            raise TypeError(f"Expected ReplaceBackgroundModel change, got {type(change).__name__}")
+
         rm_ch, create_ch = cls._parse_change(change, ctx)
         commands: list[Command] = []
         if rm_ch is not None:
@@ -689,7 +759,7 @@ class FullRemoveObjectCommand(CompositeCommand):
     """
 
     @classmethod
-    def from_change(cls, change: FullRemoveObject, ctx: CoreContext) -> "FullRemoveObjectCommand":
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "FullRemoveObjectCommand":
         """
         Create a FullRemoveObjectCommand from a change.
 
@@ -705,6 +775,9 @@ class FullRemoveObjectCommand(CompositeCommand):
         FullRemoveObjectCommand
             Command instance.
         """
+        if not isinstance(change, FullRemoveObject):
+            raise TypeError(f"Expected FullRemoveObject change, got {type(change).__name__}")
+
         if not ctx.query.check_object_exists(change.obj_id):
             raise ValueError(f"Object with ID {change.obj_id} does not exist in collection")
         subtree = ctx.query.get_subtree(change.obj_id)

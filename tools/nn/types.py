@@ -8,7 +8,7 @@ CreateRegion / CreatePeak in the app layer.
 """
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 from numpy.typing import NDArray
 
@@ -76,6 +76,6 @@ class AdapterProtocol(Protocol):
 class PostprocessorProtocol(Protocol):
     """Protocol for postprocessors: raw output + kwargs -> pipeline result."""
 
-    def __call__(self, model_output: ModelOutputT, **kwargs: Any) -> Any:
+    def __call__(self, model_output: ModelOutputT, **kwargs) -> object:
         """Convert model output to result type using kwargs."""
         ...

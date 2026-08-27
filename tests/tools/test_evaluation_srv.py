@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
-from tools.evaluation import component_y, component_result, region_bundle, spectrum_bundle
+from tools.evaluation import component_result, component_y, region_bundle, spectrum_bundle
 
 
 @pytest.fixture
@@ -24,7 +24,9 @@ def simple_region_bundle(dto_service) -> tuple[RegionLike, tuple[ComponentLike, 
 
 
 @pytest.fixture
-def simple_spectrum_bundle(dto_service) -> tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]:
+def simple_spectrum_bundle(
+    dto_service,
+) -> tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]:
     return dto_service.get_spectrum_repr("s1")
 
 
@@ -62,7 +64,9 @@ def test_region_bundle(
 
 
 def test_spectrum_bundle(
-    simple_spectrum_bundle: tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]],
+    simple_spectrum_bundle: tuple[
+        SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]
+    ],
 ) -> None:
     result = spectrum_bundle(*simple_spectrum_bundle)
     assert len(result.regions) == 1

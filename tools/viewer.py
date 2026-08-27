@@ -6,13 +6,13 @@ Uses evaluation functions from tools.evaluation and protocol-typed objects
 typing without coupling to DTOs.
 """
 
-from typing import Optional, Protocol
+from typing import Protocol
 
 import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
-from matplotlib.axes import Axes
-import matplotlib.pyplot as plt
 
 from .evaluation import region_bundle
 
@@ -88,7 +88,7 @@ class MatplotlibViewer:
     # helpers
     # -------------------------------------------------
 
-    def _get_ax(self, ax: Optional[Axes]) -> Axes:
+    def _get_ax(self, ax: Axes | None) -> Axes:
         if ax is not None:
             return ax
         _, ax = plt.subplots()
@@ -102,13 +102,11 @@ class MatplotlibViewer:
         self,
         spectrum_id: str,
         *,
-        ax: Optional[Axes] = None,
-        label: Optional[str] = None,
+        ax: Axes | None = None,
+        label: str | None = None,
         **kwargs: object,
     ) -> Axes:
-        """
-        Plot raw x, y data for a spectrum. No models, regions, or components.
-        """
+        """Plot raw x, y data for a spectrum. No models, regions, or components."""
         ax = self._get_ax(ax)
         spectrum = self._provider.get_spectrum(spectrum_id, normalized=self._normalized)
         ax.plot(spectrum.x, spectrum.y, label=label or spectrum_id, **kwargs)
@@ -118,8 +116,8 @@ class MatplotlibViewer:
         self,
         region_id: str,
         *,
-        ax: Optional[Axes] = None,
-        label: Optional[str] = None,
+        ax: Axes | None = None,
+        label: str | None = None,
     ) -> Axes:
         """Plot raw x, y data for a region. No models or components."""
         ax = self._get_ax(ax)
@@ -131,14 +129,12 @@ class MatplotlibViewer:
         self,
         spectrum_id: str,
         *,
-        ax: Optional[Axes] = None,
+        ax: Axes | None = None,
         show_raw: bool = True,
         region_span_alpha: float = 0.15,
         plot_models: bool = True,
     ) -> Axes:
-        """
-        Draw full spectrum visualization: raw spectrum, region spans, and
-        per-region components (background, peaks, model).
+        """Draw the full spectrum: raw data, region spans, and components.
 
         Parameters
         ----------
@@ -160,7 +156,9 @@ class MatplotlibViewer:
         """
         ax = self._get_ax(ax)
 
-        spectrum, regions = self._provider.get_spectrum_repr(spectrum_id, normalized=self._normalized)
+        spectrum, regions = self._provider.get_spectrum_repr(
+            spectrum_id, normalized=self._normalized
+        )
 
         if show_raw:
             ax.plot(spectrum.x, spectrum.y, color="black")
@@ -175,14 +173,11 @@ class MatplotlibViewer:
         self,
         region_id: str,
         *,
-        ax: Optional[Axes] = None,
+        ax: Axes | None = None,
         show_raw: bool = True,
         plot_model: bool = True,
     ) -> Axes:
-        """
-        Draw region visualization: raw y, background, peaks (background + peak),
-        and full model.
-        """
+        """Draw region: raw y, background, peaks, and full model."""
         ax = self._get_ax(ax)
 
         region, components = self._provider.get_region_repr(region_id, normalized=self._normalized)

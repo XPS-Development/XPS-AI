@@ -37,7 +37,8 @@ class AutomatizationAdapter:
         new_slice: tuple[int | float, int | float],
         slice_mode: Literal["value", "index"] = "index",
         avg_on: int = 3,
-    ):
+    ) -> UpdateMultipleParameterValues:
+        """Return a change that updates background intensities for a new slice."""
         bg_model_name = background_dto.model.name
         params = self.get_bg_parameters(bg_model_name, spectrum_dto, new_slice, slice_mode, avg_on)
         return UpdateMultipleParameterValues(component_id=background_dto.id_, parameters=params)
@@ -53,7 +54,6 @@ class AutomatizationAdapter:
         avg_on: int = 3,
     ) -> CreateBackground:
         """Create linear background parameters for a region."""
-
         params = self.get_bg_parameters(model_name, spectrum_dto, new_slice, slice_mode, avg_on)
 
         return CreateBackground(

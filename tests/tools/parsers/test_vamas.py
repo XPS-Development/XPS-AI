@@ -1,9 +1,7 @@
 """Tests for VAMAS parser."""
 
-import pytest
-
-from tools.parsers.vamas import parse_vamas
 from tools.parsers.types import ParsedSpectrum
+from tools.parsers.vamas import parse_vamas
 
 
 def test_parse_vamas_returns_list_of_spectra():

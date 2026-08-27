@@ -4,10 +4,10 @@ from pathlib import Path
 
 from .casa import parse_casa_txt
 from .dat import parse_dat
-from .vamas import parse_vamas
 from .types import ParsedSpectrum
+from .vamas import parse_vamas
 
-__all__ = ["ParsedSpectrum", "parse_spectrum_file", "parse_casa_txt", "parse_dat", "parse_vamas"]
+__all__ = ["ParsedSpectrum", "parse_casa_txt", "parse_dat", "parse_spectrum_file", "parse_vamas"]
 
 
 def parse_spectrum_file(
