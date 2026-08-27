@@ -126,7 +126,9 @@ class OptionsDialog(QDialog):
 
         main_layout.addLayout(groups_grid)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -213,10 +215,12 @@ class OptionsDialog(QDialog):
         kwargs, err = parse_json_object(opt_text)
         if err is not None:
             raise ValueError(err)
-        params.optimization_kwargs = kwargs
+        params.optimization_kwargs = kwargs if kwargs is not None else {}
 
         mode_text = self._serialization_mode_edit.text().strip() or "replace"
-        params.default_serialization_mode = mode_text  # type: ignore[assignment]
+        if mode_text not in ("append", "replace", "new"):
+            raise ValueError("Default serialization mode must be append, replace, or new")
+        params.default_serialization_mode = mode_text
 
         path_text = self._serialization_path_edit.text().strip()
         params.default_serialization_path = Path(path_text) if path_text else None

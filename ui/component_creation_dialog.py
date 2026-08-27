@@ -96,7 +96,9 @@ class ComponentCreationDialog(QDialog):
         self._model_label = QLabel("Model name")
         self._params_label = QLabel("Parameters")
 
-        self._buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self._buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         self._buttons.accepted.connect(self._on_create)
         self._buttons.rejected.connect(self.reject)
 

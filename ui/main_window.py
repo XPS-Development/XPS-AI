@@ -167,7 +167,7 @@ class MainWindow(QMainWindow):
 
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
-        splitter = QSplitter(Qt.Horizontal, self)
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")

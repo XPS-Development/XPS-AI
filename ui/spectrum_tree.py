@@ -4,11 +4,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QTreeView, QWidget
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
+
+_DEFAULT_INDEX = QModelIndex()
 
 
 @dataclass
@@ -76,7 +78,7 @@ class SpectrumTreeModel(QAbstractItemModel):
     # Required model API
     # ------------------------------------------------------------------
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX) -> int:
         """Return the number of child rows under ``parent``."""
         if not parent.isValid():
             item = self._root_item
@@ -86,12 +88,17 @@ class SpectrumTreeModel(QAbstractItemModel):
             return 0
         return len(item.children)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def columnCount(self, parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX) -> int:
         """Return the number of columns (always 1)."""
         del parent
         return 1
 
-    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
+    def index(
+        self,
+        row: int,
+        column: int,
+        parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX,
+    ) -> QModelIndex:
         """Return the index of the child at ``row`` under ``parent``."""
         if column != 0 or row < 0:
             return QModelIndex()
@@ -109,7 +116,7 @@ class SpectrumTreeModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, column, child_item)
 
-    def parent(self, index: QModelIndex) -> QModelIndex:
+    def parent(self, index: QModelIndex | QPersistentModelIndex) -> QModelIndex:  # ty: ignore[invalid-method-override]
         """Return the parent index of ``index``."""
         if not index.isValid():
             return QModelIndex()
@@ -124,7 +131,11 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         return self.createIndex(parent_item.row(), 0, parent_item)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> Any:
         """Return the label for display and edit roles."""
         if not index.isValid():
             return None
@@ -133,16 +144,16 @@ class SpectrumTreeModel(QAbstractItemModel):
         if not isinstance(item, SpectrumTreeItem):
             return None
 
-        if role in (Qt.DisplayRole, Qt.EditRole):
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return item.label
 
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         """Return enabled and selectable flags for valid indexes."""
         if not index.isValid():
-            return Qt.NoItemFlags
-        return Qt.ItemIsEnabled | Qt.ItemIsSelectable
+            return Qt.ItemFlag.NoItemFlags
+        return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
 
     # ------------------------------------------------------------------
     # Public API
@@ -240,9 +251,9 @@ class SpectrumTreeWidget(QTreeView):
         self._model = SpectrumTreeModel(controller, self)
         self.setModel(self._model)
         self.setHeaderHidden(True)
-        self.setSelectionMode(QTreeView.ExtendedSelection)
+        self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
 
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu_requested)
 
         selection_model = self.selectionModel()
@@ -490,7 +501,7 @@ class SpectrumTreeWidget(QTreeView):
         if menu.isEmpty():
             return
 
-        menu.exec(self.viewport().mapToGlobal(pos))
+        menu.popup(self.viewport().mapToGlobal(pos))
 
     def _handle_rename(self, item: SpectrumTreeItem) -> None:
         """

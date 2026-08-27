@@ -386,9 +386,7 @@ class RegionService(BaseCoreService):
         spectrum = self._get_typed(spectrum_id, Spectrum)
         return 0, len(spectrum.x)
 
-    def _convert_value_to_index(
-        self, spectrum_id: str, value: float | None = None
-    ) -> int | None:
+    def _convert_value_to_index(self, spectrum_id: str, value: float | None = None) -> int | None:
         """Convert a value to an index."""
         if value is None:
             return None

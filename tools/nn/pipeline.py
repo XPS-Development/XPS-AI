@@ -66,9 +66,7 @@ class InferencePipeline:
     returns the postprocessor result type (e.g. list[RegionBounds]).
     """
 
-    def run(
-        self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike
-    ) -> object:
+    def run(self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike) -> object:
         """Run the full pipeline on a spectrum-like input."""
         raise NotImplementedError("Subclasses must implement run method")
 

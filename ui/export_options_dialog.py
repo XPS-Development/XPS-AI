@@ -1,7 +1,7 @@
 """Dialog for CSV export options."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,6 +16,24 @@ from PySide6.QtWidgets import (
 
 if TYPE_CHECKING:
     from .controller import ControllerWrapper
+
+
+class PeakExportOptions(TypedDict):
+    """Typed options returned by the peak export dialog."""
+
+    separator: str
+    precision: int
+    use_xps_peak_names: bool
+
+
+class SpectrumExportOptions(TypedDict):
+    """Typed options returned by the spectrum export dialog."""
+
+    separator: str
+    precision: int
+    include_evaluated_components: bool
+    include_background: bool
+    include_difference: bool
 
 
 class ExportOptionsDialog(QDialog):
@@ -59,12 +77,15 @@ class ExportOptionsDialog(QDialog):
             layout.addRow("Include background", self._include_background)
             layout.addRow("Include difference", self._include_difference)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
-    def peak_options(self) -> dict[str, object]:
+    def peak_options(self) -> PeakExportOptions:
         """Return options for peak export."""
         return {
             "separator": str(self._separator.currentData()),
@@ -72,7 +93,7 @@ class ExportOptionsDialog(QDialog):
             "use_xps_peak_names": self._xps_peak.isChecked(),
         }
 
-    def spectrum_options(self) -> dict[str, object]:
+    def spectrum_options(self) -> SpectrumExportOptions:
         """Return options for spectrum export."""
         return {
             "separator": str(self._separator.currentData()),
@@ -109,7 +130,7 @@ def export_spectra(
     if len(spectra_ids) == 0:
         return False
     options_dialog = ExportOptionsDialog(for_peaks=False, parent=parent)
-    if options_dialog.exec() != QDialog.Accepted:
+    if options_dialog.exec() != QDialog.DialogCode.Accepted:
         return False
     options = options_dialog.spectrum_options()
     targets = _select_export_targets(spectra_ids, parent=parent, suffix="")
@@ -146,7 +167,7 @@ def export_peaks(
     if len(spectrum_ids) == 0:
         return False
     options_dialog = ExportOptionsDialog(for_peaks=True, parent=parent)
-    if options_dialog.exec() != QDialog.Accepted:
+    if options_dialog.exec() != QDialog.DialogCode.Accepted:
         return False
     options = options_dialog.peak_options()
     targets = _select_export_targets(spectrum_ids, parent=parent, suffix="_peaks")

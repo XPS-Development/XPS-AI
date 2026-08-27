@@ -103,8 +103,8 @@ class SPECS:
             f.close()
             # `readlines()` returns `str` in text mode, so we can't `.decode()` it.
             # Re-encode from cp1252 to utf-8 to match the original intention.
-            fixed = "".join(contents).encode("cp1252", errors="ignore").decode(
-                "utf-8", errors="ignore"
+            fixed = (
+                "".join(contents).encode("cp1252", errors="ignore").decode("utf-8", errors="ignore")
             )
             self.xmlroot = tree.parse(StringIO(fixed))
 

@@ -6,15 +6,11 @@ Adapters load the model and run inference; input/output are model-specific
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import onnxruntime as ort
 
 from ..types import ModelInputT, ModelOutputT
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
 
 
 class ONNXSegmenterAdapter:

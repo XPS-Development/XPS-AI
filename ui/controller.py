@@ -810,7 +810,7 @@ class ControllerWrapper(QObject):
         self,
         path: str | Path,
         *,
-        mode: str = "replace",
+        mode: Literal["append", "replace"] = "replace",
     ) -> None:
         r"""
         Load collection and metadata from disk and emit signals.
@@ -824,7 +824,7 @@ class ControllerWrapper(QObject):
         mode : {\"append\", \"replace\", \"new\"}, default=\"replace\"
             Loading mode passed to the orchestrator.
         """
-        self._orchestrator.load_collection(path, mode=mode)  # type: ignore[arg-type]
+        self._orchestrator.load_collection(path, mode=mode)
         self.emit_full_ui_refresh()
 
     def set_default_save_path(self, path: str | Path) -> None:

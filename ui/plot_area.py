@@ -7,7 +7,7 @@ using the viewer data provider protocol and :func:`tools.evaluation.spectrum_bun
 """
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol, cast
 
 import numpy as np
 import pyqtgraph as pg
@@ -176,7 +176,9 @@ class RegionContextPlotWidget(pg.PlotWidget):
             enableMenu=False,
         )
 
-        vb = self.plotItem.getViewBox()
+        plot_item = self.plotItem
+        assert plot_item is not None
+        vb = plot_item.getViewBox()
         vb.setMenuEnabled(True)
 
 
@@ -391,8 +393,13 @@ class PlotAreaWidget(QWidget):
             "background-color: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 2px;"
         )
         self._cursor_label.setText("x: —  y: —")
-        self._cursor_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._main_plot.scene().sigMouseMoved.connect(self._on_main_plot_mouse_moved)
+        self._cursor_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        class _SceneWithMouseSignal(Protocol):
+            sigMouseMoved: Any
+
+        scene = cast(_SceneWithMouseSignal, self._main_plot.scene())
+        scene.sigMouseMoved.connect(self._on_main_plot_mouse_moved)
 
     def _on_main_plot_mouse_moved(self, pos: QPointF) -> None:
         """

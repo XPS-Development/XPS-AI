@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPoint, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +20,8 @@ from core.math_models import ModelRegistry
 
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
+
+_DEFAULT_INDEX = QModelIndex()
 
 
 class ItemKind(Enum):
@@ -122,7 +124,7 @@ class PropertiesModel(QAbstractItemModel):
         self._controller = controller
         self._root_item = PropertyItem(name="Root", kind=ItemKind.ROOT)
 
-    def _item(self, index: QModelIndex) -> PropertyItem | None:
+    def _item(self, index: QModelIndex | QPersistentModelIndex) -> PropertyItem | None:
         """Return the item for the given index, or None if invalid."""
         if not index.isValid():
             return None
@@ -133,7 +135,7 @@ class PropertiesModel(QAbstractItemModel):
     # Required model API
     # ------------------------------------------------------------------
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX) -> int:
         """Return the number of child rows under ``parent``."""
         if not parent.isValid():
             item = self._root_item
@@ -143,7 +145,7 @@ class PropertiesModel(QAbstractItemModel):
             return 0
         return len(item.children)
 
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008
+    def columnCount(self, parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX) -> int:
         """Return the number of columns in the model."""
         del parent
         return len(self._HEADER_LABELS)
@@ -152,16 +154,21 @@ class PropertiesModel(QAbstractItemModel):
         self,
         section: int,
         orientation: Qt.Orientation,
-        role: int = Qt.DisplayRole,
+        role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
         """Return header labels for horizontal display roles."""
-        if role != Qt.DisplayRole or orientation != Qt.Orientation.Horizontal:
+        if role != Qt.ItemDataRole.DisplayRole or orientation != Qt.Orientation.Horizontal:
             return None
         if 0 <= section < len(self._HEADER_LABELS):
             return self._HEADER_LABELS[section]
         return None
 
-    def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:  # noqa: B008
+    def index(
+        self,
+        row: int,
+        column: int,
+        parent: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX,
+    ) -> QModelIndex:
         """Return the index of the child at ``row``, ``column`` under ``parent``."""
         if row < 0 or column < 0:
             return QModelIndex()
@@ -175,7 +182,7 @@ class PropertiesModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, column, child_item)
 
-    def parent(self, index: QModelIndex) -> QModelIndex:
+    def parent(self, index: QModelIndex | QPersistentModelIndex) -> QModelIndex:  # ty: ignore[invalid-method-override]
         """Return the parent index of ``index``."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
@@ -190,7 +197,11 @@ class PropertiesModel(QAbstractItemModel):
             return QModelIndex()
         return self.createIndex(row, 0, parent_item)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+    def data(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        role: int = Qt.ItemDataRole.DisplayRole,
+    ) -> Any:
         """Return display, edit, or check-state data for ``index``."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
@@ -198,10 +209,14 @@ class PropertiesModel(QAbstractItemModel):
 
         col = index.column()
 
-        if role == Qt.CheckStateRole and col == 4 and item.kind == ItemKind.PARAMETER_ROW:
-            return Qt.Checked if item.param_vary else Qt.Unchecked
+        if (
+            role == Qt.ItemDataRole.CheckStateRole
+            and col == 4
+            and item.kind == ItemKind.PARAMETER_ROW
+        ):
+            return Qt.CheckState.Checked if item.param_vary else Qt.CheckState.Unchecked
 
-        if role in (Qt.DisplayRole, Qt.EditRole):
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
                 return item.name
             if item.kind == ItemKind.PARAMETER_ROW:
@@ -222,24 +237,24 @@ class PropertiesModel(QAbstractItemModel):
 
         return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         """Return item flags, including editable and checkable columns."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
-            return Qt.NoItemFlags
+            return Qt.ItemFlag.NoItemFlags
 
-        base_flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+        base_flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         col = index.column()
 
         if item.kind == ItemKind.PARAMETER_ROW:
             if col == 4:
-                return base_flags | Qt.ItemIsUserCheckable
+                return base_flags | Qt.ItemFlag.ItemIsUserCheckable
             if col in (1, 2, 3, 5):
-                return base_flags | Qt.ItemIsEditable
+                return base_flags | Qt.ItemFlag.ItemIsEditable
             return base_flags
 
         if col == 1 and item.kind in {ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}:
-            return base_flags | Qt.ItemIsEditable
+            return base_flags | Qt.ItemFlag.ItemIsEditable
 
         return base_flags
 
@@ -293,7 +308,12 @@ class PropertiesModel(QAbstractItemModel):
                 )
             )
 
-    def setData(self, index: QModelIndex, value: Any, role: int = Qt.EditRole) -> bool:
+    def setData(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
         """Write an edited value back to the controller and refresh the item."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
@@ -301,14 +321,14 @@ class PropertiesModel(QAbstractItemModel):
 
         col = index.column()
 
-        if role == Qt.CheckStateRole:
+        if role == Qt.ItemDataRole.CheckStateRole:
             if (
                 item.kind == ItemKind.PARAMETER_ROW
                 and col == 4
                 and item.component_id is not None
                 and item.parameter_name is not None
             ):
-                coerced = value == Qt.Checked.value
+                coerced = value == Qt.CheckState.Checked.value
                 self._controller.update_parameter(
                     item.component_id,
                     item.parameter_name,
@@ -317,11 +337,11 @@ class PropertiesModel(QAbstractItemModel):
                     normalized=False,
                 )
                 item.param_vary = coerced
-                self.dataChanged.emit(index, index, [Qt.CheckStateRole])
+                self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
                 return True
             return False
 
-        if role != Qt.EditRole:
+        if role != Qt.ItemDataRole.EditRole:
             return False
 
         if item.kind == ItemKind.REGION_SLICE and col == 1 and item.region_id is not None:
@@ -342,7 +362,9 @@ class PropertiesModel(QAbstractItemModel):
             self._controller.update_region_slice(item.region_id, start, stop, mode=slice_mode)
 
             item.value = new_bound
-            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+            self.dataChanged.emit(
+                index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
+            )
             return True
 
         if (
@@ -398,7 +420,9 @@ class PropertiesModel(QAbstractItemModel):
                 item.param_upper = coerced
             else:
                 item.param_expr = coerced
-            self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.EditRole])
+            self.dataChanged.emit(
+                index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
+            )
             return True
 
         return False
@@ -515,7 +539,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         self,
         parent: QWidget,
         option: Any,
-        index: QModelIndex,
+        index: QModelIndex | QPersistentModelIndex,
     ) -> QWidget:
         """Create a combo box editor for the component model column."""
         if index.column() != 1:
@@ -532,7 +556,7 @@ class PropertiesDelegate(QStyledItemDelegate):
             combo.addItems(ModelRegistry.get_background_model_names())
         return combo
 
-    def setEditorData(self, editor: QWidget, index: QModelIndex) -> None:
+    def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
         """Populate the combo box with the current model name."""
         if index.column() != 1:
             super().setEditorData(editor, index)
@@ -552,7 +576,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         self,
         editor: QWidget,
         model: QAbstractItemModel,
-        index: QModelIndex,
+        index: QModelIndex | QPersistentModelIndex,
     ) -> None:
         """Commit the selected model name from the combo box."""
         if index.column() != 1:
@@ -564,7 +588,7 @@ class PropertiesDelegate(QStyledItemDelegate):
             return
         combo = editor
         if isinstance(combo, QComboBox):
-            model.setData(index, combo.currentText(), Qt.EditRole)
+            model.setData(index, combo.currentText(), Qt.ItemDataRole.EditRole)
 
 
 class PropertiesView(QTreeView):
@@ -597,7 +621,7 @@ class PropertiesView(QTreeView):
         self._apply_column_widths()
         self.setUniformRowHeights(True)
         self.setAlternatingRowColors(True)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
         self.refresh()
@@ -810,4 +834,4 @@ class PropertiesView(QTreeView):
         else:
             return
 
-        menu.exec(self.viewport().mapToGlobal(pos))
+        menu.popup(self.viewport().mapToGlobal(pos))
