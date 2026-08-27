@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from core.tools import interpolate
+from core.numerics import interpolate
 
 
 def init_stats() -> dict:

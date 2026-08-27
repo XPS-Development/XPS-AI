@@ -9,8 +9,8 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
+from core.numerics import find_closest_index
 from core.types import ComponentLike, RegionLike
-from tools._tools import find_closest_index
 
 from .evaluation import region_bundle
 

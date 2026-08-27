@@ -4,6 +4,9 @@ Matplotlib-based viewer for spectra and region models.
 Uses evaluation functions from tools.evaluation and protocol-typed objects
 (SpectrumLike, RegionLike, ComponentLike) from core.types for structural
 typing without coupling to DTOs.
+
+Requires the ``interactive`` dependency group (``uv sync --group interactive``)
+for matplotlib.
 """
 
 from typing import Protocol
@@ -13,8 +16,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
 from core.types import ComponentLike, RegionLike, SpectrumLike
-
-from .evaluation import region_bundle
+from tools.evaluation import region_bundle
 
 
 class ViewerDataProvider(Protocol):

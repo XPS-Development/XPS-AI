@@ -10,7 +10,8 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from ..._tools import recalculate_idx
+from core.numerics import recalculate_idx
+
 from ...automatization import (
     calculate_background_intensities,
     guess_pseudo_voigt_params_at_max,

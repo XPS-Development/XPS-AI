@@ -8,9 +8,9 @@ segmenter, input y is expected to be already normalized (caller responsibility).
 import numpy as np
 from numpy.typing import NDArray
 
+from core.numerics import interpolate
 from core.types import SpectrumLike
 
-from ..._tools import interpolate
 from ..types import ModelInputT
 from .adapter import ONNXSegmenterAdapter
 

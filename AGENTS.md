@@ -13,20 +13,23 @@ pyqtgraph UI. Entry point: `main.py`.
 ```
 ui/  →  app/  →  core/
               ↘  tools/  →  core/
+debug/ → tools/evaluation → core/   (notebooks / interactive only)
 ```
 
 | Package | Role |
 |---------|------|
-| `core/` | Domain: spectra, regions, components, math models, services |
+| `core/` | Domain: spectra, regions, components, math models, services, array numerics |
 | `app/` | Application: orchestrator, commands/undo, usecases, adapters over tools |
 | `ui/` | Presentation: Qt widgets, controller wrapper, signals |
 | `tools/` | Libraries: parsers, evaluation, optimization, NN inference, serialization |
+| `debug/` | Matplotlib viewer for notebooks / exploration (`uv sync --group interactive`) |
+| `scripts/` | One-off unsupported utilities (not app runtime) |
 | `model/` | Training code for the segmenter — **unmaintained / broken; do not extend** |
 
 **Hard rules**
 
-- `core/` must not import `app/` or `ui/`. Prefer not importing `tools/` either
-  (existing exception: `core/services.py` → `tools._tools`; do not add more).
+- `core/` must not import `app/`, `ui/`, or `tools/`. Array helpers live in
+  `core/numerics.py`.
 - `app/` must not import `ui/`. Qt in `app/` only via optional lazy import in
   `error_dump.py`.
 - `ui/` talks to the domain through `ControllerWrapper` → `AppOrchestrator`.
@@ -66,12 +69,14 @@ uv run pytest
 | Kind of change | Put it in |
 |----------------|-----------|
 | Entity / service / math model | `core/` |
+| Pure array helpers (interp, index lookup) | `core/numerics.py` |
 | Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
 | Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
 | Pure numeric guess / fit / eval | `tools/` (or later `core/` numerics) — not UI |
 | File format parse | `tools/parsers/` + dispatcher in `__init__.py` |
 | Qt widget / dialog / plot | `ui/` — presentation only |
-| One-off scripts | Prefer `scripts/` or leave uncommitted; do not grow `tools/converters/` |
+| Matplotlib debug / notebook plotting | `debug/` — not `ui/`, not `tools/` |
+| One-off scripts | `scripts/` — do not grow top-level `tools/` with scripts |
 
 Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 `AppOrchestrator` further. Extract `QueryService` / `AppParameters` out of
@@ -81,8 +86,11 @@ Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 
 These are intentional temporary states. Avoid reinforcing them.
 
-1. **`tools/` is a grab bag.** Dead / script-only: `viewer.py`, `parsers/specs.py`,
-   `converters/`. Do not add new unrelated modules at the top level of `tools/`.
+1. **`tools/` is still a grab bag** (parsers, evaluation, optimization, NN,
+   serialization). Do not add new unrelated modules at the top level of
+   `tools/`. Do not reintroduce a SPECS parser under `tools/parsers/`.
+   Notebook matplotlib plotting lives in `debug/viewer.py`; one-offs in
+   `scripts/`.
 2. **`tools/automatization.py` is pseudo-Voigt-hardcoded initial guessing**, not
    a general automation framework. Prefer model-registry-aware guessing over
    more `guess_pseudo_voigt_*` / stringly `if model_name == ...` in `app/` or UI.
