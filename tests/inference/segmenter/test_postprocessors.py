@@ -1,12 +1,12 @@
 """
-Tests for tools.nn.segmenter: SegmenterPostprocessor with fixed masks -> list[SegmenterResult].
+Tests for inference.segmenter: SegmenterPostprocessor with fixed masks -> list[SegmenterResult].
 """
 
 import numpy as np
 import pytest
 
-from tools.nn.segmenter import ONNXSegmenterAdapter, SegmenterPostprocessor, SegmenterResult
-from tools.nn.types import PeakDetectionResult, RegionDetectionResult
+from inference.segmenter import ONNXSegmenterAdapter, SegmenterPostprocessor, SegmenterResult
+from inference.types import PeakDetectionResult, RegionDetectionResult
 
 
 @pytest.fixture

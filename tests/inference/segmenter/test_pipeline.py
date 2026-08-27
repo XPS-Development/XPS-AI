@@ -1,13 +1,13 @@
 """
-Tests for tools.nn.pipeline: SegmenterPipeline end-to-end.
+Tests for inference.pipeline: SegmenterPipeline end-to-end.
 """
 
 import numpy as np
 import pytest
 
 from core.dto import SpectrumDTO
-from tools.nn.pipeline import SegmenterPipeline
-from tools.nn.segmenter import ONNXSegmenterAdapter, SegmenterResult
+from inference.pipeline import SegmenterPipeline
+from inference.segmenter import ONNXSegmenterAdapter, SegmenterResult
 
 
 @pytest.fixture

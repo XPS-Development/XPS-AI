@@ -12,24 +12,28 @@ pyqtgraph UI. Entry point: `main.py`.
 
 ```
 ui/  →  app/  →  core/
-              ↘  tools/  →  core/
+              ↘  formats/  →  core/
+              ↘  inference/  →  core/
+                              ↘  tools/  →  core/   (temporary: initial guessing)
 debug/ → core/evaluation → core/dto   (notebooks / interactive only)
 ```
 
 | Package | Role |
 |---------|------|
-| `core/` | Domain: spectra, regions, components, math models, services, array numerics, immutable DTOs, model evaluation |
-| `app/` | Application: orchestrator, commands/undo, usecases, DTOService, adapters over tools |
+| `core/` | Domain: spectra, regions, components, math models, services, array numerics, immutable DTOs, model evaluation, fitting, serialization, CSV export |
+| `app/` | Application: orchestrator, commands/undo, usecases, DTOService, adapters over core/formats/inference/tools |
 | `ui/` | Presentation: Qt widgets, controller wrapper, signals |
-| `tools/` | Libraries: parsers, optimization, NN inference, serialization, CSV export, initial guessing |
+| `formats/` | Spectrum file parsers (casa, dat, VAMAS) and extension dispatcher |
+| `inference/` | ONNX segmenter pipeline (preprocess → adapter → postprocess) |
+| `tools/` | Temporary: initial-guess helpers (`automatization.py`) until `guess_initial` lands on models |
 | `debug/` | Matplotlib viewer for notebooks / exploration (`uv sync --group interactive`) |
 | `scripts/` | One-off unsupported utilities (not app runtime) |
 | `model/` | Training code for the segmenter — **unmaintained / broken; do not extend** |
 
 **Hard rules**
 
-- `core/` must not import `app/`, `ui/`, or `tools/`. Array helpers live in
-  `core/numerics.py`.
+- `core/` must not import `app/`, `ui/`, `tools/`, `formats/`, or `inference/`.
+  Array helpers live in `core/numerics.py`.
 - `app/` must not import `ui/`. Qt in `app/` only via optional lazy import in
   `error_dump.py`.
 - `ui/` talks to the domain through `ControllerWrapper` → `AppOrchestrator`.
@@ -39,10 +43,10 @@ debug/ → core/evaluation → core/dto   (notebooks / interactive only)
   with direct collection/service writes unless document lifecycle
   (`new_collection`, load/replace) genuinely requires it.
 
-**`app/` vs `tools/` pairs are adapters, not duplicates**
+**`app/` adapters are not duplicates**
 
 `app/optimization.py`, `app/serialization.py`, `app/csv_export.py`,
-`app/automatization.py` wrap `tools/` and return `Change` objects or track
+`app/automatization.py` wrap library modules and return `Change` objects or track
 dirty state. Keep that boundary; do not merge layers or copy logic both ways.
 
 ## Tooling
@@ -73,13 +77,16 @@ uv run pytest
 | Build DTOs from `CoreContext` | `app/dto_service.py` |
 | Stateless model evaluation | `core/evaluation.py` |
 | Pure array helpers (interp, index lookup) | `core/numerics.py` |
+| Lmfit optimization | `core/fitting/` |
+| Document serialization / CSV export | `core/io/` |
 | Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
 | Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
-| Pure numeric guess / fit | `tools/` — not UI |
-| File format parse | `tools/parsers/` + dispatcher in `__init__.py` |
+| Pure numeric initial guess | `tools/` (temporary) — prefer model `guess_initial` when adding |
+| File format parse | `formats/` + dispatcher in `__init__.py` |
+| ONNX segmenter / inference pipeline | `inference/` |
 | Qt widget / dialog / plot | `ui/` — presentation only |
 | Matplotlib debug / notebook plotting | `debug/` — not `ui/`, not `tools/` |
-| One-off scripts | `scripts/` — do not grow top-level `tools/` with scripts |
+| One-off scripts | `scripts/` — do not grow top-level packages with scripts |
 
 Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 `AppOrchestrator` further. Extract `QueryService` / `AppParameters` out of
@@ -89,11 +96,10 @@ Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 
 These are intentional temporary states. Avoid reinforcing them.
 
-1. **`tools/` is still a grab bag** (parsers, optimization, NN, serialization,
-   CSV export, initial guessing). DTO and evaluation already live in `core/`;
-   do not add new unrelated modules at the top level of `tools/`. Do not
-   reintroduce a SPECS parser under `tools/parsers/`. Notebook matplotlib
-   plotting lives in `debug/viewer.py`; one-offs in `scripts/`.
+1. **`tools/` holds only initial guessing** (`automatization.py`). Do not add new
+   modules there; remaining dissolution is `guess_initial` on math models (PR4).
+   Do not reintroduce a SPECS parser. Notebook matplotlib plotting lives in
+   `debug/viewer.py`; one-offs in `scripts/`.
 2. **`tools/automatization.py` is pseudo-Voigt-hardcoded initial guessing**, not
    a general automation framework. Prefer model-registry-aware guessing over
    more `guess_pseudo_voigt_*` / stringly `if model_name == ...` in `app/` or UI.

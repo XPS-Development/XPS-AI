@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tools.csv_export import export_spectrum_csv, export_spectrum_peak_parameters_csv
+from core.io.csv_export import export_spectrum_csv, export_spectrum_peak_parameters_csv
 
 
 def test_export_peak_parameters_csv_returns_header_and_rows(

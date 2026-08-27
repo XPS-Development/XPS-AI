@@ -2,8 +2,8 @@
 
 import pytest
 
-from tools.parsers.casa import parse_casa_txt
-from tools.parsers.types import ParsedSpectrum
+from formats.casa import parse_casa_txt
+from formats.types import ParsedSpectrum
 
 
 def test_parse_casa_txt_returns_single_spectrum():

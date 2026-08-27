@@ -1,11 +1,11 @@
 """
-Tests for tools.nn.segmenter: ONNXSegmenterAdapter output shape (with mock input).
+Tests for inference.segmenter: ONNXSegmenterAdapter output shape (with mock input).
 """
 
 import numpy as np
 import pytest
 
-from tools.nn.segmenter import ONNXSegmenterAdapter
+from inference.segmenter import ONNXSegmenterAdapter
 
 
 def test_onnx_adapter_run_requires_loaded_model() -> None:

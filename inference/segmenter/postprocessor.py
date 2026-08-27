@@ -11,11 +11,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 from core.numerics import recalculate_idx
-
-from ...automatization import (
+from tools.automatization import (
     calculate_background_intensities,
     guess_pseudo_voigt_params_at_max,
 )
+
 from ..types import (
     BackgroundDetectionResult,
     ModelOutputT,

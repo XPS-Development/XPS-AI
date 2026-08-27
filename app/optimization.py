@@ -1,18 +1,18 @@
 """
 App-layer optimization service: DTO-only interface returning Change objects.
 
-Uses tools.optimization for lmfit-based fitting. Caller provides DTOs;
+Uses core.fitting.optimization for lmfit-based fitting. Caller provides DTOs;
 service returns BaseChange instances for CommandExecutor.
 """
 
 from collections.abc import Sequence
 
 from core.dto import ComponentDTO, RegionDTO
-from tools.optimization import (
+from core.fitting.optimization import (
     OptimizedComponent,
     build_contexts,
 )
-from tools.optimization import (
+from core.fitting.optimization import (
     optimize as run_optimize,
 )
 
@@ -28,7 +28,7 @@ def components_to_changes(
     Parameters
     ----------
     components : Sequence[OptimizedComponent]
-        Optimization results from tools.optimization.optimize.
+        Optimization results from core.fitting.optimization.optimize.
 
     Returns
     -------

@@ -9,7 +9,7 @@ via the SegmenterPipelineAdapter.
 from pathlib import Path
 
 from core.dto import SpectrumDTO
-from tools.nn import SegmenterPipeline
+from inference import SegmenterPipeline
 
 from .command.changes import CompositeChange
 from .nn_adapter import segmenter_results_to_changes

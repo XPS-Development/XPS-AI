@@ -8,10 +8,10 @@ import numpy as np
 import pytest
 
 from core.collection import CoreCollection
+from core.io.serialization import VERSION, _json_default, deserialize, dump, load, serialize
 from core.metadata import PeakMetadata, SpectrumMetadata
 from core.objects import Background, Peak, Region, Spectrum
 from core.services import MetadataService
-from tools.serialization import VERSION, _json_default, deserialize, dump, load, serialize
 
 
 def test_serialize_deserialize_simple_collection(simple_collection):

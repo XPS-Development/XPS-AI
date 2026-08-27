@@ -1,12 +1,12 @@
 """
-Tests for tools.nn.segmenter: SegmenterPreprocessor output shape and value ranges.
+Tests for inference.segmenter: SegmenterPreprocessor output shape and value ranges.
 """
 
 import numpy as np
 import pytest
 
 from core.dto import SpectrumDTO
-from tools.nn.segmenter import ONNXSegmenterAdapter, SegmenterPreprocessor
+from inference.segmenter import ONNXSegmenterAdapter, SegmenterPreprocessor
 
 
 def _spectrum(x: np.ndarray, y: np.ndarray) -> SpectrumDTO:

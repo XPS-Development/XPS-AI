@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tools.parsers.dat import parse_dat
-from tools.parsers.types import ParsedSpectrum
+from formats.dat import parse_dat
+from formats.types import ParsedSpectrum
 
 
 def test_parse_dat_returns_single_spectrum():

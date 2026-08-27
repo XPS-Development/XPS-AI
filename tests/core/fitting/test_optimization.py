@@ -1,5 +1,5 @@
 """
-Tests for tools.optimization: build_contexts, OptimizationPlanner, LmfitOptimizer, optimize().
+Tests for core.fitting.optimization: build_contexts, OptimizationPlanner, LmfitOptimizer, optimize().
 """
 
 from types import SimpleNamespace
@@ -7,10 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import tools.optimization as optimization_module
+import core.fitting.optimization as optimization_module
 from core.dto import ComponentDTO, ParameterDTO
-from core.math_models import PseudoVoigtPeakModel
-from tools.optimization import (
+from core.fitting.optimization import (
     LmfitOptimizer,
     OptimizationContext,
     OptimizationPlanner,
@@ -19,6 +18,7 @@ from tools.optimization import (
     optimize,
     resolve_component_reference,
 )
+from core.math_models import PseudoVoigtPeakModel
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ CreateBackground, and CreatePeak changes for CommandExecutor.
 
 from uuid import uuid4
 
-from tools.nn.segmenter import SegmenterResult
+from inference.segmenter import SegmenterResult
 
 from .command.changes import (
     CompositeChange,

@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from tools.nn.pipeline import SegmenterPipeline
-from tools.nn.segmenter import SegmenterResult
-from tools.nn.types import BackgroundDetectionResult, PeakDetectionResult
+from inference.pipeline import SegmenterPipeline
+from inference.segmenter import SegmenterResult
+from inference.types import BackgroundDetectionResult, PeakDetectionResult
 
 # model.onnx at project root (skip if missing)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 MODEL_PATH = PROJECT_ROOT / "model.onnx"
 
 

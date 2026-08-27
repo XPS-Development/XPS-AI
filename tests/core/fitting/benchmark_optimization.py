@@ -1,5 +1,5 @@
 """
-Benchmarks for tools.optimization: quality (parameter recovery) and latency.
+Benchmarks for core.fitting.optimization: quality (parameter recovery) and latency.
 
 Uses pvoigt from core.math_models.model_funcs, PseudoVoigtPeakModel,
 and the same component creation pattern as test_optimization.py.
@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 
 from core.dto import ComponentDTO, ParameterDTO
+from core.fitting.optimization import OptimizationContext, optimize
 from core.math_models import PseudoVoigtPeakModel
 from core.math_models.model_funcs import pvoigt
-from tools.optimization import OptimizationContext, optimize
 
 RNG = np.random.default_rng(42)
 X_AXIS_START: float = -10.0
