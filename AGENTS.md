@@ -1,0 +1,120 @@
+# AGENTS.md — XPS-AI
+
+Guidance for AI agents working in this repository.
+
+## What this is
+
+Desktop XPS (X-ray Photoelectron Spectroscopy) analysis app: spectrum import,
+region/peak/background fitting (lmfit), NN segmentation (ONNX), PySide6 +
+pyqtgraph UI. Entry point: `main.py`.
+
+## Architecture (dependency direction)
+
+```
+ui/  →  app/  →  core/
+              ↘  tools/  →  core/
+```
+
+| Package | Role |
+|---------|------|
+| `core/` | Domain: spectra, regions, components, math models, services |
+| `app/` | Application: orchestrator, commands/undo, usecases, adapters over tools |
+| `ui/` | Presentation: Qt widgets, controller wrapper, signals |
+| `tools/` | Libraries: parsers, evaluation, optimization, NN inference, serialization |
+| `model/` | Training code for the segmenter — **unmaintained / broken; do not extend** |
+
+**Hard rules**
+
+- `core/` must not import `app/` or `ui/`. Prefer not importing `tools/` either
+  (existing exception: `core/services.py` → `tools._tools`; do not add more).
+- `app/` must not import `ui/`. Qt in `app/` only via optional lazy import in
+  `error_dump.py`.
+- `ui/` talks to the domain through `ControllerWrapper` → `AppOrchestrator`.
+  Do not call `tools.evaluation` / `ModelRegistry` / mutate core objects from
+  widgets when adding new features — put that behind `app/`.
+- Mutations go through `Change` → `CommandExecutor` (undo/redo). Do not bypass
+  with direct collection/service writes unless document lifecycle
+  (`new_collection`, load/replace) genuinely requires it.
+
+**`app/` vs `tools/` pairs are adapters, not duplicates**
+
+`app/optimization.py`, `app/serialization.py`, `app/csv_export.py`,
+`app/automatization.py` wrap `tools/` and return `Change` objects or track
+dirty state. Keep that boundary; do not merge layers or copy logic both ways.
+
+## Tooling
+
+Use **uv** for everything. Do not use bare `python` / `pip` / `pytest`.
+
+```bash
+uv sync --group dev
+uv run ruff check .
+uv run ruff format .
+uv run ty check
+uv run pytest
+```
+
+- Python ≥ 3.11; line length 100; NumPy-style docstrings; type annotations
+  required on public APIs (`ruff` ANN + D).
+- `model/` and `notebooks/` are excluded from ruff/ty — leave them alone unless
+  the task is specifically training/export.
+- After editing Python: run `ruff check` (and `ruff format` if needed) on touched
+  paths; run relevant pytest modules.
+
+## Where to put new code
+
+| Kind of change | Put it in |
+|----------------|-----------|
+| Entity / service / math model | `core/` |
+| Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
+| Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
+| Pure numeric guess / fit / eval | `tools/` (or later `core/` numerics) — not UI |
+| File format parse | `tools/parsers/` + dispatcher in `__init__.py` |
+| Qt widget / dialog / plot | `ui/` — presentation only |
+| One-off scripts | Prefer `scripts/` or leave uncommitted; do not grow `tools/converters/` |
+
+Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
+`AppOrchestrator` further. Extract `QueryService` / `AppParameters` out of
+`orchestration.py` before adding more façade methods if you need those types.
+
+## Known debt — do not make worse
+
+These are intentional temporary states. Avoid reinforcing them.
+
+1. **`tools/` is a grab bag.** Dead / script-only: `viewer.py`, `parsers/specs.py`,
+   `converters/`. Do not add new unrelated modules at the top level of `tools/`.
+2. **`tools/automatization.py` is pseudo-Voigt-hardcoded initial guessing**, not
+   a general automation framework. Prefer model-registry-aware guessing over
+   more `guess_pseudo_voigt_*` / stringly `if model_name == ...` in `app/` or UI.
+3. **Domain defaults are duplicated** (`"pseudo-voigt"`, `"shirley"`) in
+   `ui/context_menus.py`, `app/automatization.py`, NN postprocessor, and
+   `AppParameters`. Prefer `AppParameters` / registry when adding call sites.
+4. **UI leakage exists** (`plot_area` → `spectrum_bundle`, dialogs →
+   `ModelRegistry`). New features must not add more `core`/`tools` imports in
+   `ui/` for business logic.
+5. **`model/` cannot train after `uv sync`** (no torch/lightning deps; broken
+   imports; no ONNX export script). App consumes
+   `assets/models/model.onnx` only. Do not “fix” training casually; treat
+   ONNX as an external artifact unless the task is a full training/export
+   revive.
+6. **No CI yet.** Local `ruff` / `ty` / `pytest` are the gate.
+
+## Commands / undo notes
+
+- New change types need: dataclass in `changes.py`, command in `commands.py`,
+  entry in `create_default_registry()`.
+- UI refresh flags in `ui/controller.py` use `isinstance` on concrete command
+  classes — if you add a command that should not full-refresh the UI, update
+  that mapping or over-invalidation will happen.
+
+## Git / PR
+
+- Branch from `dev`; PR into `dev`. See `CONTRIBUTING.md`.
+- Commit only when asked. Messages in English, concise, focus on why.
+- Do not commit secrets, `error_dumps/`, or notebooks (gitignored).
+
+## Tests
+
+Mirror package layout under `tests/`. Prefer testing `core/` and `app/` without
+Qt. UI tests need `QApplication`; keep them thin. When changing behavior, update
+or add tests in the matching `tests/<package>/` tree.
