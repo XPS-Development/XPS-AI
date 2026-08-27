@@ -73,7 +73,9 @@ def _read_iss_define_version(iss_text: str, iss_path: Path) -> str:
     """
     match = _ISS_DEFINE_RE.search(iss_text)
     if match is None:
-        raise ValueError(f'Could not find `#define MyAppVersion "..."` in {iss_path} (expected one match).')
+        raise ValueError(
+            f'Could not find `#define MyAppVersion "..."` in {iss_path} (expected one match).'
+        )
     return match.group("version").strip()
 
 
@@ -129,7 +131,9 @@ def sync_version(*, pyproject_path: Path, iss_path: Path, write: bool) -> SyncRe
 
 def _build_parser() -> argparse.ArgumentParser:
     """Build CLI argument parser."""
-    parser = argparse.ArgumentParser(description="Sync version between pyproject.toml and build/XPS-AI.iss")
+    parser = argparse.ArgumentParser(
+        description="Sync version between pyproject.toml and build/XPS-AI.iss"
+    )
     parser.add_argument(
         "--pyproject",
         type=Path,
@@ -192,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if result.changed:
         print(
-            f"Updated {iss_path} MyAppVersion: " f"{result.iss_version_before} -> {result.pyproject_version}"
+            f"Updated {iss_path} MyAppVersion: "
+            f"{result.iss_version_before} -> {result.pyproject_version}"
         )
     else:
         print(f"No changes needed (version {result.pyproject_version}).")

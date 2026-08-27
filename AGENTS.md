@@ -97,7 +97,8 @@ These are intentional temporary states. Avoid reinforcing them.
    `assets/models/model.onnx` only. Do not “fix” training casually; treat
    ONNX as an external artifact unless the task is a full training/export
    revive.
-6. **No CI yet.** Local `ruff` / `ty` / `pytest` are the gate.
+6. **CI** is `.github/workflows/ci.yml` (`ruff` / `ty` / `pytest` on PRs to `dev`/`main`).
+   Keep that gate green; do not weaken excludes for unmaintained training scripts without fixing them.
 
 ## Commands / undo notes
 
