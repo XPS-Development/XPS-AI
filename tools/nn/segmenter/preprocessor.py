@@ -1,5 +1,5 @@
 """
-Preprocessor layer: SpectrumLike -> model-specific input.
+Preprocessor layer: SpectrumDTO -> model-specific input.
 
 Preprocessors produce model input (e.g. dict of arrays for ONNX). For the
 segmenter, input y is expected to be already normalized (caller responsibility).
@@ -8,8 +8,8 @@ segmenter, input y is expected to be already normalized (caller responsibility).
 import numpy as np
 from numpy.typing import NDArray
 
+from core.dto import SpectrumDTO
 from core.numerics import interpolate
-from core.types import SpectrumLike
 
 from ..types import ModelInputT
 from .adapter import ONNXSegmenterAdapter
@@ -19,7 +19,7 @@ class SegmenterPreprocessor:
     """
     Preprocessor for the segmenter model: interpolate, log/min-max normalize, stack.
 
-    Consumes SpectrumLike (x, y); y should be normalized. Optionally accepts
+    Consumes SpectrumDTO (x, y); y should be normalized. Optionally accepts
     precomputed x_int, y_int to avoid duplicate interpolation when used in a pipeline.
     """
 
@@ -35,14 +35,14 @@ class SegmenterPreprocessor:
 
     def __call__(
         self,
-        data: SpectrumLike,
+        data: SpectrumDTO,
     ) -> tuple[ModelInputT, dict[str, NDArray]]:
         """
         Produce segmenter model input from spectrum-like data.
 
         Parameters
         ----------
-        data : SpectrumLike
+        data : SpectrumDTO
             Spectrum with .x and .y (y expected normalized for segmenter).
 
         Returns

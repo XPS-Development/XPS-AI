@@ -10,7 +10,7 @@ import pytest
 
 from app.automatization import AutomatizationAdapter
 from app.command.changes import CreateBackground, CreatePeak, UpdateMultipleParameterValues
-from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
 
 
 @pytest.fixture

@@ -1,9 +1,8 @@
 """
 Matplotlib-based viewer for spectra and region models.
 
-Uses evaluation functions from tools.evaluation and protocol-typed objects
-(SpectrumLike, RegionLike, ComponentLike) from core.types for structural
-typing without coupling to DTOs.
+Uses evaluation functions from core.evaluation and DTO projections
+(SpectrumDTO, RegionDTO, ComponentDTO) from core.dto.
 
 Requires the ``interactive`` dependency group (``uv sync --group interactive``)
 for matplotlib.
@@ -15,36 +14,36 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 
-from core.types import ComponentLike, RegionLike, SpectrumLike
-from tools.evaluation import region_bundle
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.evaluation import region_bundle
 
 
 class ViewerDataProvider(Protocol):
     """
     Protocol for supplying spectrum/region/component data to the viewer.
 
-    Implementations (e.g. DTOService plus query) provide protocol-typed
-    objects so the viewer stays decoupled from concrete DTOs and domain services.
+    Implementations (e.g. DTOService) provide DTO projections so the viewer
+    stays decoupled from mutable domain services.
     """
 
-    def get_spectrum(self, spectrum_id: str, *, normalized: bool = False) -> SpectrumLike:
-        """Return a spectrum-like projection with .x and .y arrays."""
+    def get_spectrum(self, spectrum_id: str, *, normalized: bool = False) -> SpectrumDTO:
+        """Return a spectrum DTO with .x and .y arrays."""
         ...
 
-    def get_region(self, region_id: str, *, normalized: bool = False) -> RegionLike:
-        """Return a region-like projection with .x and .y arrays."""
+    def get_region(self, region_id: str, *, normalized: bool = False) -> RegionDTO:
+        """Return a region DTO with .x and .y arrays."""
         ...
 
     def get_spectrum_repr(
         self, spectrum_id: str, *, normalized: bool = False
-    ) -> tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]:
-        """Return spectrum-like and its region-like and component-like objects for evaluation."""
+    ) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
+        """Return spectrum DTO and its region/component DTOs for evaluation."""
         ...
 
     def get_region_repr(
         self, region_id: str, *, normalized: bool = False
-    ) -> tuple[RegionLike, tuple[ComponentLike, ...]]:
-        """Return region-like and its component-like objects for evaluation."""
+    ) -> tuple[RegionDTO, tuple[ComponentDTO, ...]]:
+        """Return region DTO and its component DTOs for evaluation."""
         ...
 
 
@@ -52,9 +51,8 @@ class MatplotlibViewer:
     """
     High-level matplotlib viewer for debugging and exploration.
 
-    Uses evaluation functions from tools.evaluation for numerical model
-    evaluation and protocol-typed data (SpectrumLike, RegionLike, ComponentLike)
-    for structural typing.
+    Uses evaluation functions from core.evaluation for numerical model
+    evaluation and DTO data (SpectrumDTO, RegionDTO, ComponentDTO).
 
     plot_raw_*:
         Draw only raw numerical data (spectrum or region).

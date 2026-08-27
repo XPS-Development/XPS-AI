@@ -7,7 +7,7 @@ service returns BaseChange instances for CommandExecutor.
 
 from collections.abc import Sequence
 
-from tools.dto import ComponentDTO, RegionDTO
+from core.dto import ComponentDTO, RegionDTO
 from tools.optimization import (
     OptimizedComponent,
     build_contexts,

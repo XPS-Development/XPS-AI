@@ -13,15 +13,15 @@ pyqtgraph UI. Entry point: `main.py`.
 ```
 ui/  →  app/  →  core/
               ↘  tools/  →  core/
-debug/ → tools/evaluation → core/   (notebooks / interactive only)
+debug/ → core/evaluation → core/dto   (notebooks / interactive only)
 ```
 
 | Package | Role |
 |---------|------|
-| `core/` | Domain: spectra, regions, components, math models, services, array numerics |
-| `app/` | Application: orchestrator, commands/undo, usecases, adapters over tools |
+| `core/` | Domain: spectra, regions, components, math models, services, array numerics, immutable DTOs, model evaluation |
+| `app/` | Application: orchestrator, commands/undo, usecases, DTOService, adapters over tools |
 | `ui/` | Presentation: Qt widgets, controller wrapper, signals |
-| `tools/` | Libraries: parsers, evaluation, optimization, NN inference, serialization |
+| `tools/` | Libraries: parsers, optimization, NN inference, serialization, CSV export, initial guessing |
 | `debug/` | Matplotlib viewer for notebooks / exploration (`uv sync --group interactive`) |
 | `scripts/` | One-off unsupported utilities (not app runtime) |
 | `model/` | Training code for the segmenter — **unmaintained / broken; do not extend** |
@@ -33,7 +33,7 @@ debug/ → tools/evaluation → core/   (notebooks / interactive only)
 - `app/` must not import `ui/`. Qt in `app/` only via optional lazy import in
   `error_dump.py`.
 - `ui/` talks to the domain through `ControllerWrapper` → `AppOrchestrator`.
-  Do not call `tools.evaluation` / `ModelRegistry` / mutate core objects from
+  Do not call `core.evaluation` / `ModelRegistry` / mutate core objects from
   widgets when adding new features — put that behind `app/`.
 - Mutations go through `Change` → `CommandExecutor` (undo/redo). Do not bypass
   with direct collection/service writes unless document lifecycle
@@ -69,10 +69,13 @@ uv run pytest
 | Kind of change | Put it in |
 |----------------|-----------|
 | Entity / service / math model | `core/` |
+| Immutable DTO projections | `core/dto.py` |
+| Build DTOs from `CoreContext` | `app/dto_service.py` |
+| Stateless model evaluation | `core/evaluation.py` |
 | Pure array helpers (interp, index lookup) | `core/numerics.py` |
 | Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
 | Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
-| Pure numeric guess / fit / eval | `tools/` (or later `core/` numerics) — not UI |
+| Pure numeric guess / fit | `tools/` — not UI |
 | File format parse | `tools/parsers/` + dispatcher in `__init__.py` |
 | Qt widget / dialog / plot | `ui/` — presentation only |
 | Matplotlib debug / notebook plotting | `debug/` — not `ui/`, not `tools/` |
@@ -86,11 +89,11 @@ Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 
 These are intentional temporary states. Avoid reinforcing them.
 
-1. **`tools/` is still a grab bag** (parsers, evaluation, optimization, NN,
-   serialization). Do not add new unrelated modules at the top level of
-   `tools/`. Do not reintroduce a SPECS parser under `tools/parsers/`.
-   Notebook matplotlib plotting lives in `debug/viewer.py`; one-offs in
-   `scripts/`.
+1. **`tools/` is still a grab bag** (parsers, optimization, NN, serialization,
+   CSV export, initial guessing). DTO and evaluation already live in `core/`;
+   do not add new unrelated modules at the top level of `tools/`. Do not
+   reintroduce a SPECS parser under `tools/parsers/`. Notebook matplotlib
+   plotting lives in `debug/viewer.py`; one-offs in `scripts/`.
 2. **`tools/automatization.py` is pseudo-Voigt-hardcoded initial guessing**, not
    a general automation framework. Prefer model-registry-aware guessing over
    more `guess_pseudo_voigt_*` / stringly `if model_name == ...` in `app/` or UI.

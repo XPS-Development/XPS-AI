@@ -10,7 +10,7 @@ from typing import Protocol
 
 from numpy.typing import NDArray
 
-from core.types import SpectrumLike
+from core.dto import SpectrumDTO
 
 from .segmenter import (
     ONNXSegmenterAdapter,
@@ -26,7 +26,7 @@ class PreprocessorLike(Protocol):
 
     def __call__(
         self,
-        data: SpectrumLike,
+        data: SpectrumDTO,
         *,
         x_int: NDArray | None = None,
         y_int: NDArray | None = None,
@@ -66,7 +66,7 @@ class InferencePipeline:
     returns the postprocessor result type (e.g. list[RegionBounds]).
     """
 
-    def run(self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike) -> object:
+    def run(self, normalized_spectrum: SpectrumDTO, original_spectrum: SpectrumDTO) -> object:
         """Run the full pipeline on a spectrum-like input."""
         raise NotImplementedError("Subclasses must implement run method")
 
@@ -104,16 +104,16 @@ class SegmenterPipeline(InferencePipeline):
         self.postprocessor = SegmenterPostprocessor(threshold=pred_threshold, smooth=smooth)
 
     def run(
-        self, normalized_spectrum: SpectrumLike, original_spectrum: SpectrumLike
+        self, normalized_spectrum: SpectrumDTO, original_spectrum: SpectrumDTO
     ) -> list[SegmenterResult]:
         """
         Run the full pipeline on a spectrum-like input.
 
         Parameters
         ----------
-        normalized_spectrum : SpectrumLike
+        normalized_spectrum : SpectrumDTO
             Input with .x and .y (for segmenter, y should be normalized).
-        original_spectrum : SpectrumLike
+        original_spectrum : SpectrumDTO
             Original spectrum with .x and .y.
 
         Returns

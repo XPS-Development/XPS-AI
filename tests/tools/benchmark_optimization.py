@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from core.dto import ComponentDTO, ParameterDTO
 from core.math_models import PseudoVoigtPeakModel
 from core.math_models.model_funcs import pvoigt
-from tools.dto import ComponentDTO, ParameterDTO
 from tools.optimization import OptimizationContext, optimize
 
 RNG = np.random.default_rng(42)

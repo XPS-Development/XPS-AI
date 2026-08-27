@@ -1,8 +1,8 @@
 """
 Stateless numerical evaluation of spectral models.
 
-Provides module-level functions that operate on Protocol-typed objects
-(ComponentLike, RegionLike, SpectrumLike) for model evaluation without domain state.
+Provides module-level functions that operate on DTO projections
+(ComponentDTO, RegionDTO, SpectrumDTO) for model evaluation without domain state.
 """
 
 from dataclasses import dataclass
@@ -11,10 +11,8 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
+from core.dto import BaseDTO, ComponentDTO, RegionDTO, SpectrumDTO
 from core.math_models.base_models import EvaluationLikeFn
-from core.types import ComponentLike, RegionLike, SpectrumLike
-
-from .dto import BaseDTO, RegionDTO, SpectrumDTO
 
 
 @dataclass(frozen=True)
@@ -42,14 +40,14 @@ class SpectrumEvaluationResult(SpectrumDTO):
     regions: tuple[RegionEvaluationResult, ...]
 
 
-def get_eval_fn(component: ComponentLike) -> EvaluationLikeFn:
+def get_eval_fn(component: ComponentDTO) -> EvaluationLikeFn:
     """
     Return the evaluation function for a component's model.
 
     Parameters
     ----------
-    component : ComponentLike
-        Component-like object containing the model.
+    component : ComponentDTO
+        Component DTO containing the model.
 
     Returns
     -------
@@ -60,7 +58,7 @@ def get_eval_fn(component: ComponentLike) -> EvaluationLikeFn:
 
 
 def component_y(
-    component: ComponentLike,
+    component: ComponentDTO,
     x: NDArray,
     y: NDArray | None = None,
 ) -> NDArray:
@@ -69,8 +67,8 @@ def component_y(
 
     Parameters
     ----------
-    component : ComponentLike
-        Component-like object containing model and parameters.
+    component : ComponentDTO
+        Component DTO containing model and parameters.
     x : NDArray
         X-axis values for evaluation.
     y : NDArray, optional
@@ -87,7 +85,7 @@ def component_y(
 
 
 def component_result(
-    component: ComponentLike,
+    component: ComponentDTO,
     x: NDArray,
     y: NDArray | None = None,
 ) -> ComponentEvaluationResult:
@@ -96,8 +94,8 @@ def component_result(
 
     Parameters
     ----------
-    component : ComponentLike
-        Component-like object containing model and parameters.
+    component : ComponentDTO
+        Component DTO containing model and parameters.
     x : NDArray
         X-axis values for evaluation.
     y : NDArray, optional
@@ -118,8 +116,8 @@ def component_result(
 
 
 def region_bundle(
-    region: RegionLike,
-    components: tuple[ComponentLike, ...],
+    region: RegionDTO,
+    components: tuple[ComponentDTO, ...],
     *,
     include_background: bool = True,
 ) -> RegionEvaluationResult:
@@ -128,10 +126,10 @@ def region_bundle(
 
     Parameters
     ----------
-    region : RegionLike
-        Region-like object with numerical data.
-    components : tuple[ComponentLike, ...]
-        Associated component-like objects.
+    region : RegionDTO
+        Region DTO with numerical data.
+    components : tuple[ComponentDTO, ...]
+        Associated component DTOs.
     include_background : bool, optional
         If True, include background component in the model and residuals.
 
@@ -178,8 +176,8 @@ def region_bundle(
 
 
 def spectrum_bundle(
-    spectrum: SpectrumLike,
-    regions: tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...],
+    spectrum: SpectrumDTO,
+    regions: tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...],
     *,
     include_background: bool = True,
 ) -> SpectrumEvaluationResult:
@@ -188,9 +186,9 @@ def spectrum_bundle(
 
     Parameters
     ----------
-    spectrum : SpectrumLike
-        Spectrum-like object with numerical data.
-    regions : tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]
+    spectrum : SpectrumDTO
+        Spectrum DTO with numerical data.
+    regions : tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]
         Tuples of (region, components) for each region.
     include_background : bool, optional
         If True, include background components in the model and residuals.

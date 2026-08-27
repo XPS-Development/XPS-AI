@@ -1,89 +1,15 @@
-"""Immutable DTO projections of core objects for tools and UI."""
+"""Construct immutable DTO projections from mutable core domain state."""
 
-from dataclasses import dataclass
-from typing import Literal, cast
+from typing import cast
 
-from numpy.typing import NDArray
-
-from core.math_models import BaseBackgroundModel, ParametricModelLike
+from core.dto import ComponentDTO, ParameterDTO, RegionDTO, SpectrumDTO
+from core.math_models import BaseBackgroundModel
 from core.services import CoreContext
-
-
-@dataclass(frozen=True)
-class ParameterDTO:
-    """
-    Immutable data transfer object representing a single model parameter.
-
-    Used for normalized and denormalized parameter exchange between
-    services without mutating domain state.
-    """
-
-    name: str
-    value: float
-    lower: float
-    upper: float
-    vary: bool
-    expr: str | None
-
-
-@dataclass(frozen=True)
-class BaseDTO:
-    """
-    Base immutable projection of a core domain object.
-
-    Contains common identity and normalization metadata shared
-    by all DTO projections.
-    """
-
-    id_: str
-    parent_id: str | None
-    normalized: bool
-
-
-@dataclass(frozen=True)
-class ComponentDTO(BaseDTO):
-    """
-    Immutable projection of a spectral component.
-
-    Encapsulates model metadata and a snapshot of component
-    parameters in either normalized or denormalized form.
-    """
-
-    parameters: dict[str, ParameterDTO]
-    model: ParametricModelLike
-    kind: Literal["peak", "background"]
-
-
-@dataclass(frozen=True)
-class RegionDTO(BaseDTO):
-    """
-    Immutable projection of region numerical data.
-
-    References sliced views of the parent spectrum arrays and
-    does not own data independently.
-    """
-
-    x: NDArray
-    y: NDArray
-
-
-@dataclass(frozen=True)
-class SpectrumDTO(BaseDTO):
-    """
-    Immutable projection of spectrum numerical data.
-
-    Provides access to raw or normalized spectrum arrays without
-    exposing mutable domain objects.
-    """
-
-    x: NDArray
-    y: NDArray
-    parent_id = None
 
 
 class DTOService:
     """
-    Service responsible for constructing and applying immutable DTOs.
+    Service responsible for constructing immutable DTOs.
 
     Acts as a boundary between mutable domain objects and
     read-only representations used by evaluation, optimization,
@@ -96,8 +22,8 @@ class DTOService:
 
         Parameters
         ----------
-        collection : CoreCollection
-            Active spectrum collection used as the data source.
+        ctx : CoreContext
+            Active core context used as the data source.
         """
         self.query_srv = ctx.query
         self.comp_srv = ctx.component

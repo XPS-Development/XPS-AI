@@ -9,10 +9,9 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
+from core.dto import ComponentDTO, RegionDTO
+from core.evaluation import region_bundle
 from core.numerics import find_closest_index
-from core.types import ComponentLike, RegionLike
-
-from .evaluation import region_bundle
 
 
 def guess_pseudo_voigt_sig_parameter(x: NDArray, y: NDArray, max_idx: int) -> float:
@@ -172,7 +171,7 @@ def guess_peak_position_by_residuals(x: NDArray, residuals: NDArray) -> int:
 
 
 def create_pseudo_voigt_peak_parameters(
-    region: RegionLike, components: tuple[ComponentLike, ...]
+    region: RegionDTO, components: tuple[ComponentDTO, ...]
 ) -> dict[str, float]:
     """Create initial pseudo-Voigt peak parameters for a region.
 
@@ -180,9 +179,9 @@ def create_pseudo_voigt_peak_parameters(
 
     Parameters
     ----------
-    region: RegionLike
+    region: RegionDTO
         Region.
-    components: tuple[ComponentLike, ...]
+    components: tuple[ComponentDTO, ...]
         Components.
 
     Returns

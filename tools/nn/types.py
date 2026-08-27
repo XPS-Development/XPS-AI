@@ -1,7 +1,7 @@
 """
 NN pipeline input/output types and contracts.
 
-Pipeline input is SpectrumLike (x, y) from core.types; for the segmenter,
+Pipeline input is SpectrumDTO (x, y) from core.dto; for the segmenter,
 y is expected to be already normalized (e.g. from DataQueryService or SpectrumDTO
 with normalize=True). Output types are domain-friendly for conversion to
 CreateRegion / CreatePeak in the app layer.
@@ -12,7 +12,7 @@ from typing import Protocol
 
 from numpy.typing import NDArray
 
-from core.types import SpectrumLike
+from core.dto import SpectrumDTO
 
 
 @dataclass(frozen=True)
@@ -58,9 +58,9 @@ ModelOutputT = dict[str, NDArray]
 
 
 class PreprocessorProtocol(Protocol):
-    """Protocol for preprocessors: SpectrumLike -> model input."""
+    """Callable protocol for preprocessors: SpectrumDTO -> model input."""
 
-    def __call__(self, data: SpectrumLike) -> ModelInputT:
+    def __call__(self, data: SpectrumDTO) -> ModelInputT:
         """Produce model input from spectrum-like data."""
         ...
 

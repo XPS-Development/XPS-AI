@@ -5,22 +5,17 @@ Tests for tools.nn.pipeline: SegmenterPipeline end-to-end.
 import numpy as np
 import pytest
 
+from core.dto import SpectrumDTO
 from tools.nn.pipeline import SegmenterPipeline
 from tools.nn.segmenter import ONNXSegmenterAdapter, SegmenterResult
 
 
-class _SpectrumLike:
-    def __init__(self, x: np.ndarray, y: np.ndarray) -> None:
-        self.x = x
-        self.y = y
-
-
 @pytest.fixture
-def fixture_spectrum() -> _SpectrumLike:
-    """Spectrum-like fixture: Gaussian-like bump, positive y."""
+def fixture_spectrum() -> SpectrumDTO:
+    """Spectrum DTO fixture: Gaussian-like bump, positive y."""
     x = np.linspace(0.0, 10.0, 200, dtype=np.float64)
     y = np.exp(-((x - 5.0) ** 2) / 2.0) + 0.1
-    return _SpectrumLike(x, y)
+    return SpectrumDTO(id_="s", parent_id=None, normalized=True, x=x, y=y)
 
 
 class _MockAdapter:
@@ -35,14 +30,14 @@ class _MockAdapter:
         return {"region_mask": region_mask, "max_mask": max_mask}
 
 
-def test_segmenter_pipeline_run_without_model_raises(fixture_spectrum: _SpectrumLike) -> None:
+def test_segmenter_pipeline_run_without_model_raises(fixture_spectrum: SpectrumDTO) -> None:
     """SegmenterPipeline with no model path raises when run (adapter has no session)."""
     pipeline = SegmenterPipeline(model_path=None)
     with pytest.raises(RuntimeError, match="no model loaded"):
         pipeline.run(fixture_spectrum, fixture_spectrum)
 
 
-def test_segmenter_pipeline_run_with_mock_adapter(fixture_spectrum: _SpectrumLike) -> None:
+def test_segmenter_pipeline_run_with_mock_adapter(fixture_spectrum: SpectrumDTO) -> None:
     """SegmenterPipeline with patched adapter returns list[SegmenterResult]."""
     pipeline = SegmenterPipeline(model_path=None)
     pipeline.adapter = _MockAdapter()

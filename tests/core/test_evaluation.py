@@ -1,37 +1,35 @@
 """
-Tests for tools.evaluation module (stateless evaluation functions).
+Tests for core.evaluation module (stateless evaluation functions).
 
-The evaluation module operates on Protocol-typed objects (ComponentLike, RegionLike,
-SpectrumLike). These tests use DTOs from DTOService as concrete implementations
-of those protocols.
+These tests use DTOs from DTOService as inputs to the evaluation helpers.
 """
 
 import numpy as np
 import pytest
 
-from core.types import ComponentLike, RegionLike, SpectrumLike
-from tools.evaluation import component_result, component_y, region_bundle, spectrum_bundle
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.evaluation import component_result, component_y, region_bundle, spectrum_bundle
 
 
 @pytest.fixture
-def simple_component(dto_service) -> ComponentLike:
+def simple_component(dto_service) -> ComponentDTO:
     return dto_service.get_component("p1")
 
 
 @pytest.fixture
-def simple_region_bundle(dto_service) -> tuple[RegionLike, tuple[ComponentLike, ...]]:
+def simple_region_bundle(dto_service) -> tuple[RegionDTO, tuple[ComponentDTO, ...]]:
     return dto_service.get_region_repr("r1")
 
 
 @pytest.fixture
 def simple_spectrum_bundle(
     dto_service,
-) -> tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]:
+) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
     return dto_service.get_spectrum_repr("s1")
 
 
 def test_component_y(
-    simple_component: ComponentLike,
+    simple_component: ComponentDTO,
     x_axis: np.ndarray,
     simple_gauss: np.ndarray,
 ) -> None:
@@ -40,7 +38,7 @@ def test_component_y(
 
 
 def test_component_result_wraps_correctly(
-    simple_component: ComponentLike,
+    simple_component: ComponentDTO,
     x_axis: np.ndarray,
     simple_gauss: np.ndarray,
 ) -> None:
@@ -52,7 +50,7 @@ def test_component_result_wraps_correctly(
 
 
 def test_region_bundle(
-    simple_region_bundle: tuple[RegionLike, tuple[ComponentLike, ...]],
+    simple_region_bundle: tuple[RegionDTO, tuple[ComponentDTO, ...]],
     x_axis: np.ndarray,
     simple_gauss: np.ndarray,
 ) -> None:
@@ -65,7 +63,7 @@ def test_region_bundle(
 
 def test_spectrum_bundle(
     simple_spectrum_bundle: tuple[
-        SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]
+        SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]
     ],
 ) -> None:
     result = spectrum_bundle(*simple_spectrum_bundle)

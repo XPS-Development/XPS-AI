@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 import tools.optimization as optimization_module
+from core.dto import ComponentDTO, ParameterDTO
 from core.math_models import PseudoVoigtPeakModel
-from tools.dto import ComponentDTO, ParameterDTO
 from tools.optimization import (
     LmfitOptimizer,
     OptimizationContext,

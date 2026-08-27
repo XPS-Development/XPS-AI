@@ -5,25 +5,22 @@ Tests for tools.nn.segmenter: SegmenterPreprocessor output shape and value range
 import numpy as np
 import pytest
 
+from core.dto import SpectrumDTO
 from tools.nn.segmenter import ONNXSegmenterAdapter, SegmenterPreprocessor
 
 
-class _SpectrumLike:
-    """Minimal SpectrumLike for tests."""
-
-    def __init__(self, x: np.ndarray, y: np.ndarray) -> None:
-        self.x = x
-        self.y = y
+def _spectrum(x: np.ndarray, y: np.ndarray) -> SpectrumDTO:
+    return SpectrumDTO(id_="s", parent_id=None, normalized=True, x=x, y=y)
 
 
 @pytest.fixture
-def spectrum_like() -> _SpectrumLike:
+def spectrum_like() -> SpectrumDTO:
     x = np.linspace(0.0, 10.0, 100, dtype=np.float64)
     y = np.exp(-((x - 5.0) ** 2) / 2.0) + 0.1  # positive, normalized-like
-    return _SpectrumLike(x, y)
+    return _spectrum(x, y)
 
 
-def test_segmenter_preprocessor_output_shape(spectrum_like: _SpectrumLike) -> None:
+def test_segmenter_preprocessor_output_shape(spectrum_like: SpectrumDTO) -> None:
     """Preprocessor output has key INPUT_KEY and value shape (1, 2, num)."""
     pre = SegmenterPreprocessor(num=64)
     model_input, _ = pre(spectrum_like)
@@ -33,7 +30,7 @@ def test_segmenter_preprocessor_output_shape(spectrum_like: _SpectrumLike) -> No
     assert arr.dtype == np.float32
 
 
-def test_segmenter_preprocessor_value_ranges(spectrum_like: _SpectrumLike) -> None:
+def test_segmenter_preprocessor_value_ranges(spectrum_like: SpectrumDTO) -> None:
     """First channel is original-like; second channel is log-scaled in [0, 1]."""
     pre = SegmenterPreprocessor(num=128)
     model_input, _ = pre(spectrum_like)
@@ -50,5 +47,5 @@ def test_segmenter_preprocessor_default_num() -> None:
     x = np.linspace(0, 1, 50)
     y = np.ones(50)
     pre = SegmenterPreprocessor()
-    model_input, _ = pre(_SpectrumLike(x, y))
+    model_input, _ = pre(_spectrum(x, y))
     assert model_input[ONNXSegmenterAdapter.INPUT_KEY].shape == ONNXSegmenterAdapter.INPUT_SHAPE

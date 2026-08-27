@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from core.types import ComponentLike
+from core.dto import ComponentDTO
 from tools.csv_export import SpectrumRepr, export_spectrum_csv, export_spectrum_peak_parameters_csv
 
 
@@ -12,7 +12,7 @@ class CSVExportService:
     def export_spectrum_peak_parameters(
         self,
         path: str | Path,
-        components: tuple[ComponentLike, ...],
+        components: tuple[ComponentDTO, ...],
         *,
         separator: str = ",",
         use_xps_peak_names: bool = False,
@@ -25,7 +25,7 @@ class CSVExportService:
         ----------
         path : str or Path
             Output file path.
-        components : tuple[ComponentLike, ...]
+        components : tuple[ComponentDTO, ...]
             Components to export as peak-parameter table.
         separator : str, optional
             Column separator character.

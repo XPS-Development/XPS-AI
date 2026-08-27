@@ -1,7 +1,7 @@
 """
 NN adapter and pre/postprocessing pipelines.
 
-Pipeline input is SpectrumLike (core.types); for the segmenter, y is expected
+Pipeline input is SpectrumDTO (core.dto); for the segmenter, y is expected
 normalized. Output types (e.g. RegionBounds) are converted to CreateRegion /
 CreatePeak in the app layer.
 """

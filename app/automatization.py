@@ -6,11 +6,11 @@ Provides services for routine tasks.
 
 from typing import Literal
 
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
 from tools.automatization import (
     calculate_background_intensities,
     create_pseudo_voigt_peak_parameters,
 )
-from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO
 
 from .command.changes import (
     CreateBackground,

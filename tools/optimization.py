@@ -3,7 +3,7 @@ Lmfit-based optimization for spectral fitting.
 
 Provides OptimizationContext, OptimizationExpressionPlan, OptimizationPlanner,
 LmfitOptimizer, and optimize()
-for use as a standalone library or via the app layer. Uses core.types protocols only;
+for use as a standalone library or via the app layer. Uses core.dto projections;
 """
 
 import re
@@ -14,8 +14,8 @@ import numpy as np
 from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
 
-from core.types import ComponentLike, RegionLike
-from tools.evaluation import component_y
+from core.dto import ComponentDTO, RegionDTO
+from core.evaluation import component_y
 
 _COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 
@@ -48,7 +48,7 @@ def resolve_component_reference(token: str, component_ids: Iterable[str]) -> str
     return None
 
 
-def _component_fully_fixed(cmp: ComponentLike) -> bool:
+def _component_fully_fixed(cmp: ComponentDTO) -> bool:
     """Return True if every parameter has ``vary=False``.
 
     Lmfit holds values fixed; expr is ignored for vary.
@@ -64,8 +64,7 @@ class OptimizationContext:
     """
     Region-like context with components to optimize.
 
-    Satisfies RegionLike requirements (x, y) plus components.
-    Uses protocols for library API compatibility.
+    Holds region arrays (x, y) plus components to optimize.
     """
 
     id_: str
@@ -73,23 +72,23 @@ class OptimizationContext:
     normalized: bool
     x: np.ndarray
     y: np.ndarray
-    components: tuple[ComponentLike, ...]
+    components: tuple[ComponentDTO, ...]
 
 
 def build_contexts(
-    region_reprs: Sequence[tuple[RegionLike, Sequence[ComponentLike]]],
+    region_reprs: Sequence[tuple[RegionDTO, Sequence[ComponentDTO]]],
 ) -> tuple[OptimizationContext, ...]:
     """
-    Build optimization contexts from region-like and component-like data.
+    Build optimization contexts from region and component DTOs.
 
     Subtracts contributions of fully fixed components (all parameters have
     ``vary=False``) from ``y`` and includes only components to optimize.
-    Works with any RegionLike and ComponentLike
+    Works with RegionDTO and ComponentDTO
     (e.g. DTOs from DTOService.get_region_repr).
 
     Parameters
     ----------
-    region_reprs : Sequence[tuple[RegionLike, Sequence[ComponentLike]]]
+    region_reprs : Sequence[tuple[RegionDTO, Sequence[ComponentDTO]]]
         Per-region (region, components) pairs.
 
     Returns
@@ -101,7 +100,7 @@ def build_contexts(
 
     for region, components in region_reprs:
         y = region.y.copy()
-        cmps_to_opt: list[ComponentLike] = []
+        cmps_to_opt: list[ComponentDTO] = []
 
         for cmp in components:
             if _component_fully_fixed(cmp):
@@ -162,7 +161,7 @@ def _analyze_parameter_expression(
     owner_component_id: str,
     param_name: str,
     known_ids: frozenset[str],
-    components_by_id: dict[str, ComponentLike],
+    components_by_id: dict[str, ComponentDTO],
     graph: dict[str, set[str]],
 ) -> str | None:
     tokens = _COMPONENT_REF_RE.findall(expr)
@@ -304,12 +303,12 @@ class OptimizationPlanner:
 
 
 class LmfitOptimizer:
-    """Maps ComponentLike parameters to lmfit.Parameters and resolves component-scoped expressions."""
+    """Maps ComponentDTO parameters to lmfit.Parameters and resolves component-scoped expressions."""
 
     def __init__(self) -> None:
-        self._component_index: dict[str, ComponentLike] = {}
+        self._component_index: dict[str, ComponentDTO] = {}
 
-    def _build_component_index(self, components: Sequence[ComponentLike]) -> None:
+    def _build_component_index(self, components: Sequence[ComponentDTO]) -> None:
         self._component_index = {cmp.id_: cmp for cmp in components}
 
     def _translate_expr_for_component(
@@ -332,7 +331,7 @@ class LmfitOptimizer:
 
     def _to_params(
         self,
-        components: Sequence[ComponentLike],
+        components: Sequence[ComponentDTO],
         *,
         expression_plan: OptimizationExpressionPlan | None = None,
     ) -> Parameters:

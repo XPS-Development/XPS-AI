@@ -215,7 +215,7 @@ class ControllerWrapper(QObject):
 
         Returns
         -------
-        SpectrumLike
+        SpectrumDTO
             Spectrum projection with x and y arrays.
         """
         return self._orchestrator.query.get_spectrum_dto(spectrum_id, normalized=normalized)
@@ -235,7 +235,7 @@ class ControllerWrapper(QObject):
 
         Returns
         -------
-        RegionLike
+        RegionDTO
             Region projection with x and y arrays.
         """
         return self._orchestrator.query.get_region_dto(region_id, normalized=normalized)
@@ -255,7 +255,7 @@ class ControllerWrapper(QObject):
 
         Returns
         -------
-        tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]
+        tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]
             Spectrum and its regions with components for evaluation.
         """
         return self._orchestrator.query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
@@ -277,7 +277,7 @@ class ControllerWrapper(QObject):
 
         Returns
         -------
-        tuple[RegionLike, tuple[ComponentLike, ...]]
+        tuple[RegionDTO, tuple[ComponentDTO, ...]]
             Region and its components for evaluation.
         """
         return self._orchestrator.query.get_region_dto_repr(region_id, normalized=normalized)

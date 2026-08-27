@@ -1,4 +1,4 @@
-"""CSV-like export helpers for ObjectLike projections."""
+"""CSV-like export helpers for DTO projections."""
 
 import csv
 from collections.abc import Iterable
@@ -7,15 +7,15 @@ from pathlib import Path
 
 import numpy as np
 
-from core.types import ComponentLike, RegionLike, SpectrumLike
-from tools.evaluation import spectrum_bundle
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.evaluation import spectrum_bundle
 
-SpectrumRepr = tuple[SpectrumLike, tuple[tuple[RegionLike, tuple[ComponentLike, ...]], ...]]
+SpectrumRepr = tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]
 
 
 def export_spectrum_peak_parameters_csv(
     path: str | Path,
-    components: tuple[ComponentLike, ...],
+    components: tuple[ComponentDTO, ...],
     separator: str = ",",
     *,
     use_xps_peak_names: bool = False,
@@ -28,7 +28,7 @@ def export_spectrum_peak_parameters_csv(
     ----------
     path : str or Path
         Output file path.
-    components : tuple[ComponentLike, ...]
+    components : tuple[ComponentDTO, ...]
         Components belonging to a spectrum or a selected subset.
     separator : str, optional
         Column separator character.
@@ -158,7 +158,7 @@ def _serialize_spectrum_csv(
 
 
 def _serialize_spectrum_peak_parameters_csv(
-    components: tuple[ComponentLike, ...],
+    components: tuple[ComponentDTO, ...],
     separator: str = ",",
     *,
     use_xps_peak_names: bool = False,
@@ -244,13 +244,13 @@ def _map_region_points_to_spectrum_indices(
     return np.asarray(mapped, dtype=int)
 
 
-def _pseudo_voigt_xps_alias_values(component: ComponentLike) -> list[tuple[str, float]]:
+def _pseudo_voigt_xps_alias_values(component: ComponentDTO) -> list[tuple[str, float]]:
     """
     Return pseudo-voigt parameters as XPS-style aliases.
 
     Parameters
     ----------
-    component : ComponentLike
+    component : ComponentDTO
         Peak component with pseudo-voigt parameters.
 
     Returns
@@ -271,7 +271,7 @@ def _pseudo_voigt_xps_alias_values(component: ComponentLike) -> list[tuple[str, 
 
 
 def _peak_parameter_values(
-    component: ComponentLike, use_xps_peak_names: bool
+    component: ComponentDTO, use_xps_peak_names: bool
 ) -> list[tuple[str, float]]:
     """Return export parameter/value pairs for a peak component."""
     if component.kind != "peak":

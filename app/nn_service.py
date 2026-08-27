@@ -8,7 +8,7 @@ via the SegmenterPipelineAdapter.
 
 from pathlib import Path
 
-from core.types import SpectrumLike
+from core.dto import SpectrumDTO
 from tools.nn import SegmenterPipeline
 
 from .command.changes import CompositeChange
@@ -66,8 +66,8 @@ class NNService:
     def run_segmenter(
         self,
         spectrum_id: str,
-        normalized_spectrum: SpectrumLike,
-        original_spectrum: SpectrumLike,
+        normalized_spectrum: SpectrumDTO,
+        original_spectrum: SpectrumDTO,
     ) -> CompositeChange:
         """
         Run the segmenter pipeline and return Change objects.
@@ -76,9 +76,9 @@ class NNService:
         ----------
         spectrum_id : str
             Identifier of the parent spectrum for CreateRegion.
-        normalized_spectrum : SpectrumLike
+        normalized_spectrum : SpectrumDTO
             Spectrum with normalized y (e.g. from DTOService.get_spectrum(..., normalized=True)).
-        original_spectrum : SpectrumLike
+        original_spectrum : SpectrumDTO
             Original spectrum with raw x/y (e.g. from DTOService.get_spectrum(..., normalized=False)).
 
         Returns

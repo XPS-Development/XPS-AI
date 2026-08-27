@@ -3,7 +3,7 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from tools.dto import ComponentDTO, ParameterDTO, RegionDTO, SpectrumDTO
+from core.dto import ComponentDTO, ParameterDTO, RegionDTO, SpectrumDTO
 
 
 @pytest.fixture
