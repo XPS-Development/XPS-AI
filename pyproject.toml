@@ -68,7 +68,6 @@ ignore = [
 "core/io/serialization.py" = ["ANN401"]
 "app/json_utils.py" = ["ANN401"]
 "scripts/**" = ["ANN", "D"]
-"formats/vamas.py" = ["ANN", "D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

@@ -1,397 +1,368 @@
-################################################################################
-#
-# vamas.py
-#
-# Provides a python VAMAS object for use by other apps.
-#
-################################################################################
-#
-# Copyright 2014 Kane O'Donnell
-#
-#     This library is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    This library is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-#
-################################################################################
-#
-# NOTES
-#
-# 1. Yes, a lot of this stuff could have been made easier with NumPy. I've tried
-# to avoid it so people can use this code with stock python.
-#
-# 2. We implicitly assume here that any kinetic scale is given with respect to
-# the Fermi level, not the vacuum level at the spectrometer.
-#
-################################################################################
+"""
+VAMAS 1988 subset parser for electron spectroscopy import.
 
+Original implementation of the Surface Chemical Analysis Standard Data
+Transfer Format (Dench et al., Surf. Interface Anal. 13, 1988). Supports
+``NORM`` experiments with ``REGULAR`` scans and electron spectroscopy
+techniques (XPS, UPS, AES, ELS, EDX, XRF). Not derived from third-party
+GPL code.
+
+We assume kinetic energy scales refer to the Fermi level, not the vacuum
+level at the spectrometer.
+"""
+
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from numpy.typing import NDArray
 
 from core.metadata import SpectrumMetadata
 
 from .types import ParsedSpectrum
 
-
-class VAMAS:
-    def __init__(self, filename) -> None:
-        """Can only init by providing a VAMAS file."""
-        f = open(filename)
-        if f:
-            lines = f.readlines()
-            f.close()
-            self.LoadFromText(lines)
-        else:
-            print("Error (vamas.py, VAMAS.__init__): File %s failed to open.")
-
-    def LoadFromText(self, lines) -> None:
-        """Reads VAMAS text. Format taken from Dench et al, Surf. Interface Anal. 13 (1988) p 63."""
-        content = iter(lines)
-
-        # First read content of the header.
-
-        self.header = VAMASHeader(content)
-
-        # Now grab all the blocks
-
-        self.blocks = []
-        for _i in range(self.header.num_blocks):
-            self.blocks.append(VAMASBlock(self.header, content))  # Block is an object
-
-        # Should now get the experiment terminator: check.
-
-        check_line = next(content).strip()
-        if check_line != "end of experiment":
-            print(
-                "Warning (VAMAS.py, VAMAS::LoadFromText): Failed to find experiment terminator in expected place. VAMAS file may be corrupt."
-            )
+_SUPPORTED_EXPERIMENT_MODES = frozenset({"NORM"})
+_SUPPORTED_SCAN_MODES = frozenset({"REGULAR"})
+_SUPPORTED_TECHNIQUES = frozenset(
+    {
+        "XPS",
+        "UPS",
+        "AES diff",
+        "AES dir",
+        "ELS",
+        "EDX",
+        "XRF",
+    }
+)
+_DIFF_WIDTH_TECHNIQUES = frozenset({"AES diff"})
 
 
-class VAMASHeader:
-    def __init__(self, content) -> None:
-        """Parameter 'content' should be an iterator containing lines of text."""
-        self.LoadFromIterator(content)
-
-    def LoadFromIterator(self, content) -> None:
-
-        self.format = next(content).strip()
-        self.institution = next(content).strip()
-        self.instrument = next(content).strip()
-        self.operator = next(content).strip()
-        self.experiment = next(content).strip()
-
-        counter = int(next(content))  # number of comment lines
-        self.comments = []
-        for _i in range(counter):
-            self.comments.append(next(content).strip())
-
-        self.experiment_mode = next(content).strip()
-        self.scan_mode = next(content).strip()
-
-        if self.experiment_mode in ["MAP", "MAPDP", "NORM", "SDP"]:
-            self.num_spectral_regions = int(next(content))
-        else:
-            self.num_spectral_regions = None
-
-        if self.experiment_mode in ["MAP", "MAPDP"]:
-            self.num_analysis_positions = int(next(content))
-            self.num_x_coords = int(next(content))
-            self.num_y_coords = int(next(content))
-        else:
-            self.num_analysis_positions = None
-            self.num_x_coords = None
-            self.num_y_coords = None
-
-        counter = int(next(content))  # Number of experimental variables
-        self.experimental_variable_names = []
-        self.experimental_variable_units = []
-        for _i in range(counter):
-            self.experimental_variable_names.append(next(content).strip())
-            self.experimental_variable_units.append(next(content).strip())
-
-        counter = int(next(content))  # Number of parameters on the inclusion
-        # or exclusion list
-        self.param_inclusion_exclusion_list = []
-        for _i in range(counter):
-            self.param_inclusion_exclusion_list.append(next(content).strip())
-
-        counter = int(next(content))  # Number of manually entered items in block
-        self.manually_entered_items_list = []
-        for _i in range(counter):
-            self.manually_entered_items_list.append(next(content).strip())
-
-        counter = int(next(content))  # Number of future upgrade experiment entries
-        self.num_future_upgrade_block_entries = int(
-            next(content)
-        )  # Same for future upgrade blocks - use this later.
-
-        self.future_upgrade_experiment_entries = []
-        for _i in range(counter):
-            self.future_upgrade_experiment_entries.append(next(content).strip())
-
-        self.num_blocks = int(next(content))
+class UnsupportedVamasFormat(ValueError):
+    """Raised when a VAMAS file is outside the supported subset."""
 
 
-class VAMASBlock:
-    def __init__(self, header, content) -> None:
-        """Parameter 'header' should be an initialized VAMASHeader object. Parameter
-        'content' should be an iterator containing lines of text.
-        """
-        self.LoadFromIterator(header, content)
-        if header.scan_mode == "REGULAR":
-            self.MakeAxes()
-        self.ReorderOrdinates()
+@dataclass(frozen=True)
+class _VamasHeader:
+    """Header fields required to parse blocks in the supported subset."""
 
-    def LoadFromIterator(self, header, content) -> None:
+    experiment_mode: str
+    scan_mode: str
+    experimental_variable_count: int
+    num_future_upgrade_block_entries: int
+    num_blocks: int
 
-        self.header = header  # So we always have a link back to the header data.
-        self.name = next(content).strip()
-        self.sample = next(content).strip()
-        self.year = int(next(content))
-        self.month = int(next(content))
-        self.day = int(next(content))
-        self.hours = int(next(content))
-        self.minutes = int(next(content))
-        self.seconds = int(next(content))
-        self.GMT_offset = int(next(content))
 
-        counter = int(next(content))  # Number of lines in block comment
+@dataclass(frozen=True)
+class _VamasBlock:
+    """Parsed spectral block with energy axis metadata and ordinate arrays."""
 
-        self.comments = []
-        for _i in range(counter):
-            self.comments.append(next(content).strip())
+    name: str
+    sample: str
+    technique: str
+    source_energy: float
+    abscissa_label: str
+    abscissa_start: float
+    abscissa_increment: float
+    num_corresponding_variables: int
+    num_ordinate_values: int
+    ordinates: NDArray[np.float64]
 
-        self.technique = next(content).strip()
 
-        if header.experiment_mode in ["MAP", "MAPDP"]:
-            self.x_coord = float(next(content))
-            self.y_coord = float(next(content))
+class _LineReader:
+    """Sequential reader over stripped VAMAS text lines."""
 
-        self.experimental_variables = []
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = iter(lines)
 
-        for _i in range(len(header.experimental_variable_names)):
-            self.experimental_variables.append(float(next(content)))
+    def next_str(self) -> str:
+        """Return the next non-empty line (stripped)."""
+        try:
+            return next(self._lines).strip()
+        except StopIteration as exc:
+            raise ValueError("Unexpected end of VAMAS file") from exc
 
-        self.analysis_source = next(content).strip()
+    def next_int(self) -> int:
+        """Return the next line as an integer."""
+        return int(self.next_str())
 
-        if (header.experiment_mode in ["MAPDP", "MADSVDP", "SDP", "SDPSV"]) or self.technique in [
-            "FABMS",
-            "FABMS energy spec",
-            "ISS",
-            "SIMS",
-            "SIMS energy spec",
-            "SNMS",
-            "SNMS energy spec",
-        ]:
-            self.sputtering_species_atomic_number = int(next(content))
-            self.num_atoms_in_sputtering_particle = int(next(content))
-            self.sputtering_species_charge = int(next(content))
+    def next_float(self) -> float:
+        """Return the next line as a float."""
+        return float(self.next_str())
 
-        self.source_energy = float(next(content))
-        self.source_strength = float(next(content))
-        self.beam_width_x = float(next(content))
-        self.beam_width_y = float(next(content))
+    def expect(self, text: str) -> None:
+        """Consume a line and verify it equals ``text``."""
+        line = self.next_str()
+        if line != text:
+            msg = f"Expected {text!r}, got {line!r}"
+            raise ValueError(msg)
 
-        if header.experiment_mode in ["MAP", "MAPDP", "MAPSV", "MAPSVDP", "SEM"]:
-            self.field_of_view_x = float(next(content))
-            self.field_of_view_y = float(next(content))
 
-        if header.experiment_mode in ["MAPSV", "MAPSVDP", "SEM"]:
-            self.first_linescan_start_x = int(next(content))
-            self.first_linescan_start_y = int(next(content))
-            self.first_linescan_finish_x = int(next(content))
-            self.first_linescan_finish_y = int(next(content))
-            self.last_linescan_finish_x = int(next(content))
-            self.last_linescan_finish_y = int(next(content))
+def _read_lines(path: Path) -> list[str]:
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        return handle.read().splitlines()
 
-        self.source_polar_angle = float(next(content))
-        self.source_azimuth = float(next(content))
-        self.analyser_mode = next(content).strip()
-        self.analyser_pass_energy = float(next(content))
 
-        if self.technique == "AES diff":
-            self.differential_width = float(next(content))
+def _parse_header(reader: _LineReader) -> _VamasHeader:
+    _ = reader.next_str()  # format identifier
+    _ = reader.next_str()  # institution
+    _ = reader.next_str()  # instrument
+    _ = reader.next_str()  # operator
+    _ = reader.next_str()  # experiment title
 
-        self.analyser_mag = float(next(content))
-        # Note: the next parameter is the workfunction for AES, EELS, ISS, UPS and XPS. It is the energy filter pass energy for FABMS, SIMS and SNMS.
-        self.analyser_work_function = float(next(content))
-        self.target_bias = float(next(content))
-        # Note: the following two parameters are called analysis widths but vary depending on the technique - see the original paper.
-        self.analysis_width_x = float(next(content))
-        self.analysis_width_y = float(next(content))
-        self.analyser_polar_angle = float(next(content))
-        self.analyser_azimuth = float(next(content))
-        self.species = next(content).strip()
-        # Note: next parameter is transition for e.g. XPS and AES and charge state for e.g. SIMS.
-        self.transition = next(content).strip()
-        self.charge_of_detected_particle = int(next(content))
+    comment_count = reader.next_int()
+    for _ in range(comment_count):
+        _ = reader.next_str()
 
-        if header.scan_mode == "REGULAR":
-            self.abscissa_label = next(content).strip()
-            self.abscissa_units = next(content).strip()
-            self.abscissa_start = float(next(content))
-            self.abscissa_increment = float(next(content))
+    experiment_mode = reader.next_str()
+    scan_mode = reader.next_str()
 
-        self.num_corresponding_variables = int(next(content))
+    if experiment_mode not in _SUPPORTED_EXPERIMENT_MODES:
+        msg = f"Unsupported VAMAS experiment_mode {experiment_mode!r}"
+        raise UnsupportedVamasFormat(msg)
+    if scan_mode not in _SUPPORTED_SCAN_MODES:
+        msg = f"Unsupported VAMAS scan_mode {scan_mode!r}"
+        raise UnsupportedVamasFormat(msg)
 
-        self.corresponding_variable_labels = []
-        self.corresponding_variable_units = []
-        for _i in range(self.num_corresponding_variables):
-            self.corresponding_variable_labels.append(next(content).strip())
-            self.corresponding_variable_units.append(next(content).strip())
+    _ = reader.next_int()  # num_spectral_regions for NORM
 
-        self.signal_mode = next(content).strip()
-        self.signal_collection_time = float(next(content))
-        self.num_scans = int(next(content))
-        self.signal_time_correction = float(next(content))
+    experimental_variable_count = reader.next_int()
+    for _ in range(experimental_variable_count):
+        _ = reader.next_str()  # name
+        _ = reader.next_str()  # units
 
-        if (
-            self.technique in ["AES diff", "AES dir", "EDX", "ELS", "UPS", "XPS", "XRF"]
-        ) and header.experiment_mode in ["MAPDP", "MAPSVDP", "SDP", "SDPSV"]:
-            self.sputter_source_energy = float(next(content))
-            self.sputter_beam_current = float(next(content))
-            self.sputter_source_width_x = float(next(content))
-            self.sputter_source_width_y = float(next(content))
-            self.sputter_polar_angle = float(next(content))
-            self.sputter_azimuth = float(next(content))
-            self.sputter_mode = next(content).strip()
+    inclusion_count = reader.next_int()
+    for _ in range(inclusion_count):
+        _ = reader.next_str()
 
-        self.sample_normal_tilt_polar_angle = float(next(content))
-        self.sample_normal_tilt_azimuth = float(next(content))
-        self.sample_rotation_angle = float(next(content))
+    manual_count = reader.next_int()
+    for _ in range(manual_count):
+        _ = reader.next_str()
 
-        counter = int(next(content))
-        self.additional_param_labels = []
-        self.additional_param_units = []
-        self.additional_param_values = []
-        for _i in range(counter):
-            self.additional_param_labels.append(next(content).strip())
-            self.additional_param_units.append(next(content).strip())
-            self.additional_param_values.append(float(next(content)))
+    _ = reader.next_int()  # future upgrade experiment entry count
+    num_future_upgrade_block_entries = reader.next_int()
+    num_blocks = reader.next_int()
 
-        self.future_upgrade_block_entries = []
-        for _i in range(header.num_future_upgrade_block_entries):
-            self.future_upgrade_block_entries.append(next(content).strip())
+    return _VamasHeader(
+        experiment_mode=experiment_mode,
+        scan_mode=scan_mode,
+        experimental_variable_count=experimental_variable_count,
+        num_future_upgrade_block_entries=num_future_upgrade_block_entries,
+        num_blocks=num_blocks,
+    )
 
-        self.num_ordinate_values = int(next(content))
 
-        self.minimum_ordinate_values = []
-        self.maximum_ordinate_values = []
-        for _i in range(self.num_corresponding_variables):
-            self.minimum_ordinate_values.append(float(next(content)))
-            self.maximum_ordinate_values.append(float(next(content)))
+def _parse_block(header: _VamasHeader, reader: _LineReader) -> _VamasBlock:
+    name = reader.next_str()
+    sample = reader.next_str()
 
-        # The ordinates are next (FINALLY!). Just read them as a list and process later.
+    for _ in range(7):
+        _ = reader.next_int()  # date/time fields
 
-        self.ordinates = []
-        for _i in range(self.num_ordinate_values):
-            self.ordinates.append(float(next(content)))
+    comment_count = reader.next_int()
+    for _ in range(comment_count):
+        _ = reader.next_str()
 
-    def MakeAxes(self) -> None:
-        """Uses the abscissa data to construct binding energy and kinetic energy labels."""
-        # So, the VAMAS file provides the number of ordinate values which is a multiple of the number of corresponding variables with number of ordinates for each variable.
-        # We also have the abscissa start and the increment. We can use this to generate a generic energy axis.
-        # On top of that, we can use the abscissa label to guess whether the abscissa is kinetic or binding (for electron spectroscopy) and then generate the other one using the photon energy and work function.
+    technique = reader.next_str()
+    if technique not in _SUPPORTED_TECHNIQUES:
+        msg = (
+            f"Unsupported VAMAS technique {technique!r} "
+            f"(experiment_mode={header.experiment_mode!r}, "
+            f"scan_mode={header.scan_mode!r})"
+        )
+        raise UnsupportedVamasFormat(msg)
 
-        # Note we have __future__ division here but we're explicitly casting just in
-        # case someone messes with the source code. Int division paranoia!
-        num_ords = int(float(self.num_ordinate_values) / float(self.num_corresponding_variables))
+    for _ in range(header.experimental_variable_count):
+        _ = reader.next_float()
 
-        self.axis = []
-        for i in range(num_ords):
-            self.axis.append(self.abscissa_start + i * self.abscissa_increment)
+    _ = reader.next_str()  # analysis source
+    source_energy = reader.next_float()
+    _ = reader.next_float()  # source strength
+    _ = reader.next_float()  # beam width x
+    _ = reader.next_float()  # beam width y
+    _ = reader.next_float()  # source polar angle
+    _ = reader.next_float()  # source azimuth
+    _ = reader.next_str()  # analyser mode
+    _ = reader.next_float()  # analyser pass energy
 
-        # Now, is the word kinetic in the label?
-        if "kinetic" in self.abscissa_label.lower():
-            self.kinetic_axis = []
-            self.binding_axis = []
-            for i in range(num_ords):
-                self.kinetic_axis.append(self.abscissa_start + i * self.abscissa_increment)
-                self.binding_axis.append(
-                    -1 * (self.abscissa_start + i * self.abscissa_increment) + self.source_energy
-                )
-        elif "binding" in self.abscissa_label.lower():
-            self.kinetic_axis = []
-            self.binding_axis = []
-            for i in range(num_ords):
-                self.binding_axis.append(self.abscissa_start + i * self.abscissa_increment)
-                self.kinetic_axis.append(
-                    -1 * (self.abscissa_start + i * self.abscissa_increment) + self.source_energy
-                )
+    if technique in _DIFF_WIDTH_TECHNIQUES:
+        _ = reader.next_float()
 
-        # As a last item, calculate the dwell time per set of corresponding variables.
-        self.dwell_time = float(num_ords) / self.signal_collection_time
+    _ = reader.next_float()  # analyser magnification
+    _ = reader.next_float()  # work function / filter pass energy
+    _ = reader.next_float()  # target bias
+    _ = reader.next_float()  # analysis width x
+    _ = reader.next_float()  # analysis width y
+    _ = reader.next_float()  # analyser polar angle
+    _ = reader.next_float()  # analyser azimuth
+    _ = reader.next_str()  # species
+    _ = reader.next_str()  # transition / charge state label
+    _ = reader.next_int()  # charge of detected particle
 
-    def ReorderOrdinates(self) -> None:
-        """Creates a list of lists by reordering the ordinate values. In the VAMAS file if there are N corresponding variables, the ordinates are listed as 1_1, .... 1_N, 2_1, .... , 2_N, etc where for each abscissa value all the corresponding values are listed in sequence. ReorderOrdinates creates a list [[1_1, 2_1, ...], ... , [1_N, 2_N, ...]], i.e. a list each for all the corresponding variables."""
-        int(float(self.num_ordinate_values) / float(self.num_corresponding_variables))
+    abscissa_label = reader.next_str()
+    _ = reader.next_str()  # abscissa units
+    abscissa_start = reader.next_float()
+    abscissa_increment = reader.next_float()
 
-        self.data = []
+    num_corresponding_variables = reader.next_int()
+    for _ in range(num_corresponding_variables):
+        _ = reader.next_str()  # label
+        _ = reader.next_str()  # units
 
-        for i in range(self.num_corresponding_variables):
-            tmp = []
-            for j in range(i, self.num_ordinate_values, self.num_corresponding_variables):
-                tmp.append(self.ordinates[j])
-            self.data.append(tmp)
+    _ = reader.next_str()  # signal mode
+    _ = reader.next_float()  # signal collection time
+    _ = reader.next_int()  # number of scans
+    _ = reader.next_float()  # signal time correction
+
+    _ = reader.next_float()  # sample normal tilt polar
+    _ = reader.next_float()  # sample normal tilt azimuth
+    _ = reader.next_float()  # sample rotation angle
+
+    additional_count = reader.next_int()
+    for _ in range(additional_count):
+        _ = reader.next_str()
+        _ = reader.next_str()
+        _ = reader.next_float()
+
+    for _ in range(header.num_future_upgrade_block_entries):
+        _ = reader.next_str()
+
+    num_ordinate_values = reader.next_int()
+    for _ in range(num_corresponding_variables):
+        _ = reader.next_float()  # minimum ordinate
+        _ = reader.next_float()  # maximum ordinate
+
+    ordinates = np.fromiter(
+        (_parse_ordinate(reader) for _ in range(num_ordinate_values)),
+        dtype=np.float64,
+        count=num_ordinate_values,
+    )
+
+    return _VamasBlock(
+        name=name,
+        sample=sample,
+        technique=technique,
+        source_energy=source_energy,
+        abscissa_label=abscissa_label,
+        abscissa_start=abscissa_start,
+        abscissa_increment=abscissa_increment,
+        num_corresponding_variables=num_corresponding_variables,
+        num_ordinate_values=num_ordinate_values,
+        ordinates=ordinates,
+    )
+
+
+def _parse_ordinate(reader: _LineReader) -> float:
+    return reader.next_float()
+
+
+def _block_x_axis(
+    block: _VamasBlock,
+    *,
+    use_binding_energy: bool,
+) -> NDArray[np.float64] | None:
+    """Build the requested energy axis from abscissa metadata."""
+    n_pts = block.num_ordinate_values // block.num_corresponding_variables
+    if n_pts <= 0:
+        return None
+
+    abscissa = np.linspace(
+        block.abscissa_start,
+        block.abscissa_start + (n_pts - 1) * block.abscissa_increment,
+        n_pts,
+        dtype=np.float64,
+    )
+    label = block.abscissa_label.lower()
+
+    if "kinetic" in label:
+        kinetic = abscissa
+        binding = block.source_energy - kinetic
+    elif "binding" in label:
+        binding = abscissa
+        kinetic = block.source_energy - binding
+    else:
+        return None
+
+    return binding if use_binding_energy else kinetic
+
+
+def _block_y_values(block: _VamasBlock) -> NDArray[np.float64]:
+    n_vars = block.num_corresponding_variables
+    n_pts = block.num_ordinate_values // n_vars
+    data = block.ordinates.reshape(n_pts, n_vars).T
+    return np.asarray(data[0], dtype=np.float64)
+
+
+def _block_to_parsed_spectrum(
+    block: _VamasBlock,
+    path: Path,
+    *,
+    use_binding_energy: bool,
+) -> ParsedSpectrum | None:
+    x = _block_x_axis(block, use_binding_energy=use_binding_energy)
+    if x is None:
+        return None
+
+    y = _block_y_values(block)
+    if len(x) != len(y):
+        return None
+
+    return ParsedSpectrum(
+        x=x,
+        y=y,
+        metadata=SpectrumMetadata(
+            name=block.name,
+            group=block.sample or "",
+            file=str(path),
+        ),
+    )
 
 
 def parse_vamas(
-    path: Path,
+    path: str | Path,
     *,
     use_binding_energy: bool = True,
     use_cps: bool = True,
 ) -> list[ParsedSpectrum]:
     """
-    Parse a VAMAS file and return ParsedSpectrum instances for each block.
+    Parse a VAMAS file and return :class:`ParsedSpectrum` instances for each block.
 
     Parameters
     ----------
-    path : pathlib.Path
-            Path to the VAMAS (.vms or .vamas) file.
+    path : str or Path
+        Path to the VAMAS (``.vms`` or ``.vamas``) file.
     use_binding_energy : bool, optional
-        If True, use binding energy axis for x; otherwise use kinetic energy.
-        Default True.
+        If True, use binding energy for the x-axis; otherwise kinetic energy.
+    use_cps : bool, optional
+        Ignored for VAMAS; the first corresponding variable (typically counts)
+        is always used for intensities.
 
     Returns
     -------
     list[ParsedSpectrum]
-        One ParsedSpectrum per block in the file.
+        One spectrum per supported block in the file.
+
+    Raises
+    ------
+    UnsupportedVamasFormat
+        If the file uses an unsupported experiment mode, scan mode, or technique.
+    ValueError
+        If the file structure is invalid or truncated.
     """
-    vamas = VAMAS(path)
-    result = []
+    _ = use_cps
+    file_path = Path(path)
+    reader = _LineReader(_read_lines(file_path))
+    header = _parse_header(reader)
 
-    for block in vamas.blocks:
-        x_axis = (
-            getattr(block, "binding_axis", None)
-            if use_binding_energy
-            else getattr(block, "kinetic_axis", None)
+    result: list[ParsedSpectrum] = []
+    for _ in range(header.num_blocks):
+        block = _parse_block(header, reader)
+        spectrum = _block_to_parsed_spectrum(
+            block,
+            file_path,
+            use_binding_energy=use_binding_energy,
         )
-        if x_axis is None:
-            continue
-        x = np.array(x_axis, dtype=np.float64)
-        y = np.array(block.data[0], dtype=np.float64)
-        if len(x) != len(y):
-            continue
-        group = block.sample or ""
-        result.append(
-            ParsedSpectrum(
-                x=x,
-                y=y,
-                metadata=SpectrumMetadata(
-                    name=block.name,
-                    group=group,
-                    file=str(path),
-                ),
-            )
-        )
+        if spectrum is not None:
+            result.append(spectrum)
 
+    reader.expect("end of experiment")
     return result
