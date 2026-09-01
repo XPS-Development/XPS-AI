@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import ClassVar, Protocol, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,12 +27,12 @@ class ParameterSpec:
 class ParametricModelLike(Protocol[T]):
     """Structural interface for a named parametric model instance."""
 
-    name: str
-    parameter_schema: tuple[ParameterSpec, ...]
-    independent_vars: tuple[str, ...]
-    normalization_target_parameters: tuple[str, ...]
-    use_offset: bool
-    use_scale: bool
+    name: ClassVar[str]
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]]
+    independent_vars: ClassVar[tuple[str, ...]]
+    normalization_target_parameters: ClassVar[tuple[str, ...]]
+    use_offset: ClassVar[bool]
+    use_scale: ClassVar[bool]
 
     @staticmethod
     def evaluate(x: NDArray[T], y: NDArray[T] | None, **kwargs: float) -> NDArray[T]:
@@ -56,9 +56,9 @@ class ParametricModelLike(Protocol[T]):
 class ParametricModel(ParameterNormalizationPolicy, ABC):
     """Abstract parametric model with a name, schema, evaluate, and guess_initial."""
 
-    name: str
-    parameter_schema: tuple[ParameterSpec, ...]
-    independent_vars: tuple[str, ...] = ("x", "y")
+    name: ClassVar[str]
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]]
+    independent_vars: ClassVar[tuple[str, ...]] = ("x", "y")
 
     @staticmethod
     @abstractmethod

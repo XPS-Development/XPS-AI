@@ -1,6 +1,6 @@
 """Concrete peak and background models registered with :class:`ModelRegistry`."""
 
-from typing import Literal, cast
+from typing import ClassVar, Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -29,16 +29,16 @@ def _bg_slice_kwargs(
 class PseudoVoigtPeakModel(BasePeakModel):
     """Pseudo-Voigt peak: linear mix of Gaussian and Lorentzian profiles."""
 
-    name = "pseudo-voigt"
-    parameter_schema = (
+    name: ClassVar[str] = "pseudo-voigt"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec(name="amp", default=1, lower=0),
         ParameterSpec(name="cen", default=0),
         ParameterSpec(name="sig", default=1, lower=0),
         ParameterSpec(name="frac", default=1, lower=0, upper=1),
     )
-    normalization_target_parameters = ("amp",)
-    use_scale = True
-    use_offset = False
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("amp",)
+    use_scale: ClassVar[bool] = True
+    use_offset: ClassVar[bool] = False
 
     @staticmethod
     def evaluate(
@@ -69,11 +69,13 @@ class PseudoVoigtPeakModel(BasePeakModel):
 class ConstantBackgroundModel(BaseBackgroundModel):
     """Constant (flat) background."""
 
-    name = "constant"
-    parameter_schema = (ParameterSpec("const", 0.0, vary=False),)
-    normalization_target_parameters = ("const",)
-    use_scale = False
-    use_offset = True
+    name: ClassVar[str] = "constant"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
+        ParameterSpec("const", 0.0, vary=False),
+    )
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("const",)
+    use_scale: ClassVar[bool] = False
+    use_offset: ClassVar[bool] = True
 
     @staticmethod
     def evaluate(x: NDArray, y: NDArray | None, **kwargs: float) -> NDArray:
@@ -92,14 +94,14 @@ class ConstantBackgroundModel(BaseBackgroundModel):
 class LinearBackgroundModel(BaseBackgroundModel):
     """Linear background between endpoint intensities ``i1`` and ``i2``."""
 
-    name = "linear"
-    parameter_schema = (
+    name: ClassVar[str] = "linear"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec("i1", 0.0, vary=False),
         ParameterSpec("i2", 0.0),
     )
-    normalization_target_parameters = ("i1", "i2")
-    use_scale = True
-    use_offset = True
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("i1", "i2")
+    use_scale: ClassVar[bool] = True
+    use_offset: ClassVar[bool] = True
 
     @staticmethod
     def evaluate(x: NDArray, y: NDArray | None, **kwargs: float) -> NDArray:
@@ -118,14 +120,14 @@ class LinearBackgroundModel(BaseBackgroundModel):
 class ShirleyBackgroundModel(BaseBackgroundModel):
     """Iterative Shirley background using endpoint intensities ``i1`` and ``i2``."""
 
-    name = "shirley"
-    parameter_schema = (
+    name: ClassVar[str] = "shirley"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec("i1", 0.0, vary=False),
         ParameterSpec("i2", 0.0, vary=False),
     )
-    normalization_target_parameters = ("i1", "i2")
-    use_scale = True
-    use_offset = True
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("i1", "i2")
+    use_scale: ClassVar[bool] = True
+    use_offset: ClassVar[bool] = True
 
     @staticmethod
     def evaluate(x: NDArray, y: NDArray | None, **kwargs: float) -> NDArray:
