@@ -119,5 +119,6 @@ def test_get_slice_value_mode(srv: RegionService, region_id: str) -> None:
     start_val, stop_val = srv.get_slice(region_id, mode="value")
     region = srv.collection.get_typed(region_id, Region)
     spectrum = srv.collection.get_typed_parent(region_id, Spectrum)
+    assert spectrum is not None
     assert start_val == spectrum.x[region.slice_.start]
     assert stop_val == spectrum.x[region.slice_.stop - 1]

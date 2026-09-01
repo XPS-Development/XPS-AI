@@ -3,6 +3,7 @@
 from app.command.changes import CompositeChange, CreateSpectrum, SetMetadata
 from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from app.import_service import import_spectra
+from core.metadata import SpectrumMetadata
 
 
 def test_import_spectra_returns_composite_change():
@@ -41,6 +42,7 @@ def test_import_spectra_execute_via_command_executor(empty_collection):
     assert len(spectrum_ids) == 1
     metadata = ctx.metadata.get_metadata(spectrum_ids[0])
     assert metadata is not None
+    assert isinstance(metadata, SpectrumMetadata)
     assert metadata.name == "Ag3d"
     assert "test_1_spec.txt" in metadata.file
 

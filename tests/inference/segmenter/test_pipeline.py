@@ -40,7 +40,7 @@ def test_segmenter_pipeline_run_without_model_raises(fixture_spectrum: SpectrumD
 def test_segmenter_pipeline_run_with_mock_adapter(fixture_spectrum: SpectrumDTO) -> None:
     """SegmenterPipeline with patched adapter returns list[SegmenterResult]."""
     pipeline = SegmenterPipeline(model_path=None)
-    pipeline.adapter = _MockAdapter()
+    pipeline.adapter = _MockAdapter()  # ty: ignore[invalid-assignment]
 
     result = pipeline.run(fixture_spectrum, fixture_spectrum)
 

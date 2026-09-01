@@ -2,13 +2,11 @@
 Tests for core.fitting.optimization: build_contexts, OptimizationPlanner, LmfitOptimizer, optimize().
 """
 
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
 import core.fitting.optimization as optimization_module
-from core.dto import ComponentDTO, ParameterDTO
+from core.dto import ComponentDTO, ParameterDTO, RegionDTO
 from core.fitting.optimization import (
     LmfitOptimizer,
     OptimizationContext,
@@ -119,7 +117,7 @@ class TestBuildContexts:
             model=PseudoVoigtPeakModel(),
             kind="peak",
         )
-        reg = SimpleNamespace(id_="r1", parent_id="s1", normalized=False, x=x, y=y)
+        reg = RegionDTO(id_="r1", parent_id="s1", normalized=False, x=x, y=y)
         contexts = build_contexts([(reg, (leader, slave))])
         assert len(contexts[0].components) == 1
         assert contexts[0].components[0].id_ == "lead123456"

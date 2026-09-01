@@ -119,6 +119,8 @@ def test_segmenter_results_to_changes_multiple_peaks():
 
     create_peaks = [c for c in change.changes if isinstance(c, CreatePeak)]
     assert len(create_peaks) == 2
+    assert create_peaks[0].parameters is not None
+    assert create_peaks[1].parameters is not None
     assert create_peaks[0].parameters["cen"] == 30.0
     assert create_peaks[1].parameters["cen"] == 70.0
 
@@ -168,7 +170,7 @@ def test_nn_service_run_segmenter_returns_composite_change(spectrum_id, dto_serv
     orig_spec = dto_service.get_spectrum(spectrum_id, normalized=False)
 
     # Patch pipeline to return mock results without loading ONNX
-    service._pipeline.run = lambda n, o: [_make_result(20, 180)]
+    service._pipeline.run = lambda n, o: [_make_result(20, 180)]  # ty: ignore[invalid-assignment]
 
     change = service.run_segmenter(spectrum_id, norm_spec, orig_spec)
 

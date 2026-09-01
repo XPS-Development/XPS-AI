@@ -8,10 +8,24 @@ import numpy as np
 import pytest
 
 from core.collection import CoreCollection
-from core.io.serialization import VERSION, _json_default, deserialize, dump, load, serialize
+from core.io.serialization import (
+    VERSION,
+    DeserializeResult,
+    _json_default,
+    deserialize,
+    dump,
+    load,
+    serialize,
+)
 from core.metadata import PeakMetadata, SpectrumMetadata
 from core.objects import Background, Peak, Region, Spectrum
 from core.services import MetadataService
+
+
+def _collection_from_new_result(result: DeserializeResult) -> CoreCollection:
+    """Unpack ``deserialize(..., mode='new')`` result for type checkers."""
+    assert isinstance(result, tuple)
+    return result[0]
 
 
 def test_serialize_deserialize_simple_collection(simple_collection):
@@ -30,7 +44,7 @@ def test_serialize_deserialize_simple_collection(simple_collection):
 
     # Deserialize back (mode=new returns tuple)
     result = deserialize(data, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
 
     # Verify collection structure
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
@@ -52,13 +66,15 @@ def test_serialize_deserialize_simple_collection(simple_collection):
         assert original_obj.parent_id == restored_obj.parent_id
 
         # Type-specific checks
-        if isinstance(original_obj, Spectrum):
+        if isinstance(original_obj, Spectrum) and isinstance(restored_obj, Spectrum):
             assert np.allclose(original_obj.x, restored_obj.x, atol=1e-1)
             assert np.allclose(original_obj.y, restored_obj.y, atol=1e-1)
-        elif isinstance(original_obj, Region):
+        elif isinstance(original_obj, Region) and isinstance(restored_obj, Region):
             assert original_obj.slice_.start == restored_obj.slice_.start
             assert original_obj.slice_.stop == restored_obj.slice_.stop
-        elif isinstance(original_obj, (Peak, Background)):
+        elif isinstance(original_obj, (Peak, Background)) and isinstance(
+            restored_obj, (Peak, Background)
+        ):
             assert original_obj.model.name == restored_obj.model.name
             # Verify parameters match
             for param_name in original_obj.parameters:
@@ -105,12 +121,14 @@ def test_serialize_deserialize_with_metadata(simple_collection):
     # Verify metadata was restored
     restored_spectrum_metadata = restored_metadata_service.get_metadata(spectrum_id)
     assert restored_spectrum_metadata is not None
+    assert isinstance(restored_spectrum_metadata, SpectrumMetadata)
     assert restored_spectrum_metadata.name == "Test"
     assert restored_spectrum_metadata.group == "Group1"
     assert restored_spectrum_metadata.file == "test.dat"
 
     restored_peak_metadata = restored_metadata_service.get_metadata(peak_id)
     assert restored_peak_metadata is not None
+    assert isinstance(restored_peak_metadata, PeakMetadata)
     assert restored_peak_metadata.element_type == "C 1s"
 
 
@@ -120,7 +138,7 @@ def test_serialize_deserialize_empty_collection(empty_collection):
     """
     data = serialize(empty_collection)
     result = deserialize(data, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
 
     assert len(restored_collection.objects_index) == 0
     assert data["version"] == VERSION
@@ -172,7 +190,7 @@ def test_dump_and_load_file(simple_collection, tmp_path):
 
     # Load from file (mode=new returns tuple)
     result = load(file_path, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
 
     # Verify collection structure
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
@@ -195,7 +213,7 @@ def test_dump_and_load_gzip(simple_collection, tmp_path):
     assert file_path.exists()
 
     result = load(file_path, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
 
 
@@ -209,7 +227,7 @@ def test_load_auto_detects_gzip_magic_without_gz_suffix(simple_collection, tmp_p
         assert f.read(2) == b"\x1f\x8b"
 
     result = load(file_path, mode="new", use_gzip=None)
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
 
 
@@ -249,12 +267,14 @@ def test_dump_and_load_with_metadata(simple_collection, tmp_path):
     # Verify metadata was restored
     restored_spectrum_metadata = restored_metadata_service.get_metadata(spectrum_id)
     assert restored_spectrum_metadata is not None
+    assert isinstance(restored_spectrum_metadata, SpectrumMetadata)
     assert restored_spectrum_metadata.name == "Test"
     assert restored_spectrum_metadata.group == "Group1"
     assert restored_spectrum_metadata.file == "test.dat"
 
     restored_peak_metadata = restored_metadata_service.get_metadata(peak_id)
     assert restored_peak_metadata is not None
+    assert isinstance(restored_peak_metadata, PeakMetadata)
     assert restored_peak_metadata.element_type == "C 1s"
 
 
@@ -305,7 +325,7 @@ def test_deserialize_spectrum_reconstructs_x_axis(simple_collection):
 
     # Deserialize (mode=new returns tuple)
     result = deserialize(data, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
     restored_spectrum = next(
         obj for obj in restored_collection.objects_index.values() if isinstance(obj, Spectrum)
     )
@@ -400,7 +420,7 @@ def test_deserialize_without_metadata_service(simple_collection):
 
     # Deserialize without metadata service (mode=new returns tuple)
     result = deserialize(data, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
 
     assert len(restored_collection.objects_index) == len(simple_collection.objects_index)
 
@@ -436,7 +456,7 @@ def test_json_serialization_inf_nan_handling():
     # Should not raise error
     data_restored = json.loads(json_str)
     result = deserialize(data_restored, mode="new")
-    restored_collection = result[0]
+    restored_collection = _collection_from_new_result(result)
 
     # Verify parameter bounds are restored correctly
     restored_peak = next(

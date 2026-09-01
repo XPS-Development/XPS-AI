@@ -1,6 +1,7 @@
 """Offset/scale context used to normalize and denormalize model parameters."""
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -29,9 +30,9 @@ class NormalizationContext:
 class ParameterNormalizationPolicy:
     """Mixin that maps parameter values through a :class:`NormalizationContext`."""
 
-    normalization_target_parameters: tuple[str, ...] = tuple()
-    use_offset: bool = True
-    use_scale: bool = True
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = tuple()
+    use_offset: ClassVar[bool] = True
+    use_scale: ClassVar[bool] = True
 
     def normalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         """Map a physical value into normalized units."""
