@@ -31,14 +31,14 @@
 
 4. **Ревью и слияние**
    - PR в `dev`/`main` проходит GitHub Actions CI: `ruff check`, `ruff format --check`,
-     `ty check`, `pytest` (см. `.github/workflows/ci.yml`).
+     `ty check`, `pytest --cov` (см. `.github/workflows/ci.yml`).
    - Перед пушем локально:
      ```bash
      uv sync --group dev
      uv run ruff check .
      uv run ruff format --check .
      uv run ty check
-     uv run pytest
+     uv run pytest --cov --cov-report=term-missing
      ```
    - После зелёного CI PR ревьюится и вливается в `dev`.
 
