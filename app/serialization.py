@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Literal
 
 from core.collection import CoreCollection
+from core.io.serialization import dump as dump_collection
+from core.io.serialization import load as load_collection
 from core.services import MetadataService
-from tools.serialization import dump as dump_collection
-from tools.serialization import load as load_collection
 
 
 class SerializationService:

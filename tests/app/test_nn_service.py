@@ -13,8 +13,8 @@ from app.command.core import CommandExecutor, UndoRedoStack, create_default_regi
 from app.nn_adapter import segmenter_results_to_changes
 from app.nn_service import NNService
 from core.services import CoreContext
-from tools.nn.segmenter import SegmenterResult
-from tools.nn.types import (
+from inference.segmenter import SegmenterResult
+from inference.types import (
     BackgroundDetectionResult,
     PeakDetectionResult,
     RegionDetectionResult,

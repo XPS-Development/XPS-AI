@@ -5,7 +5,7 @@ from typing import Literal, TypeVar, overload
 
 from numpy.typing import NDArray
 
-from tools._tools import find_closest_index
+from core.numerics import find_closest_index
 
 from .collection import CoreCollection
 from .math_models import (

@@ -9,8 +9,8 @@ import pytest
 from app.orchestration import AppOrchestrator, AppParameters
 from core.metadata import SpectrumMetadata
 from core.objects import Background, Peak, Region, Spectrum
-from tools.nn.segmenter import SegmenterResult
-from tools.nn.types import (
+from inference.segmenter import SegmenterResult
+from inference.types import (
     BackgroundDetectionResult,
     PeakDetectionResult,
     RegionDetectionResult,

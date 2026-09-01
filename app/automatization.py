@@ -1,16 +1,15 @@
 """
 Automatizations for app layer.
 
-Provides services for routine tasks.
+Thin adapter: model ``guess_initial`` → Change objects for CommandExecutor.
 """
 
 from typing import Literal
 
-from tools.automatization import (
-    calculate_background_intensities,
-    create_pseudo_voigt_peak_parameters,
-)
-from tools.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.evaluation import region_bundle
+from core.math_models import ModelRegistry
+from core.math_models.guess_helpers import peak_index_from_residuals
 
 from .command.changes import (
     CreateBackground,
@@ -25,10 +24,6 @@ class AutomatizationAdapter:
 
     Returns Change objects for CommandExecutor.
     """
-
-    @staticmethod
-    def _i1_i2_to_const(params: dict[str, float]) -> dict[str, float]:
-        return {"const": min(params["i1"], params["i2"])}
 
     def update_intensities(
         self,
@@ -53,7 +48,7 @@ class AutomatizationAdapter:
         background_id: str | None = None,
         avg_on: int = 3,
     ) -> CreateBackground:
-        """Create linear background parameters for a region."""
+        """Create background parameters for a region via model ``guess_initial``."""
         params = self.get_bg_parameters(model_name, spectrum_dto, new_slice, slice_mode, avg_on)
 
         return CreateBackground(
@@ -63,14 +58,24 @@ class AutomatizationAdapter:
             background_id=background_id,
         )
 
-    def create_pseudo_voigt_peak(
-        self, region: RegionDTO, components: tuple[ComponentDTO, ...]
+    def create_peak(
+        self,
+        region: RegionDTO,
+        components: tuple[ComponentDTO, ...],
+        model_name: str,
     ) -> CreatePeak:
-        """Create pseudo-voigt peak parameters for a region."""
+        """Create peak parameters from residuals via model ``guess_initial``."""
+        region_eval = region_bundle(region, components)
+        peak_index = peak_index_from_residuals(region_eval.residuals)
+        parameters = ModelRegistry.get(model_name).guess_initial(
+            region_eval.x,
+            region_eval.y,
+            peak_index=peak_index,
+        )
         return CreatePeak(
             region_id=region.id_,
-            model_name="pseudo-voigt",
-            parameters=create_pseudo_voigt_peak_parameters(region, components),
+            model_name=model_name,
+            parameters=parameters,
         )
 
     def get_bg_parameters(
@@ -81,17 +86,12 @@ class AutomatizationAdapter:
         slice_mode: Literal["value", "index"] = "index",
         avg_on: int = 3,
     ) -> dict[str, float]:
-        """Get parameters for background replacement."""
-        params = calculate_background_intensities(
+        """Get parameters for background creation or replacement."""
+        return ModelRegistry.get(model_name).guess_initial(
             spectrum_dto.x,
             spectrum_dto.y,
-            reg_slice[0],
-            reg_slice[1],
-            slice_mode,
-            avg_on,
+            start=reg_slice[0],
+            stop=reg_slice[1],
+            mode=slice_mode,
+            avg_on=avg_on,
         )
-
-        if model_name == "constant":
-            return self._i1_i2_to_const(params)
-
-        return params

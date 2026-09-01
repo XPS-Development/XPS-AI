@@ -12,34 +12,39 @@ pyqtgraph UI. Entry point: `main.py`.
 
 ```
 ui/  →  app/  →  core/
-              ↘  tools/  →  core/
+              ↘  formats/  →  core/
+              ↘  inference/  →  core/
+debug/ → core/evaluation → core/dto   (notebooks / interactive only)
 ```
 
 | Package | Role |
 |---------|------|
-| `core/` | Domain: spectra, regions, components, math models, services |
-| `app/` | Application: orchestrator, commands/undo, usecases, adapters over tools |
+| `core/` | Domain: spectra, regions, components, math models, services, array numerics, immutable DTOs, model evaluation, fitting, serialization, CSV export |
+| `app/` | Application: orchestrator, commands/undo, usecases, DTOService, adapters over core/formats/inference |
 | `ui/` | Presentation: Qt widgets, controller wrapper, signals |
-| `tools/` | Libraries: parsers, evaluation, optimization, NN inference, serialization |
+| `formats/` | Spectrum file parsers (casa, dat, VAMAS) and extension dispatcher |
+| `inference/` | ONNX segmenter pipeline (preprocess → adapter → postprocess) |
+| `debug/` | Matplotlib viewer for notebooks / exploration (`uv sync --group interactive`) |
+| `scripts/` | One-off unsupported utilities (not app runtime) |
 | `model/` | Training code for the segmenter — **unmaintained / broken; do not extend** |
 
 **Hard rules**
 
-- `core/` must not import `app/` or `ui/`. Prefer not importing `tools/` either
-  (existing exception: `core/services.py` → `tools._tools`; do not add more).
+- `core/` must not import `app/`, `ui/`, `formats/`, or `inference/`.
+  Array helpers live in `core/numerics.py`.
 - `app/` must not import `ui/`. Qt in `app/` only via optional lazy import in
   `error_dump.py`.
 - `ui/` talks to the domain through `ControllerWrapper` → `AppOrchestrator`.
-  Do not call `tools.evaluation` / `ModelRegistry` / mutate core objects from
+  Do not call `core.evaluation` / `ModelRegistry` / mutate core objects from
   widgets when adding new features — put that behind `app/`.
 - Mutations go through `Change` → `CommandExecutor` (undo/redo). Do not bypass
   with direct collection/service writes unless document lifecycle
   (`new_collection`, load/replace) genuinely requires it.
 
-**`app/` vs `tools/` pairs are adapters, not duplicates**
+**`app/` adapters are not duplicates**
 
 `app/optimization.py`, `app/serialization.py`, `app/csv_export.py`,
-`app/automatization.py` wrap `tools/` and return `Change` objects or track
+`app/automatization.py` wrap library modules and return `Change` objects or track
 dirty state. Keep that boundary; do not merge layers or copy logic both ways.
 
 ## Tooling
@@ -66,12 +71,20 @@ uv run pytest
 | Kind of change | Put it in |
 |----------------|-----------|
 | Entity / service / math model | `core/` |
+| Immutable DTO projections | `core/dto.py` |
+| Build DTOs from `CoreContext` | `app/dto_service.py` |
+| Stateless model evaluation | `core/evaluation.py` |
+| Pure array helpers (interp, index lookup) | `core/numerics.py` |
+| Lmfit optimization | `core/fitting/` |
+| Document serialization / CSV export | `core/io/` |
 | Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
 | Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
-| Pure numeric guess / fit / eval | `tools/` (or later `core/` numerics) — not UI |
-| File format parse | `tools/parsers/` + dispatcher in `__init__.py` |
+| Initial parameter guess | model `guess_initial` on `core/math_models` (+ helpers in `guess_helpers.py`) |
+| File format parse | `formats/` + dispatcher in `__init__.py` |
+| ONNX segmenter / inference pipeline | `inference/` |
 | Qt widget / dialog / plot | `ui/` — presentation only |
-| One-off scripts | Prefer `scripts/` or leave uncommitted; do not grow `tools/converters/` |
+| Matplotlib debug / notebook plotting | `debug/` — not `ui/` |
+| One-off scripts | `scripts/` — do not grow top-level packages with scripts |
 
 Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 `AppOrchestrator` further. Extract `QueryService` / `AppParameters` out of
@@ -81,23 +94,17 @@ Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
 
 These are intentional temporary states. Avoid reinforcing them.
 
-1. **`tools/` is a grab bag.** Dead / script-only: `viewer.py`, `parsers/specs.py`,
-   `converters/`. Do not add new unrelated modules at the top level of `tools/`.
-2. **`tools/automatization.py` is pseudo-Voigt-hardcoded initial guessing**, not
-   a general automation framework. Prefer model-registry-aware guessing over
-   more `guess_pseudo_voigt_*` / stringly `if model_name == ...` in `app/` or UI.
-3. **Domain defaults are duplicated** (`"pseudo-voigt"`, `"shirley"`) in
-   `ui/context_menus.py`, `app/automatization.py`, NN postprocessor, and
-   `AppParameters`. Prefer `AppParameters` / registry when adding call sites.
-4. **UI leakage exists** (`plot_area` → `spectrum_bundle`, dialogs →
-   `ModelRegistry`). New features must not add more `core`/`tools` imports in
+1. **Do not reintroduce a SPECS parser.** Notebook matplotlib plotting lives in
+   `debug/viewer.py`; one-offs in `scripts/`.
+2. **UI leakage exists** (`plot_area` → `spectrum_bundle`, dialogs →
+   `ModelRegistry`). New features must not add more `core` imports in
    `ui/` for business logic.
-5. **`model/` cannot train after `uv sync`** (no torch/lightning deps; broken
+3. **`model/` cannot train after `uv sync`** (no torch/lightning deps; broken
    imports; no ONNX export script). App consumes
    `assets/models/model.onnx` only. Do not “fix” training casually; treat
    ONNX as an external artifact unless the task is a full training/export
    revive.
-6. **CI** is `.github/workflows/ci.yml` (`ruff` / `ty` / `pytest` on PRs to `dev`/`main`).
+4. **CI** is `.github/workflows/ci.yml` (`ruff` / `ty` / `pytest` on PRs to `dev`/`main`).
    Keep that gate green; do not weaken excludes for unmaintained training scripts without fixing them.
 
 ## Commands / undo notes

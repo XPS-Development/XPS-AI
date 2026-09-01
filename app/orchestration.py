@@ -13,9 +13,9 @@ from typing import Any, Literal
 from numpy.typing import NDArray
 
 from core.collection import CoreCollection
+from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
 from core.metadata import Metadata, SpectrumMetadata
 from core.services import CoreContext
-from tools.dto import ComponentDTO, DTOService, RegionDTO, SpectrumDTO
 
 from .automatization import AutomatizationAdapter
 from .command.changes import (
@@ -35,6 +35,7 @@ from .command.changes import (
 from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from .csv_export import CSVExportService
+from .dto_service import DTOService
 from .error_dump import apply_safe_execution_to_class
 from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
@@ -55,7 +56,8 @@ class AppParameters:
 
     # ---- Core collection parameters ----
     automatic_methods: bool = True
-    default_background_model_for_auto_methods: str = "shirley"
+    default_peak_model: str = "pseudo-voigt"
+    default_background_model: str = "shirley"
 
     # ---- UI parameters ----
     show_spectrum_id_in_tree: bool = True
@@ -463,6 +465,8 @@ class AppOrchestrator:
             pred_threshold=params.nn_pred_threshold,
             smooth=params.nn_smooth,
             interp_num=params.nn_interp_num,
+            peak_model_name=params.default_peak_model,
+            background_model_name=params.default_background_model,
         )
         self._optimization = OptimizationService()
         self._automatization = AutomatizationAdapter()
@@ -521,6 +525,8 @@ class AppOrchestrator:
             pred_threshold=self._params.nn_pred_threshold,
             smooth=self._params.nn_smooth,
             interp_num=self._params.nn_interp_num,
+            peak_model_name=self._params.default_peak_model,
+            background_model_name=self._params.default_background_model,
         )
         self._analysis.set_nn(self._nn)
 

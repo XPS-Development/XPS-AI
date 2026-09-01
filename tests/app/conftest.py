@@ -1,7 +1,7 @@
 import pytest
 
+from app.dto_service import DTOService
 from core.services import CoreContext
-from tools.dto import DTOService
 
 
 @pytest.fixture

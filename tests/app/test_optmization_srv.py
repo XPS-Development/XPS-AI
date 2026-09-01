@@ -7,8 +7,8 @@ from app.optimization import (
     OptimizationService,
     components_to_changes,
 )
+from core.fitting.optimization import OptimizedComponent
 from core.services import CoreContext
-from tools.optimization import OptimizedComponent
 
 
 @pytest.fixture

@@ -36,7 +36,7 @@ testpaths = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["app", "core", "ui", "tools", "tests"]
+src = ["app", "core", "ui", "debug", "formats", "inference", "tests"]
 # Training entry points live outside model/ and are unmaintained with it.
 extend-exclude = ["model", "notebooks", "run_train.py", "train_lightning.py"]
 
@@ -65,17 +65,15 @@ ignore = [
 "tests/**" = ["D", "ANN"]
 "**/test_*.py" = ["D", "ANN"]
 "ui/**" = ["ANN401"]
-"tools/serialization.py" = ["ANN401"]
+"core/io/serialization.py" = ["ANN401"]
 "app/json_utils.py" = ["ANN401"]
-"tools/converters/**" = ["ANN", "D"]
-"tools/parsers/specs.py" = ["ANN", "D"]
-"tools/parsers/vamas.py" = ["ANN", "D"]
+"scripts/**" = ["ANN", "D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "core", "ui", "tools"]
+known-first-party = ["app", "core", "ui", "debug", "formats", "inference"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -84,7 +82,7 @@ line-ending = "auto"
 
 [tool.ty.src]
 # tests/ is full of mocks/protocol stubs that are not meant to be type-clean yet.
-exclude = ["model/**", "tools/converters/**", "tests/**"]
+exclude = ["model/**", "scripts/**", "tests/**"]
 
 [tool.ty.rules]
 unresolved-import = "ignore"

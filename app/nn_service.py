@@ -8,8 +8,8 @@ via the SegmenterPipelineAdapter.
 
 from pathlib import Path
 
-from core.types import SpectrumLike
-from tools.nn import SegmenterPipeline
+from core.dto import SpectrumDTO
+from inference import SegmenterPipeline
 
 from .command.changes import CompositeChange
 from .nn_adapter import segmenter_results_to_changes
@@ -30,6 +30,8 @@ class NNService:
         pred_threshold: float = 0.5,
         smooth: bool = True,
         interp_num: int = 256,
+        peak_model_name: str = "pseudo-voigt",
+        background_model_name: str = "shirley",
     ) -> None:
         """
         Initialize the NN service with a segmenter pipeline.
@@ -44,12 +46,18 @@ class NNService:
             Whether to smooth the peak mask (default True).
         interp_num : int, optional
             Interpolation points (default 256).
+        peak_model_name : str, optional
+            Registered peak model used for initial parameter guesses.
+        background_model_name : str, optional
+            Registered background model used for initial parameter guesses.
         """
         self._pipeline = SegmenterPipeline(
             model_path=model_path,
             pred_threshold=pred_threshold,
             smooth=smooth,
             interp_num=interp_num,
+            peak_model_name=peak_model_name,
+            background_model_name=background_model_name,
         )
 
     def load_model(self, model_path: str | Path) -> None:
@@ -66,8 +74,8 @@ class NNService:
     def run_segmenter(
         self,
         spectrum_id: str,
-        normalized_spectrum: SpectrumLike,
-        original_spectrum: SpectrumLike,
+        normalized_spectrum: SpectrumDTO,
+        original_spectrum: SpectrumDTO,
     ) -> CompositeChange:
         """
         Run the segmenter pipeline and return Change objects.
@@ -76,9 +84,9 @@ class NNService:
         ----------
         spectrum_id : str
             Identifier of the parent spectrum for CreateRegion.
-        normalized_spectrum : SpectrumLike
+        normalized_spectrum : SpectrumDTO
             Spectrum with normalized y (e.g. from DTOService.get_spectrum(..., normalized=True)).
-        original_spectrum : SpectrumLike
+        original_spectrum : SpectrumDTO
             Original spectrum with raw x/y (e.g. from DTOService.get_spectrum(..., normalized=False)).
 
         Returns

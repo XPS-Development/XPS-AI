@@ -3,7 +3,7 @@ pyqtgraph-based plot area for spectrum visualization.
 
 Displays the selected spectrum with raw data, background, peaks, model,
 and optional residuals. Driven by ``ControllerWrapper`` selection and signals,
-using the viewer data provider protocol and :func:`tools.evaluation.spectrum_bundle`.
+using the viewer data provider protocol and :func:`core.evaluation.spectrum_bundle`.
 """
 
 from collections.abc import Iterable
@@ -16,7 +16,7 @@ from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
-from tools.evaluation import SpectrumEvaluationResult, spectrum_bundle
+from core.evaluation import SpectrumEvaluationResult, spectrum_bundle
 
 from .context_menus import (
     SpectrumContextMenuActions,
