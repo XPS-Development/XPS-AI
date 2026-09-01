@@ -168,8 +168,8 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         grouped = defaultdict(lambda: defaultdict(list))
 
-        for spectrum_id in self._controller.get_all_spectra():
-            metadata = self._controller.get_metadata(spectrum_id)
+        for spectrum_id in self._controller.query.get_all_spectra_ids():
+            metadata = self._controller.query.get_metadata(spectrum_id)
 
             file_attr = getattr(metadata, "file", None)
             group_attr = getattr(metadata, "group", None)

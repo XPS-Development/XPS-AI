@@ -3,20 +3,19 @@ pyqtgraph-based plot area for spectrum visualization.
 
 Displays the selected spectrum with raw data, background, peaks, model,
 and optional residuals. Driven by ``ControllerWrapper`` selection and signals,
-using the viewer data provider protocol and :func:`core.evaluation.spectrum_bundle`.
+using precomputed plot data from the application query layer.
 """
 
 from collections.abc import Iterable
 from typing import Any, Protocol, cast
 
-import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.mouseEvents import HoverEvent, MouseClickEvent, MouseDragEvent
 from PySide6.QtCore import QPointF, Qt, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
-from core.evaluation import SpectrumEvaluationResult, spectrum_bundle
+from core.evaluation import PlotCurve, SpectrumPlotData
 
 from .context_menus import (
     SpectrumContextMenuActions,
@@ -361,7 +360,7 @@ class PlotAreaWidget(QWidget):
         self._roi_items_by_region: dict[str, InteractiveRegion] = {}
         self._roi_region_ids_in_plot: set[str] = set()
         self._cursor_label: QLabel | None = None
-        self._last_result: SpectrumEvaluationResult | None = None
+        self._last_plot_data: SpectrumPlotData | None = None
         self._last_spectrum_id: str | None = None
 
         layout = QVBoxLayout(self)
@@ -435,7 +434,7 @@ class PlotAreaWidget(QWidget):
         """
         Redraw plots from the controller's current spectrum selection.
 
-        Loads data via ``get_spectrum_repr`` and :func:`spectrum_bundle`,
+        Loads data via :meth:`QueryService.get_spectrum_plot_data`,
         updates ROIs, and repaints the main and residuals plots. If no spectrum
         is selected, clears the plot area.
         """
@@ -444,13 +443,12 @@ class PlotAreaWidget(QWidget):
             self.clear_plot()
             return
 
-        spectrum, regions = self._controller.get_spectrum_repr(spectrum_id, normalized=False)
-        result = spectrum_bundle(spectrum, regions, include_background=True)
+        plot_data = self._controller.query.get_spectrum_plot_data(spectrum_id, normalized=False)
 
-        self._last_result = result
+        self._last_plot_data = plot_data
         self._sync_residuals_visibility()
         self._sync_rois_for_spectrum(spectrum_id=spectrum_id)
-        self._draw_spectrum(result)
+        self._draw_spectrum(plot_data)
         self._position_cursor_label()
 
     def _position_cursor_label(self) -> None:
@@ -464,7 +462,7 @@ class PlotAreaWidget(QWidget):
         self._main_plot.clear()
         self._res_plot.clear()
         self._clear_rois()
-        self._last_result = None
+        self._last_plot_data = None
         self._last_spectrum_id = None
 
     def _clear_rois(self) -> None:
@@ -594,20 +592,17 @@ class PlotAreaWidget(QWidget):
         low, high = roi.getRegion()
         self._controller.update_region_slice(roi.region_id, low, high, mode="value")
 
-    def _draw_spectrum(self, result: SpectrumEvaluationResult) -> None:
+    def _draw_spectrum(self, plot_data: SpectrumPlotData) -> None:
         """
         Render the main spectrum stack and optional residuals subplot.
 
         Clears both plot widgets, re-attaches existing ``InteractiveRegion``
-        items, draws the raw spectrum, per-region backgrounds, peaks, and model
-        on the main plot, and draws per-region residual traces on ``_res_plot``
-        when it is visible (y range derived from residual data).
+        items, and draws precomputed curves on the main and residuals plots.
 
         Parameters
         ----------
-        result : SpectrumEvaluationResult
-            Bundled x/y data and per-region fit components from
-            :func:`spectrum_bundle`.
+        plot_data : SpectrumPlotData
+            Display-ready curves from the application query layer.
         """
         self._main_plot.clear()
         self._res_plot.clear()
@@ -618,46 +613,30 @@ class PlotAreaWidget(QWidget):
             self._main_plot.addItem(roi)
             self._roi_region_ids_in_plot.add(rid)
 
-        # Raw spectrum (full range)
-        self._main_plot.plot(result.x, result.y, pen=PEN_RAW)
-
-        all_res_x: list[np.ndarray] = []
-        all_res_y: list[np.ndarray] = []
-
-        for region in result.regions:
-            x = region.x
-            bg_y = np.zeros_like(x) if region.background is None else region.background.y
-
-            # Background
-            if region.background is not None:
-                self._main_plot.plot(x, bg_y, pen=PEN_BACKGROUND)
-
-            # Peaks (background + peak contribution)
-            for idx, peak in enumerate(region.peaks):
-                color = PEAK_COLORS[idx % len(PEAK_COLORS)]
-                pen = pg.mkPen(color=color, width=2.5)
-                self._main_plot.plot(x, bg_y + peak.y, pen=pen)
-                # bg_y = bg_y + peak.y
-
-            # Model
-            self._main_plot.plot(x, region.model, pen=PEN_MODEL)
-
-            # Collect residuals for bottom plot
-            res = region.residuals
-            if res.size > 0:
-                all_res_x.append(x)
-                all_res_y.append(res)
+        for curve in plot_data.curves:
+            pen = self._pen_for_curve(curve)
+            if curve.kind == "residual":
+                if self._res_plot.isVisible():
+                    self._res_plot.plot(curve.x, curve.y, pen=pen)
+            else:
+                self._main_plot.plot(curve.x, curve.y, pen=pen)
 
         if self._res_plot.isVisible():
-            # Residuals subplot: same x as spectrum, one curve per region
-            for rx, ry in zip(all_res_x, all_res_y, strict=False):
-                self._res_plot.plot(rx, ry, pen=PEN_RESIDUALS)
-
-            # Lock residuals y-axis from data
-            if all_res_y:
-                concat = np.concatenate(all_res_y)
-                r_min, r_max = float(np.min(concat)), float(np.max(concat))
-                margin = max((r_max - r_min) * 0.1, 1e-12)
-                self._res_plot.setYRange(r_min - margin, r_max + margin)
+            if plot_data.residual_y_range is not None:
+                self._res_plot.setYRange(*plot_data.residual_y_range)
             else:
                 self._res_plot.setYRange(-1, 1)
+
+    def _pen_for_curve(self, curve: PlotCurve) -> Any:
+        """Map a plot curve kind to a pyqtgraph pen."""
+        if curve.kind == "raw":
+            return PEN_RAW
+        if curve.kind == "background":
+            return PEN_BACKGROUND
+        if curve.kind == "model":
+            return PEN_MODEL
+        if curve.kind == "peak":
+            peak_index = curve.peak_index if curve.peak_index is not None else 0
+            color = PEAK_COLORS[peak_index % len(PEAK_COLORS)]
+            return pg.mkPen(color=color, width=2.5)
+        return PEN_RESIDUALS

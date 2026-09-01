@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.json_utils import parse_json_object
-from app.orchestration import AppParameters
+from app.parameters import AppParameters
 
 
 class OptionsDialog(QDialog):

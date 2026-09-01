@@ -16,8 +16,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.math_models import ModelRegistry
-
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
 
@@ -535,6 +533,10 @@ class PropertiesModel(QAbstractItemModel):
 class PropertiesDelegate(QStyledItemDelegate):
     """Delegate that provides a combo box for the component model row in the value column."""
 
+    def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._controller = controller
+
     def createEditor(
         self,
         parent: QWidget,
@@ -551,9 +553,9 @@ class PropertiesDelegate(QStyledItemDelegate):
             return super().createEditor(parent, option, index)
         combo = QComboBox(parent)
         if item.component_kind == "peak":
-            combo.addItems(ModelRegistry.get_peak_model_names())
+            combo.addItems(self._controller.query.get_peak_model_names())
         else:
-            combo.addItems(ModelRegistry.get_background_model_names())
+            combo.addItems(self._controller.query.get_background_model_names())
         return combo
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
@@ -613,7 +615,7 @@ class PropertiesView(QTreeView):
         self._narrow_section_widths: list[int] = []
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
-        self.setItemDelegateForColumn(1, PropertiesDelegate(self))
+        self.setItemDelegateForColumn(1, PropertiesDelegate(controller, self))
         self.setIndentation(12)
         self.setHeaderHidden(False)
         hdr = self.header()

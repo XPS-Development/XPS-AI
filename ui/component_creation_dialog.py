@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.math_models import ModelRegistry, ParameterSpec
+from core.math_models.base_models import ParameterSpec
 
 from .controller import ControllerWrapper
 
@@ -147,9 +147,9 @@ class ComponentCreationDialog(QDialog):
         try:
             self._model_combo.clear()
             if component_type == "peak":
-                models = ModelRegistry.get_peak_model_names()
+                models = self._controller.query.get_peak_model_names()
             else:
-                models = ModelRegistry.get_background_model_names()
+                models = self._controller.query.get_background_model_names()
 
             for name in models:
                 self._model_combo.addItem(name)
@@ -163,8 +163,7 @@ class ComponentCreationDialog(QDialog):
 
     def _on_model_changed(self, model_name: str) -> None:
         """Rebuild parameter table for the selected model."""
-        model = ModelRegistry.get(model_name)
-        self._param_specs = tuple(model.parameter_schema)
+        self._param_specs = self._controller.query.get_model_parameter_schema(model_name)
 
         self._editors_by_param.clear()
 
@@ -256,21 +255,12 @@ class ComponentCreationDialog(QDialog):
             expr = self._parse_expr(editors.expr_edit.text())
             config_by_param[spec.name] = (lower, upper, vary, expr)
 
-        # Capture component identifiers before creation so we can find the created component.
-        before_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
-        before_bg_id = self._controller.query.get_background_id(self._region_id)
-
         if component_type == "peak":
-            self._controller.create_peak(self._region_id, model_name, parameters=value_by_param)
-            after_peak_ids = set(self._controller.query.get_peaks_ids(self._region_id))
-            new_ids = list(after_peak_ids - before_peak_ids)
-            if len(new_ids) != 1:
-                raise RuntimeError(
-                    "Failed to identify created peak id (unexpected number of new peaks)."
-                )
-            component_id = new_ids[0]
+            component_id = self._controller.create_peak_and_return_id(
+                self._region_id, model_name, parameters=value_by_param
+            )
         else:
-            # Background replacement is disabled in this dialog when a background exists.
+            before_bg_id = self._controller.query.get_background_id(self._region_id)
             if before_bg_id is not None:
                 raise RuntimeError("Background already exists; replacement is disabled.")
             self._controller.create_background(

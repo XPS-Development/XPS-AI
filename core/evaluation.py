@@ -40,6 +40,27 @@ class SpectrumEvaluationResult(SpectrumDTO):
     regions: tuple[RegionEvaluationResult, ...]
 
 
+PlotCurveKind = Literal["raw", "background", "peak", "model", "residual"]
+
+
+@dataclass(frozen=True)
+class PlotCurve:
+    """Single curve ready for plotting."""
+
+    x: NDArray
+    y: NDArray
+    kind: PlotCurveKind
+    peak_index: int | None = None
+
+
+@dataclass(frozen=True)
+class SpectrumPlotData:
+    """Display-ready plot series derived from a spectrum evaluation."""
+
+    curves: tuple[PlotCurve, ...]
+    residual_y_range: tuple[float, float] | None
+
+
 def get_eval_fn(component: ComponentDTO) -> EvaluationLikeFn:
     """
     Return the evaluation function for a component's model.
@@ -215,3 +236,55 @@ def spectrum_bundle(
         y=spectrum.y,
         regions=region_results,
     )
+
+
+def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotData:
+    """
+    Build display-ready plot curves from an evaluated spectrum.
+
+    Parameters
+    ----------
+    result : SpectrumEvaluationResult
+        Evaluated spectrum with per-region fit components.
+
+    Returns
+    -------
+    SpectrumPlotData
+        Curves for the main and residuals plots plus optional residuals y-range.
+    """
+    curves: list[PlotCurve] = [
+        PlotCurve(x=result.x, y=result.y, kind="raw"),
+    ]
+    residual_arrays: list[NDArray] = []
+
+    for region in result.regions:
+        x = region.x
+        bg_y = np.zeros_like(x) if region.background is None else region.background.y
+
+        if region.background is not None:
+            curves.append(PlotCurve(x=x, y=bg_y, kind="background"))
+
+        for peak_index, peak in enumerate(region.peaks):
+            curves.append(
+                PlotCurve(
+                    x=x,
+                    y=bg_y + peak.y,
+                    kind="peak",
+                    peak_index=peak_index,
+                )
+            )
+
+        curves.append(PlotCurve(x=x, y=region.model, kind="model"))
+
+        if region.residuals.size > 0:
+            curves.append(PlotCurve(x=x, y=region.residuals, kind="residual"))
+            residual_arrays.append(region.residuals)
+
+    residual_y_range: tuple[float, float] | None = None
+    if residual_arrays:
+        concat = np.concatenate(residual_arrays)
+        r_min, r_max = float(np.min(concat)), float(np.max(concat))
+        margin = max((r_max - r_min) * 0.1, 1e-12)
+        residual_y_range = (r_min - margin, r_max + margin)
+
+    return SpectrumPlotData(curves=tuple(curves), residual_y_range=residual_y_range)
