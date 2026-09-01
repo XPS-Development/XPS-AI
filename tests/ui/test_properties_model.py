@@ -25,9 +25,9 @@ def test_properties_model_column_count_and_headers(mock_controller: MagicMock) -
     model = PropertiesModel(mock_controller)
     model.refresh()
     assert model.columnCount() == 6
-    assert model.headerData(0, Qt.Orientation.Horizontal, Qt.DisplayRole) == "Name"
-    assert model.headerData(1, Qt.Orientation.Horizontal, Qt.DisplayRole) == "Value"
-    assert model.headerData(5, Qt.Orientation.Horizontal, Qt.DisplayRole) == "Expr"
+    assert model.headerData(0, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Name"
+    assert model.headerData(1, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Value"
+    assert model.headerData(5, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Expr"
 
 
 def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
@@ -54,9 +54,9 @@ def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
     def idx(c: int):
         return model.index(0, c, QModelIndex())
 
-    assert model.data(idx(0), Qt.DisplayRole) == "amplitude"
-    assert model.data(idx(1), Qt.DisplayRole) == "1.50"
-    assert model.data(idx(2), Qt.DisplayRole) == "0.00"
-    assert model.data(idx(3), Qt.DisplayRole) == "10.00"
-    assert model.data(idx(4), Qt.CheckStateRole) == Qt.Checked
-    assert model.data(idx(5), Qt.DisplayRole) == ""
+    assert model.data(idx(0), Qt.ItemDataRole.DisplayRole) == "amplitude"
+    assert model.data(idx(1), Qt.ItemDataRole.DisplayRole) == "1.50"
+    assert model.data(idx(2), Qt.ItemDataRole.DisplayRole) == "0.00"
+    assert model.data(idx(3), Qt.ItemDataRole.DisplayRole) == "10.00"
+    assert model.data(idx(4), Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+    assert model.data(idx(5), Qt.ItemDataRole.DisplayRole) == ""

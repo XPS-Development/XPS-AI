@@ -31,7 +31,7 @@
 
 4. **Ревью и слияние**
    - PR в `dev`/`main` проходит GitHub Actions CI: `ruff check`, `ruff format --check`,
-     `ty check`, `pytest --cov` (см. `.github/workflows/ci.yml`).
+     `ty check`, `pytest --cov` (см. `.github/workflows/ci.yml`). `ty check` включает `tests/`.
    - Перед пушем локально:
      ```bash
      uv sync --group dev

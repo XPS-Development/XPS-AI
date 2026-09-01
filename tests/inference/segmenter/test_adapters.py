@@ -24,7 +24,7 @@ def test_onnx_adapter_run_requires_input_key() -> None:
             return []  # never called when KeyError raised first
 
     adapter = ONNXSegmenterAdapter(model_path=None)
-    adapter._session = MockSession()
+    adapter._session = MockSession()  # ty: ignore[invalid-assignment]
     with pytest.raises(KeyError, match=ONNXSegmenterAdapter.INPUT_KEY):
         adapter.run({"wrong_key": np.zeros((1, 2, 256), dtype=np.float32)})
 
@@ -44,7 +44,7 @@ def test_onnx_adapter_output_shape_with_mock_session() -> None:
             return [out]
 
     adapter = ONNXSegmenterAdapter(model_path=None)
-    adapter._session = MockSession()
+    adapter._session = MockSession()  # ty: ignore[invalid-assignment]
     inp = {ONNXSegmenterAdapter.INPUT_KEY: np.zeros((1, 2, 64), dtype=np.float32)}
     out = adapter.run(inp)
     assert ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[0] in out

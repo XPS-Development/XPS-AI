@@ -5,12 +5,15 @@ App-level tests: service uses CoreContext and returns Command-layer Change objec
 (CompositeChange, CreatePeak, CreateBackground) for the command executor.
 """
 
+from typing import Any, cast
+
 import numpy as np
 import pytest
 
 from app.automatization import AutomatizationAdapter
 from app.command.changes import CreateBackground, CreatePeak, UpdateMultipleParameterValues
 from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+from core.math_models import ParametricModelLike
 
 
 @pytest.fixture
@@ -43,7 +46,7 @@ def _dummy_background_dto(model_name: str = "shirley") -> ComponentDTO:
         parent_id="region-1",
         normalized=False,
         parameters={},
-        model=_DummyModel(model_name),
+        model=cast(ParametricModelLike[Any], _DummyModel(model_name)),
         kind="background",
     )
 
@@ -128,7 +131,7 @@ def test_create_peak_returns_create_peak(
             parent_id=region.id_,
             normalized=False,
             parameters={},
-            model=_DummyModel("shirley"),
+            model=cast(ParametricModelLike[Any], _DummyModel("shirley")),
             kind="background",
         ),
     )

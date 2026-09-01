@@ -1,5 +1,7 @@
 """Tests for casa-like .txt parser."""
 
+from pathlib import Path
+
 import pytest
 
 from formats.casa import parse_casa_txt
@@ -8,20 +10,20 @@ from formats.types import ParsedSpectrum
 
 def test_parse_casa_txt_returns_single_spectrum():
     """parse_casa_txt returns a single-element list."""
-    result = parse_casa_txt("tests/data/test_1_spec.txt")
+    result = parse_casa_txt(Path("tests/data/test_1_spec.txt"))
     assert len(result) == 1
     assert isinstance(result[0], ParsedSpectrum)
 
 
 def test_parse_casa_txt_extracts_name():
     """parse_casa_txt extracts spectrum name from first line."""
-    result = parse_casa_txt("tests/data/test_1_spec.txt")
+    result = parse_casa_txt(Path("tests/data/test_1_spec.txt"))
     assert result[0].metadata.name == "Ag3d"
 
 
 def test_parse_casa_txt_extracts_binding_energy_and_cps():
     """parse_casa_txt uses B.E. and CPS columns by default."""
-    result = parse_casa_txt("tests/data/test_1_spec.txt")
+    result = parse_casa_txt(Path("tests/data/test_1_spec.txt"))
     ps = result[0]
     assert len(ps.x) == len(ps.y)
     assert ps.x.min() == pytest.approx(351.0)
@@ -30,7 +32,7 @@ def test_parse_casa_txt_extracts_binding_energy_and_cps():
 
 def test_parse_casa_txt_file_path_in_metadata():
     """parse_casa_txt sets file path in result."""
-    result = parse_casa_txt("tests/data/test_1_spec.txt")
+    result = parse_casa_txt(Path("tests/data/test_1_spec.txt"))
     assert "test_1_spec.txt" in result[0].metadata.file
 
 

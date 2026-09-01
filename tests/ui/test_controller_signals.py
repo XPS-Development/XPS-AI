@@ -4,6 +4,7 @@ Tests for :class:`ui.controller.ControllerWrapper` granular Qt signals.
 
 import sys
 from collections import defaultdict
+from typing import cast
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -17,7 +18,7 @@ def qapp() -> QApplication:
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
-    return app
+    return cast(QApplication, app)
 
 
 def _connect_signal_counts(ctrl: ControllerWrapper) -> defaultdict[str, int]:

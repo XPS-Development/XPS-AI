@@ -1,6 +1,6 @@
 import pytest
 
-from core.math_models import ModelRegistry
+from core.math_models import ConstantBackgroundModel
 from core.objects import Background, Region
 from core.services import (
     CollectionQueryService,
@@ -74,10 +74,8 @@ def test_get_background_multiple(simple_collection):
         obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Region)
     )
 
-    model = ModelRegistry.get("constant")
-
     bg2 = Background(
-        model=model,
+        model=ConstantBackgroundModel(),
         region_id=region_id,
     )
     simple_collection.add(bg2)

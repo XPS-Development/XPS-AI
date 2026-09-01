@@ -28,10 +28,14 @@ def test_components_to_changes():
 
     assert isinstance(result, CompositeChange)
     assert len(result.changes) == 2
-    assert result.changes[0].component_id == "p1"
-    assert result.changes[0].parameters == {"amp": 1.0, "cen": 5.0}
-    assert result.changes[1].component_id == "b1"
-    assert result.changes[1].parameters == {"const": 2.0}
+    first = result.changes[0]
+    second = result.changes[1]
+    assert isinstance(first, UpdateMultipleParameterValues)
+    assert isinstance(second, UpdateMultipleParameterValues)
+    assert first.component_id == "p1"
+    assert first.parameters == {"amp": 1.0, "cen": 5.0}
+    assert second.component_id == "b1"
+    assert second.parameters == {"const": 2.0}
 
 
 def test_optimize_regions_returns_composite_change(srv, dto_service, region_id):

@@ -81,6 +81,7 @@ def test_orchestrator_import_spectra(empty_collection):
     assert len(spectrum_ids) == 1
     meta = orch.ctx.metadata.get_metadata(spectrum_ids[0])
     assert meta is not None
+    assert isinstance(meta, SpectrumMetadata)
     assert meta.name == "Ag3d"
     assert "test_1_spec.txt" in meta.file
 
@@ -92,7 +93,7 @@ def test_orchestrator_run_segmenter(empty_collection, simple_gauss_spectrum):
     sid = f"s{uuid4().hex}"
     orch.create_spectrum(x, y, spectrum_id=sid)
 
-    orch._nn._pipeline.run = lambda n, o: [_make_segmenter_result(20, 180)]
+    orch._nn._pipeline.run = lambda n, o: [_make_segmenter_result(20, 180)]  # ty: ignore[invalid-assignment]
 
     orch.run_segmenter(spectrum_ids=[sid])
 

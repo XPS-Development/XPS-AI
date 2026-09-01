@@ -90,8 +90,7 @@ indent-style = "space"
 line-ending = "auto"
 
 [tool.ty.src]
-# tests/ is full of mocks/protocol stubs that are not meant to be type-clean yet.
-exclude = ["model/**", "scripts/**", "tests/**"]
+exclude = ["model/**", "scripts/**"]
 
 [tool.ty.rules]
 unresolved-import = "ignore"
