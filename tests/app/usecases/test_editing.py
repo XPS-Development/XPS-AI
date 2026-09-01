@@ -6,6 +6,7 @@ from app.command.changes import (
     CreateBackground,
     CreatePeak,
     ReplaceBackgroundModel,
+    ReplacePeakModel,
     UpdateMultipleParameterValues,
     UpdateRegionSlice,
 )
@@ -136,4 +137,39 @@ def test_replace_background_model_explicit_when_automatic_methods_false(
     )
 
     assert isinstance(change, ReplaceBackgroundModel)
+    assert change.parameters == params
+
+
+def test_replace_peak_model_transfers_same_name_params(simple_collection, peak_id) -> None:
+    """automatic_methods=False copies overlapping parameter values from the old peak."""
+    change = _editing(simple_collection, automatic_methods=False).replace_peak_model(
+        peak_id, "pseudo-voigt", parameters=None
+    )
+
+    assert isinstance(change, ReplacePeakModel)
+    assert change.peak_id == peak_id
+    assert change.new_model_name == "pseudo-voigt"
+    assert change.parameters == {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+
+
+def test_replace_peak_model_auto_guesses_and_transfers(simple_collection, peak_id) -> None:
+    """automatic_methods=True guesses params and overlays same-name values from the old peak."""
+    change = _editing(simple_collection, automatic_methods=True).replace_peak_model(
+        peak_id, "pseudo-voigt", parameters=None
+    )
+
+    assert isinstance(change, ReplacePeakModel)
+    assert change.parameters is not None
+    assert set(change.parameters) == {"amp", "cen", "sig", "frac"}
+    assert change.parameters["frac"] == 0.0
+
+
+def test_replace_peak_model_explicit_params_skip_transfer(simple_collection, peak_id) -> None:
+    """Explicit parameters bypass transfer and guessing."""
+    params = {"amp": 9.0, "cen": 3.0, "sig": 2.0, "frac": 0.25}
+    change = _editing(simple_collection, automatic_methods=True).replace_peak_model(
+        peak_id, "pseudo-voigt", parameters=params
+    )
+
+    assert isinstance(change, ReplacePeakModel)
     assert change.parameters == params

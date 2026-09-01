@@ -286,16 +286,13 @@ def test_orchestrator_update_region_slice(orchestrator_with_data, region_id):
 
 
 def test_orchestrator_replace_peak_model(orchestrator_with_data: AppOrchestrator, peak_id: str):
-    """replace_peak_model swaps peak model preserving ID."""
+    """replace_peak_model swaps peak model preserving ID and same-name parameters."""
     orch = orchestrator_with_data
-    orch.replace_peak_model(
-        peak_id,
-        "pseudo-voigt",
-        parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.0},
-    )
+    orch.replace_peak_model(peak_id, "pseudo-voigt", parameters=None)
     assert orch.ctx.query.check_object_exists(peak_id)
     comp = orch.ctx.query._get(peak_id)
     assert isinstance(comp, Peak)
+    assert comp.get_param("frac").value == 0.0
 
 
 def test_orchestrator_replace_background_model(orchestrator_with_data, region_id):

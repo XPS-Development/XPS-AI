@@ -27,7 +27,6 @@ from .command.changes import (
     ParameterField,
     RemoveMetadata,
     RemoveObject,
-    ReplacePeakModel,
     SetMetadata,
     UpdateMultipleParameterValues,
     UpdateParameter,
@@ -747,9 +746,9 @@ class AppOrchestrator:
     ) -> None:
         """Replace a peak's model (and optionally parameters); executed as a command."""
         self.execute(
-            ReplacePeakModel(
-                peak_id=peak_id,
-                new_model_name=new_model_name,
+            self._editing.replace_peak_model(
+                peak_id,
+                new_model_name,
                 parameters=parameters,
             )
         )

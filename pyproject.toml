@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "pytest>=9.0.2",
     "pytest-benchmark>=5.2.3",
+    "pytest-cov>=6.0",
     "ruff>=0.16.3",
     "ty>=0.0.72",
     "viztracer>=1.1.1",
@@ -32,6 +33,14 @@ interactive = [
 testpaths = [
     "tests",
 ]
+
+[tool.coverage.run]
+source = ["app", "core", "ui", "formats", "inference", "debug"]
+omit = ["model/**", "scripts/**", "run_train.py", "train_lightning.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
 
 [tool.ruff]
 line-length = 100

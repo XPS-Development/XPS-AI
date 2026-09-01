@@ -1,7 +1,7 @@
 """
 App-level serialization service for collection and metadata.
 
-Wraps tools/serialization and tracks dirty state.
+Wraps core.io.serialization and tracks dirty state.
 Caller (orchestrator) is responsible for clearing undo/redo and replacing
 context when loading with replace mode.
 """

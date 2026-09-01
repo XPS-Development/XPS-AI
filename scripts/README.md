@@ -7,4 +7,4 @@ One-off / unsupported utilities (data conversion, external-app automation).
   `pyproject.toml`.
 - Paths inside these scripts are often machine-specific (Desktop folders, etc.).
 
-Prefer adding new one-offs here rather than under `tools/`.
+Prefer adding new one-offs here rather than in `app/` or `core/`.

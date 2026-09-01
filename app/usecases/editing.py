@@ -15,12 +15,15 @@ from app.command.changes import (
     CreateBackground,
     CreatePeak,
     ReplaceBackgroundModel,
+    ReplacePeakModel,
     UpdateRegionSlice,
 )
+from core.math_models import ModelRegistry
 
 if TYPE_CHECKING:
     from app.automatization import AutomatizationAdapter
     from app.orchestration import AppParameters, QueryService
+    from core.dto import ComponentDTO
 
 
 class EditingUseCases:
@@ -242,3 +245,71 @@ class EditingUseCases:
             parameters=parameters,
             background_id=background_id,
         )
+
+    def replace_peak_model(
+        self,
+        peak_id: str,
+        new_model_name: str,
+        parameters: dict[str, float] | None = None,
+    ) -> BaseChange:
+        """
+        Build a change that replaces a peak model, transferring same-name parameters.
+
+        Parameters
+        ----------
+        peak_id
+            Peak whose model is replaced.
+        new_model_name
+            Registered peak model name.
+        parameters
+            Explicit parameter values. When omitted, parameters with the same
+            names in the old and new model schemas are copied from the peak.
+            If automatic methods are on, remaining parameters are guessed from
+            residuals (excluding the peak being replaced).
+
+        Returns
+        -------
+        BaseChange
+            ``ReplacePeakModel`` with transferred, guessed, or explicit parameters.
+        """
+        if parameters is not None:
+            return ReplacePeakModel(
+                peak_id=peak_id,
+                new_model_name=new_model_name,
+                parameters=parameters,
+            )
+
+        old_dto = self._query.get_component_dto(peak_id, normalized=False)
+        transferred = self._same_name_parameters(old_dto, new_model_name)
+
+        if self._params.automatic_methods:
+            region_id = self._query.get_parent_id(peak_id)
+            region, components = self._query.get_region_dto_repr(region_id, normalized=False)
+            other_components = tuple(c for c in components if c.id_ != peak_id)
+            guessed = self._automatization.guess_peak_parameters(
+                region,
+                other_components,
+                new_model_name,
+            )
+            parameters = {**guessed, **transferred}
+        else:
+            parameters = transferred or None
+
+        return ReplacePeakModel(
+            peak_id=peak_id,
+            new_model_name=new_model_name,
+            parameters=parameters,
+        )
+
+    @staticmethod
+    def _same_name_parameters(
+        component_dto: ComponentDTO,
+        new_model_name: str,
+    ) -> dict[str, float]:
+        """Copy parameter values whose names exist in the new model schema."""
+        new_names = {spec.name for spec in ModelRegistry.get(new_model_name).parameter_schema}
+        return {
+            name: param.value
+            for name, param in component_dto.parameters.items()
+            if name in new_names
+        }
