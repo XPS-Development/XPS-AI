@@ -58,6 +58,21 @@ class AutomatizationAdapter:
             background_id=background_id,
         )
 
+    def guess_peak_parameters(
+        self,
+        region: RegionDTO,
+        components: tuple[ComponentDTO, ...],
+        model_name: str,
+    ) -> dict[str, float]:
+        """Guess peak parameters from residuals via model ``guess_initial``."""
+        region_eval = region_bundle(region, components)
+        peak_index = peak_index_from_residuals(region_eval.residuals)
+        return ModelRegistry.get(model_name).guess_initial(
+            region_eval.x,
+            region_eval.y,
+            peak_index=peak_index,
+        )
+
     def create_peak(
         self,
         region: RegionDTO,
@@ -65,13 +80,7 @@ class AutomatizationAdapter:
         model_name: str,
     ) -> CreatePeak:
         """Create peak parameters from residuals via model ``guess_initial``."""
-        region_eval = region_bundle(region, components)
-        peak_index = peak_index_from_residuals(region_eval.residuals)
-        parameters = ModelRegistry.get(model_name).guess_initial(
-            region_eval.x,
-            region_eval.y,
-            peak_index=peak_index,
-        )
+        parameters = self.guess_peak_parameters(region, components, model_name)
         return CreatePeak(
             region_id=region.id_,
             model_name=model_name,
