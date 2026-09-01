@@ -8,9 +8,10 @@ They encapsulate "how" to apply and undo changes against the core data model.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import asdict
+from typing import ClassVar
 
 from core.metadata import Metadata
-from core.objects import Background, CoreObject, Peak
+from core.objects import Background, CoreObject, Peak, Spectrum
 from core.services import ComponentService, CoreContext, RegionService, SpectrumService
 
 from .changes import (
@@ -30,10 +31,17 @@ from .changes import (
     UpdateParameter,
     UpdateRegionSlice,
 )
+from .refresh import UiRefresh
 
 
 class Command(ABC):
     """Base class for commands that apply and undo changes against the core model."""
+
+    ui_refresh: ClassVar[UiRefresh] = UiRefresh.ALL
+
+    def combined_ui_refresh(self) -> UiRefresh:
+        """Return UI invalidation flags for this command (including composites)."""
+        return self.ui_refresh
 
     @classmethod
     @abstractmethod
@@ -51,6 +59,8 @@ class Command(ABC):
 
 class UpdateParameterCommand(Command):
     """Command that updates a single parameter attribute; supports undo via stored old value."""
+
+    ui_refresh = UiRefresh.FIT
 
     def __init__(
         self,
@@ -145,6 +155,8 @@ class UpdateParameterCommand(Command):
 class UpdateRegionSliceCommand(Command):
     """Command that updates a region's index slice; stores indices only (values converted in from_change)."""
 
+    ui_refresh = UiRefresh.FIT
+
     def __init__(
         self,
         region_id: str,
@@ -228,6 +240,8 @@ class UpdateRegionSliceCommand(Command):
 
 class UpdateMultipleParameterValuesCommand(Command):
     """Command that updates multiple parameter values; stores old values for undo."""
+
+    ui_refresh = UiRefresh.FIT
 
     def __init__(
         self,
@@ -313,6 +327,8 @@ class SetMetadataCommand(Command):
     the specific change type. Uses unified MetadataService.get_metadata/set_metadata.
     """
 
+    ui_refresh = UiRefresh.METADATA
+
     def __init__(
         self,
         obj_id: str,
@@ -369,6 +385,8 @@ class RemoveMetadataCommand(Command):
 
     Stores old metadata for undo; no-op if object had no metadata.
     """
+
+    ui_refresh = UiRefresh.HIERARCHY | UiRefresh.DOCUMENT
 
     def __init__(
         self,
@@ -430,6 +448,14 @@ class RemoveObjectCommand(Command):
 
     Uses detach which handles cascading removal of children automatically.
     """
+
+    def combined_ui_refresh(self) -> UiRefresh:
+        """Spectrum removals also invalidate the hierarchy tree."""
+        if self.objs:
+            root = self.objs[0]
+            if isinstance(root, Spectrum):
+                return UiRefresh.ALL
+        return UiRefresh.FIT
 
     def __init__(self, obj_id: str) -> None:
         """
@@ -495,6 +521,8 @@ class CreateObjectCommand(Command):
 class CreateSpectrumCommand(CreateObjectCommand):
     """Command that creates a spectrum."""
 
+    ui_refresh = UiRefresh.ALL
+
     create_obj_fn = staticmethod(SpectrumService._create_spectrum_obj)
 
     @classmethod
@@ -521,6 +549,8 @@ class CreateSpectrumCommand(CreateObjectCommand):
 
 class CreateRegionCommand(CreateObjectCommand):
     """Command that creates a region; stores ID for undo."""
+
+    ui_refresh = UiRefresh.FIT
 
     create_obj_fn = staticmethod(RegionService._create_region_obj)
 
@@ -574,6 +604,8 @@ class CreateRegionCommand(CreateObjectCommand):
 class CreatePeakCommand(CreateObjectCommand):
     """Command that creates a peak; stores ID for undo."""
 
+    ui_refresh = UiRefresh.FIT
+
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
     @classmethod
@@ -602,6 +634,8 @@ class CreatePeakCommand(CreateObjectCommand):
 
 class CreateBackgroundCommand(CreateObjectCommand):
     """Command that creates or replaces a background; stores old background for undo."""
+
+    ui_refresh = UiRefresh.FIT
 
     create_obj_fn = staticmethod(ComponentService._create_component_obj)
 
@@ -659,6 +693,13 @@ class CompositeCommand(Command):
         """Undo all commands in reverse order."""
         for cmd in reversed(self.commands):
             cmd.undo(ctx)
+
+    def combined_ui_refresh(self) -> UiRefresh:
+        """Aggregate refresh flags from child commands."""
+        flags = UiRefresh(0)
+        for cmd in self.commands:
+            flags |= cmd.combined_ui_refresh()
+        return flags
 
 
 class ReplacePeakModelCommand(CompositeCommand):
