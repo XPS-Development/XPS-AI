@@ -8,6 +8,7 @@ from typing import cast
 
 import pytest
 from PySide6.QtWidgets import QApplication
+from tests.conftest import seed_hierarchy_metadata
 
 from ui.controller import ControllerWrapper
 
@@ -126,3 +127,32 @@ def test_controller_export_peak_forwards_to_orchestrator(
     monkeypatch.setattr(ctrl.orchestrator, "export_peak_parameters", fake_export_peak)
     ctrl.export_peak_parameters("s1", "/tmp/p.csv")
     assert calls == [("s1", "/tmp/p.csv")]
+
+
+@pytest.mark.parametrize(
+    ("rename_method", "rename_args"),
+    [
+        ("rename_spectrum", ("s1", "new-spec-1")),
+        ("rename_group", ("file-a", "group-a", "group-c")),
+        ("rename_file", ("file-a", "file-b")),
+    ],
+)
+def test_rename_emits_hierarchy_not_plot(
+    qapp: QApplication,
+    hierarchy_collection,
+    rename_method: str,
+    rename_args: tuple[str, ...],
+) -> None:
+    """Hierarchy renames should refresh tree and document, not plot or properties."""
+    del qapp
+    ctrl = ControllerWrapper(collection=hierarchy_collection)
+    seed_hierarchy_metadata(ctrl.orchestrator.ctx.metadata)
+    counts = _connect_signal_counts(ctrl)
+
+    getattr(ctrl, rename_method)(*rename_args)
+
+    assert counts["hierarchy"] == 1
+    assert counts["document"] == 1
+    assert counts["undo_redo"] == 1
+    assert counts["plot"] == 0
+    assert counts["properties"] == 0
