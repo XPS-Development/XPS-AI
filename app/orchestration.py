@@ -6,21 +6,19 @@ for running services, applying changes (create/update/metadata/remove), and undo
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from numpy.typing import NDArray
 
 from core.collection import CoreCollection
-from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
-from core.metadata import Metadata, SpectrumMetadata
+from core.dto import ComponentDTO
+from core.metadata import Metadata
 from core.services import CoreContext
 
 from .automatization import AutomatizationAdapter
 from .command.changes import (
     BaseChange,
-    CompositeChange,
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
@@ -34,397 +32,14 @@ from .command.changes import (
 from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from .csv_export import CSVExportService
-from .dto_service import DTOService
 from .error_dump import apply_safe_execution_to_class
 from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
+from .parameters import AppParameters
+from .query_service import QueryService
 from .serialization import SerializationService
-from .usecases import AnalysisUseCases, EditingUseCases
-
-
-@dataclass
-class AppParameters:
-    """
-    Parameters for the app orchestrator.
-
-    This dataclass stores configuration values that control import behavior,
-    NN and optimization services, serialization defaults, and selected UI
-    preferences that need to be persisted between sessions.
-    """
-
-    # ---- Core collection parameters ----
-    automatic_methods: bool = True
-    default_peak_model: str = "pseudo-voigt"
-    default_background_model: str = "shirley"
-
-    # ---- UI parameters ----
-    show_spectrum_id_in_tree: bool = True
-    region_slice_display_mode: Literal["value", "index"] = "value"
-    show_id_in_properties_tree: bool = True
-    show_residuals_plot: bool = True
-
-    # ---- Import service parameters ----
-    import_use_binding_energy: bool = True
-    import_use_cps: bool = True
-
-    # ---- NN service parameters ----
-    nn_model_path: str | None = "assets/models/model.onnx"
-    nn_pred_threshold: float = 0.5
-    nn_smooth: bool = True
-    nn_interp_num: int = 256
-
-    # ---- Optimization service parameters ----
-    optimization_kwargs: dict[str, Any] = field(default_factory=dict)
-
-    # ---- Serialization service parameters ----
-    default_serialization_mode: Literal["append", "replace", "new"] = "replace"
-    default_serialization_path: str | Path | None = None
-    default_serialization_indent: int | None = None
-    default_serialization_use_gzip: bool = True
-    default_serialization_compresslevel: int = 9
-
-
-class QueryService:
-    """Thin wrapper for querying the collection, metadata and DTO."""
-
-    def __init__(self, ctx: CoreContext) -> None:
-        """
-        Initialize query service with access to core services and DTOs.
-
-        Parameters
-        ----------
-        ctx : CoreContext
-            Core services context providing query, metadata and data access.
-        """
-        self._ctx = ctx
-        self._dto = DTOService(ctx)
-
-    # ---- Collection queries (read-only) ----
-
-    def check_object_exists(self, obj_id: str) -> bool:
-        """
-        Return True if an object with the given ID exists in the collection.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the core object.
-
-        Returns
-        -------
-        bool
-            True if the object exists, False otherwise.
-        """
-        return self._ctx.query.check_object_exists(obj_id)
-
-    def get_parent_id(self, obj_id: str) -> str:
-        """
-        Return the identifier of the first parent of a core object.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the core object.
-
-        Returns
-        -------
-        str
-            Identifier of the object's parent.
-        """
-        return self._ctx.query.get_parent(obj_id)
-
-    def get_subtree_ids(self, obj_id: str) -> tuple[str, ...]:
-        """
-        Return the identifier of the object and all its descendants.
-
-        Parameters
-        ----------
-        obj_id : str
-            Root object identifier.
-
-        Returns
-        -------
-        tuple[str, ...]
-            The object ID and all descendant IDs.
-        """
-        return self._ctx.query.get_subtree(obj_id)
-
-    def get_regions_ids(self, spectrum_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all regions that belong to a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the parent spectrum.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Region identifiers whose parent is the given spectrum.
-        """
-        return self._ctx.query.get_regions(spectrum_id)
-
-    def get_components_ids(self, region_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all components (peaks and background) in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Component identifiers belonging to the region.
-        """
-        return self._ctx.query.get_components(region_id)
-
-    def get_peaks_ids(self, region_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all peak components in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Peak identifiers belonging to the region.
-        """
-        return self._ctx.query.get_peaks(region_id)
-
-    def get_background_id(self, region_id: str) -> str | None:
-        """
-        Return the identifier of the unique background component in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        str or None
-            Background identifier, or None if no background exists.
-        """
-        return self._ctx.query.get_background(region_id)
-
-    def get_all_peaks_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all peaks in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All peak identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_peaks()
-
-    def get_all_spectra_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all spectra in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All spectrum identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_spectra()
-
-    def get_all_regions_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all regions in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All region identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_regions()
-
-    # ---- Metadata queries (read-only) ----
-
-    def get_metadata(self, obj_id: str) -> Metadata | None:
-        """
-        Retrieve metadata for a core object.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the object.
-
-        Returns
-        -------
-        Metadata or None
-            Stored metadata, if any.
-        """
-        return self._ctx.metadata.get_metadata(obj_id)
-
-    def find_objects(
-        self,
-        md_field: str,
-        md_value: str,
-        *,
-        match_exact: bool = False,
-        tp: type[Metadata] | None = None,
-    ) -> tuple[str, ...]:
-        """
-        Find object identifiers whose metadata matches the given field and value.
-
-        Parameters
-        ----------
-        md_field : str
-            Metadata field to match.
-        md_value : str
-            Metadata value to match.
-        match_exact : bool, default=False
-            If True, match exact value, otherwise perform a substring match.
-        tp : type[Metadata] or None, optional
-            Metadata type to filter by.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Object identifiers with matching metadata.
-        """
-        return self._ctx.metadata.find_objects(
-            md_field=md_field,
-            md_value=md_value,
-            match_exact=match_exact,
-            tp=tp,
-        )
-
-    # ---- Region queries ----
-
-    def get_region_slice(
-        self, region_id: str, mode: Literal["value", "index"] = "index"
-    ) -> tuple[int | float, int | float]:
-        """
-        Return the start and stop values or indices of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        mode : Literal["value", "index"], default="index"
-            Mode of the slice retrieval.
-
-        Returns
-        -------
-        tuple[int | float, int | float]
-            Start and stop values or indices of the region.
-        """
-        return self._ctx.region.get_slice(region_id, mode=mode)
-
-    # ---- DTO projections ----
-
-    def get_spectrum_dto(self, spectrum_id: str, *, normalized: bool = False) -> SpectrumDTO:
-        """
-        Return an immutable DTO projection of a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the spectrum.
-        normalized : bool, default=False
-            If True, return normalized spectrum data.
-
-        Returns
-        -------
-        SpectrumDTO
-            Spectrum data transfer object.
-        """
-        return self._dto.get_spectrum(spectrum_id, normalized=normalized)
-
-    def get_region_dto(self, region_id: str, *, normalized: bool = False) -> RegionDTO:
-        """
-        Return an immutable DTO projection of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        normalized : bool, default=False
-            If True, return normalized region data.
-
-        Returns
-        -------
-        RegionDTO
-            Region data transfer object.
-        """
-        return self._dto.get_region(region_id, normalized=normalized)
-
-    def get_component_dto(self, component_id: str, *, normalized: bool = False) -> ComponentDTO:
-        """
-        Return an immutable DTO projection of a component.
-
-        Parameters
-        ----------
-        component_id : str
-            Identifier of the component.
-        normalized : bool, default=False
-            If True, return normalized component parameters.
-
-        Returns
-        -------
-        ComponentDTO
-            Component data transfer object.
-        """
-        return self._dto.get_component(component_id, normalized=normalized)
-
-    def get_spectrum_dto_repr(
-        self,
-        spectrum_id: str,
-        *,
-        normalized: bool = False,
-    ) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
-        """
-        Return a complete immutable representation of a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the spectrum.
-        normalized : bool, default=False
-            If True, return normalized data and parameters.
-
-        Returns
-        -------
-        tuple[
-            SpectrumDTO,
-            tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...],
-        ]
-            Spectrum DTO and all regions with their component DTOs.
-        """
-        return self._dto.get_spectrum_repr(spectrum_id, normalized=normalized)
-
-    def get_region_dto_repr(
-        self,
-        region_id: str,
-        *,
-        normalized: bool = False,
-    ) -> tuple[RegionDTO, tuple[ComponentDTO, ...]]:
-        """
-        Return a complete immutable representation of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        normalized : bool, default=False
-            If True, return normalized data and parameters.
-
-        Returns
-        -------
-        tuple[RegionDTO, tuple[ComponentDTO, ...]]
-            Region DTO and its component DTOs.
-        """
-        return self._dto.get_region_repr(region_id, normalized=normalized)
+from .usecases import AnalysisUseCases, EditingUseCases, HierarchyUseCases
 
 
 class AppOrchestrator:
@@ -473,6 +88,7 @@ class AppOrchestrator:
         self._csv_export = CSVExportService()
         self._editing = EditingUseCases(self._query, self._automatization, params)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
+        self._hierarchy = HierarchyUseCases(self._query)
 
     @property
     def core_collection(self) -> CoreCollection:
@@ -817,6 +433,41 @@ class AppOrchestrator:
             )
         )
 
+    def create_peak_and_return_id(
+        self,
+        region_id: str,
+        model_name: str,
+        parameters: dict[str, float] | None = None,
+        peak_id: str | None = None,
+    ) -> str:
+        """
+        Create a peak and return its identifier.
+
+        Parameters
+        ----------
+        region_id : str
+            Parent region identifier.
+        model_name : str
+            Registered peak model name.
+        parameters : dict[str, float] or None, optional
+            Explicit parameter values.
+        peak_id : str or None, optional
+            Optional explicit peak identifier.
+
+        Returns
+        -------
+        str
+            Identifier of the created peak.
+        """
+        change, resolved_id = self._editing.create_peak_and_return_id(
+            region_id,
+            model_name,
+            parameters=parameters,
+            peak_id=peak_id,
+        )
+        self.execute(change)
+        return resolved_id
+
     def create_background(
         self,
         region_id: str,
@@ -851,16 +502,7 @@ class AppOrchestrator:
         new_name : str
             New display name for the spectrum.
         """
-        metadata = self._query.get_metadata(spectrum_id)
-        if isinstance(metadata, SpectrumMetadata):
-            updated = SpectrumMetadata(
-                name=new_name,
-                group=metadata.group,
-                file=metadata.file,
-            )
-        else:
-            updated = SpectrumMetadata(name=new_name, group="", file="")
-        self.execute(SetMetadata(obj_id=spectrum_id, metadata=updated))
+        self.execute(self._hierarchy.rename_spectrum(spectrum_id, new_name))
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """
@@ -875,20 +517,9 @@ class AppOrchestrator:
         new_group_label : str
             New group label.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata) and md.group == old_group_label:
-                updated = SpectrumMetadata(name=md.name, group=new_group_label, file=md.file)
-                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
+        change = self._hierarchy.rename_group(file_label, old_group_label, new_group_label)
+        if change is not None:
+            self.execute(change)
 
     def rename_file(self, old_file_label: str, new_file_label: str) -> None:
         """
@@ -901,20 +532,9 @@ class AppOrchestrator:
         new_file_label : str
             New file label.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=old_file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata):
-                updated = SpectrumMetadata(name=md.name, group=md.group, file=new_file_label)
-                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
+        change = self._hierarchy.rename_file(old_file_label, new_file_label)
+        if change is not None:
+            self.execute(change)
 
     # ---- Remove ----
 
@@ -941,19 +561,9 @@ class AppOrchestrator:
         group_label : str
             Group label to remove.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata) and md.group == group_label:
-                changes.append(FullRemoveObject(obj_id=spectrum_id))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
+        change = self._hierarchy.remove_group(file_label, group_label)
+        if change is not None:
+            self.execute(change)
 
     def remove_file(self, file_label: str) -> None:
         """
@@ -964,18 +574,9 @@ class AppOrchestrator:
         file_label : str
             File label whose spectra should be removed.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        if not spectrum_ids:
-            return
-        changes: list[BaseChange] = [
-            FullRemoveObject(obj_id=spectrum_id) for spectrum_id in spectrum_ids
-        ]
-        self.execute(CompositeChange(changes=changes))
+        change = self._hierarchy.remove_file(file_label)
+        if change is not None:
+            self.execute(change)
 
     # ---- Serialization ----
 

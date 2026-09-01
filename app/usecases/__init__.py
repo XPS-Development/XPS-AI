@@ -2,5 +2,6 @@
 
 from .analysis import AnalysisUseCases
 from .editing import EditingUseCases
+from .hierarchy import HierarchyUseCases
 
-__all__ = ["AnalysisUseCases", "EditingUseCases"]
+__all__ = ["AnalysisUseCases", "EditingUseCases", "HierarchyUseCases"]

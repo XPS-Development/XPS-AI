@@ -8,6 +8,7 @@ AutomatizationAdapter. Does not execute commands.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 from app.command.changes import (
     BaseChange,
@@ -22,7 +23,8 @@ from core.math_models import ModelRegistry
 
 if TYPE_CHECKING:
     from app.automatization import AutomatizationAdapter
-    from app.orchestration import AppParameters, QueryService
+    from app.parameters import AppParameters
+    from app.query_service import QueryService
     from core.dto import ComponentDTO
 
 
@@ -89,6 +91,7 @@ class EditingUseCases:
                 region_repr[0],
                 region_repr[1],
                 model_name=model_name,
+                peak_id=peak_id,
             )
         return CreatePeak(
             region_id=region_id,
@@ -96,6 +99,43 @@ class EditingUseCases:
             parameters=parameters,
             peak_id=peak_id,
         )
+
+    def create_peak_and_return_id(
+        self,
+        region_id: str,
+        model_name: str,
+        parameters: dict[str, float] | None = None,
+        peak_id: str | None = None,
+    ) -> tuple[BaseChange, str]:
+        """
+        Build a peak-creation change with a known component identifier.
+
+        Parameters
+        ----------
+        region_id
+            Parent region identifier.
+        model_name
+            Registered peak model name.
+        parameters
+            Explicit parameter values. If None and automatic methods are on,
+            parameters are guessed from residuals via the model.
+        peak_id
+            Optional explicit peak identifier. When omitted, a new id is
+            generated and embedded in the returned change.
+
+        Returns
+        -------
+        tuple[BaseChange, str]
+            Change to execute and the peak identifier that will be created.
+        """
+        resolved_id = peak_id or f"p{uuid4().hex}"
+        change = self.create_peak(
+            region_id,
+            model_name,
+            parameters=parameters,
+            peak_id=resolved_id,
+        )
+        return change, resolved_id
 
     def create_background(
         self,

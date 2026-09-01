@@ -78,6 +78,7 @@ class AutomatizationAdapter:
         region: RegionDTO,
         components: tuple[ComponentDTO, ...],
         model_name: str,
+        peak_id: str | None = None,
     ) -> CreatePeak:
         """Create peak parameters from residuals via model ``guess_initial``."""
         parameters = self.guess_peak_parameters(region, components, model_name)
@@ -85,6 +86,7 @@ class AutomatizationAdapter:
             region_id=region.id_,
             model_name=model_name,
             parameters=parameters,
+            peak_id=peak_id,
         )
 
     def get_bg_parameters(

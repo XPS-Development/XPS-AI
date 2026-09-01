@@ -10,7 +10,8 @@ from app.command.changes import (
     UpdateMultipleParameterValues,
     UpdateRegionSlice,
 )
-from app.orchestration import AppParameters, QueryService
+from app.parameters import AppParameters
+from app.query_service import QueryService
 from app.usecases.editing import EditingUseCases
 from core.services import CoreContext
 
@@ -173,3 +174,27 @@ def test_replace_peak_model_explicit_params_skip_transfer(simple_collection, pea
 
     assert isinstance(change, ReplacePeakModel)
     assert change.parameters == params
+
+
+def test_create_peak_and_return_id_embeds_peak_id(simple_collection, region_id) -> None:
+    """create_peak_and_return_id returns a change with a known peak identifier."""
+    editing = _editing(simple_collection, automatic_methods=False)
+    change, peak_id = editing.create_peak_and_return_id(
+        region_id, "pseudo-voigt", parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
+    )
+
+    assert isinstance(change, CreatePeak)
+    assert change.peak_id == peak_id
+    assert peak_id.startswith("p")
+
+
+def test_create_peak_and_return_id_embeds_peak_id(simple_collection, region_id) -> None:
+    """create_peak_and_return_id returns a change with a known peak identifier."""
+    editing = _editing(simple_collection, automatic_methods=False)
+    change, peak_id = editing.create_peak_and_return_id(
+        region_id, "pseudo-voigt", parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
+    )
+
+    assert isinstance(change, CreatePeak)
+    assert change.peak_id == peak_id
+    assert peak_id.startswith("p")
