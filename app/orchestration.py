@@ -16,7 +16,6 @@ from core.dto import ComponentDTO
 from core.metadata import Metadata
 from core.services import CoreContext
 
-from .automatization import AutomatizationAdapter
 from .command.changes import (
     BaseChange,
     CreateRegion,
@@ -83,10 +82,9 @@ class AppOrchestrator:
             background_model_name=params.default_background_model,
         )
         self._optimization = OptimizationService()
-        self._automatization = AutomatizationAdapter()
         self._serialization = SerializationService()
         self._csv_export = CSVExportService()
-        self._editing = EditingUseCases(self._query, self._automatization, params)
+        self._editing = EditingUseCases(self._query, params)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
 

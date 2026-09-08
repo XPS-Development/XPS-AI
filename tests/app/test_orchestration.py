@@ -444,11 +444,11 @@ def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_d
     assert orch.get_default_save_path() == fp
 
 
-# ---- Automatic methods (AutomatizationAdapter) ----
+# ---- Automatic methods (EditingUseCases) ----
 
 
 def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple_gauss_spectrum):
-    """create_peak with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
+    """create_peak with parameters=None guesses params when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
     orch.create_spectrum(x, y, spectrum_id="s1")
@@ -469,7 +469,7 @@ def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple
 def test_create_background_auto_params_when_automatic_methods(
     empty_collection, simple_gauss_spectrum
 ):
-    """create_background with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
+    """create_background with parameters=None guesses params when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
     orch.create_spectrum(x, y, spectrum_id="s1")

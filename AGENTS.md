@@ -43,9 +43,11 @@ debug/ → core/evaluation → core/dto   (notebooks / interactive only)
 
 **`app/` adapters are not duplicates**
 
-`app/optimization.py`, `app/serialization.py`, `app/csv_export.py`,
-`app/automatization.py` wrap library modules and return `Change` objects or track
-dirty state. Keep that boundary; do not merge layers or copy logic both ways.
+`app/optimization.py`, `app/serialization.py`, and `app/csv_export.py` wrap
+library modules and return `Change` objects or track dirty state. Keep that
+boundary; do not merge layers or copy logic both ways. Initial parameter
+guessing for edits lives in `EditingUseCases` (calling model `guess_initial`
+in `core/`).
 
 ## Tooling
 
