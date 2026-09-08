@@ -12,7 +12,6 @@ from typing import Literal
 from numpy.typing import NDArray
 
 from core.collection import CoreCollection
-from core.dto import ComponentDTO
 from core.metadata import Metadata
 from core.services import CoreContext
 
@@ -39,7 +38,7 @@ from .optimization import OptimizationService
 from .parameters import AppParameters
 from .query_service import QueryService
 from .serialization import SerializationService
-from .usecases import AnalysisUseCases, EditingUseCases, HierarchyUseCases
+from .usecases import AnalysisUseCases, EditingUseCases, ExportUseCases, HierarchyUseCases
 
 
 class AppOrchestrator:
@@ -88,6 +87,7 @@ class AppOrchestrator:
         self._editing = EditingUseCases(self._query, params)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
+        self._export = ExportUseCases(self._query, self._csv_export)
         self._pending_ui_refresh = UiRefresh(0)
 
     @property
@@ -720,13 +720,10 @@ class AppOrchestrator:
         use_xps_peak_names : bool, optional
             If True, apply pseudo-voigt XPS aliases.
         """
-        components: list[ComponentDTO] = []
-        for region_id in self._query.get_regions_ids(spectrum_id):
-            for peak_id in self._query.get_peaks_ids(region_id):
-                components.append(self._query.get_component_dto(peak_id, normalized=normalized))
-        self._csv_export.export_spectrum_peak_parameters(
+        self._export.export_peak_parameters(
+            spectrum_id,
             path,
-            tuple(components),
+            normalized=normalized,
             separator=separator,
             use_xps_peak_names=use_xps_peak_names,
             precision=precision,
@@ -764,10 +761,10 @@ class AppOrchestrator:
         include_difference : bool, optional
             If True, include residual/difference column.
         """
-        spectrum_repr = self._query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
-        self._csv_export.export_spectrum(
+        self._export.export_spectrum(
+            spectrum_id,
             path,
-            spectrum_repr,
+            normalized=normalized,
             separator=separator,
             include_evaluated_components=include_evaluated_components,
             include_background=include_background,
