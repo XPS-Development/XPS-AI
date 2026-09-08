@@ -50,9 +50,10 @@ def test_rename_file_returns_composite_change(hierarchy_ctx) -> None:
 
     assert isinstance(change, CompositeChange)
     assert len(change.changes) == 3
-    assert all(
-        isinstance(c, SetMetadata) and c.metadata.file == "file-b" for c in change.changes
-    )
+    for sub in change.changes:
+        assert isinstance(sub, SetMetadata)
+        assert isinstance(sub.metadata, SpectrumMetadata)
+        assert sub.metadata.file == "file-b"
 
 
 def test_rename_file_returns_none_when_no_match(hierarchy_ctx) -> None:

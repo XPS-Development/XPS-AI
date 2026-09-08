@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
 from core.evaluation import SpectrumPlotData, plot_data_from_evaluation, spectrum_bundle
 from core.math_models import ModelRegistry
-from core.math_models.base_models import ParameterSpec
-from core.metadata import Metadata
-from core.services import CoreContext
 
 from .dto_service import DTOService
+
+if TYPE_CHECKING:
+    from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+    from core.math_models.base_models import ParameterSpec
+    from core.metadata import Metadata
+    from core.services import CoreContext
 
 
 class QueryService:

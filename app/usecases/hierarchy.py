@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from app.command.changes import CompositeChange, FullRemoveObject, SetMetadata
 from core.metadata import SpectrumMetadata
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from app.query_service import QueryService
 
 

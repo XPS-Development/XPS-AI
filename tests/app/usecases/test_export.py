@@ -6,9 +6,7 @@ from app.usecases.export import ExportUseCases
 from core.services import CoreContext
 
 
-def test_export_peak_parameters_writes_csv(
-    simple_collection, spectrum_id: str, tmp_path
-) -> None:
+def test_export_peak_parameters_writes_csv(simple_collection, spectrum_id: str, tmp_path) -> None:
     """export_peak_parameters writes a non-empty peak-parameter table."""
     ctx = CoreContext.from_collection(simple_collection)
     export = ExportUseCases(QueryService(ctx), CSVExportService())
