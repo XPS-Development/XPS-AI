@@ -63,8 +63,8 @@ class MainWindow(QMainWindow):
         self._connect_controller_signals()
 
         self._update_undo_redo_state(
-            can_undo=self._controller.orchestrator.can_undo,
-            can_redo=self._controller.orchestrator.can_redo,
+            can_undo=self._controller.can_undo,
+            can_redo=self._controller.can_redo,
         )
         self._update_window_title()
         self._update_status_bar()
@@ -221,8 +221,7 @@ class MainWindow(QMainWindow):
         """Create a new collection (clear current workspace)."""
         if not self._confirm_discard_changes():
             return
-        self._controller.orchestrator.new_collection()
-        self._controller.emit_full_ui_refresh()
+        self._controller.new_collection()
 
     def _on_open_triggered(self) -> None:
         """
@@ -442,7 +441,7 @@ class MainWindow(QMainWindow):
         selection_str_base = " | ".join(selection_parts) if selection_parts else "No selection"
         selection_str = f"{selection_str_base}{extra_selection}"
 
-        if self._controller.orchestrator.is_dirty:
+        if self._controller.is_dirty:
             text = f"* {path_str} | {selection_str}"
         else:
             text = f"{path_str} | {selection_str}"
@@ -457,7 +456,7 @@ class MainWindow(QMainWindow):
         bool
             True if the operation may proceed, False to cancel.
         """
-        if not self._controller.orchestrator.is_dirty:
+        if not self._controller.is_dirty:
             return True
 
         answer = QMessageBox.question(

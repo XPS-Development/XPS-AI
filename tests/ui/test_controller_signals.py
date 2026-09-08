@@ -222,3 +222,22 @@ def test_auto_fit_emits_once_for_two_internal_executes(
     assert counts["document"] == 1
     assert counts["undo_redo"] == 1
     assert counts["hierarchy"] == 0
+
+
+def test_new_collection_emits_full_refresh(
+    qapp: QApplication,
+    simple_collection,
+) -> None:
+    """new_collection clears the document and emits a full UI refresh."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    counts = _connect_signal_counts(ctrl)
+
+    ctrl.new_collection()
+
+    assert counts["hierarchy"] == 1
+    assert counts["plot"] == 1
+    assert counts["properties"] == 1
+    assert counts["document"] == 1
+    assert ctrl.is_dirty is True
+    assert ctrl.query.get_all_spectra_ids() == ()

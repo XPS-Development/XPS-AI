@@ -38,7 +38,13 @@ from .optimization import OptimizationService
 from .parameters import AppParameters
 from .query_service import QueryService
 from .serialization import SerializationService
-from .usecases import AnalysisUseCases, EditingUseCases, ExportUseCases, HierarchyUseCases
+from .usecases import (
+    AnalysisUseCases,
+    DocumentUseCases,
+    EditingUseCases,
+    ExportUseCases,
+    HierarchyUseCases,
+)
 
 
 class AppOrchestrator:
@@ -88,6 +94,13 @@ class AppOrchestrator:
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
         self._export = ExportUseCases(self._query, self._csv_export)
+        self._document = DocumentUseCases(
+            self._core_collection,
+            self.__ctx.metadata,
+            self._serialization,
+            self._params,
+            self._executor,
+        )
         self._pending_ui_refresh = UiRefresh(0)
 
     @property
@@ -144,6 +157,27 @@ class AppOrchestrator:
             background_model_name=self._params.default_background_model,
         )
         self._analysis.set_nn(self._nn)
+
+    def apply_params(self, params: AppParameters) -> None:
+        """
+        Replace application parameters and reconfigure dependent services.
+
+        Parameters
+        ----------
+        params : AppParameters
+            New parameter set to install.
+        """
+        self._params = params
+        self.reconfigure_services_from_params()
+        self._editing = EditingUseCases(self._query, self._params)
+        self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, self._params)
+        self._document = DocumentUseCases(
+            self._core_collection,
+            self.__ctx.metadata,
+            self._serialization,
+            self._params,
+            self._executor,
+        )
 
     @property
     def can_undo(self) -> bool:
@@ -621,23 +655,7 @@ class AppOrchestrator:
         ValueError
             If path is None and no default path is set.
         """
-        resolved_path = path if path is not None else self._params.default_serialization_path
-        if resolved_path is None:
-            raise ValueError(
-                "path is required when AppParameters.default_serialization_path is not set"
-            )
-        resolved_indent = (
-            indent if indent is not None else self._params.default_serialization_indent
-        )
-        self._serialization.dump(
-            path=resolved_path,
-            collection=self._core_collection,
-            metadata_service=self.__ctx.metadata,
-            indent=resolved_indent,
-            use_gzip=self._params.default_serialization_use_gzip,
-            compresslevel=self._params.default_serialization_compresslevel,
-        )
-        self.set_default_save_path(resolved_path)
+        self._document.dump_collection(path, indent=indent)
         self._pending_ui_refresh |= UiRefresh.DOCUMENT
 
     def load_collection(
@@ -662,23 +680,7 @@ class AppOrchestrator:
             - replace: clear current collection/metadata in-place, then load.
             If None, uses AppParameters.default_serialization_mode (must be append or replace).
         """
-        resolved_mode = mode if mode is not None else self._params.default_serialization_mode
-        if resolved_mode not in ("append", "replace"):
-            raise ValueError(
-                f"mode must be 'append' or 'replace', got {resolved_mode!r}; "
-                "AppParameters.default_serialization_mode='new' is not supported"
-            )
-        self._serialization.load(
-            path=path,
-            collection=self._core_collection,
-            metadata_service=self.__ctx.metadata,
-            mode=resolved_mode,
-        )
-
-        self.set_default_save_path(path)
-
-        if resolved_mode == "replace":
-            self._executor.clear()
+        self._document.load_collection(path, mode=mode)
 
     def new_collection(self) -> None:
         """
@@ -686,11 +688,8 @@ class AppOrchestrator:
 
         Used when creating a new document (e.g. File > New).
         """
-        self._core_collection.clear()
-        self.__ctx.metadata.clear()
-        self._params.default_serialization_path = None
-        self._serialization.mark_dirty()
-        self._executor.clear()
+        self._document.new_collection()
+        self._pending_ui_refresh |= UiRefresh.ALL
 
     # ---- CSV export ----
 

@@ -74,6 +74,21 @@ class ControllerWrapper(QObject):
         return self._orchestrator.query
 
     @property
+    def can_undo(self) -> bool:
+        """True if there is at least one command to undo."""
+        return self._orchestrator.can_undo
+
+    @property
+    def can_redo(self) -> bool:
+        """True if there is at least one command to redo."""
+        return self._orchestrator.can_redo
+
+    @property
+    def is_dirty(self) -> bool:
+        """True if there are unsaved document changes."""
+        return self._orchestrator.is_dirty
+
+    @property
     def selected_spectrum_id(self) -> str | None:
         """Identifier of the currently selected spectrum."""
         return self._selected_spectrum_id
@@ -378,11 +393,15 @@ class ControllerWrapper(QObject):
         self,
         path: str | Path,
         *,
-        mode: Literal["append", "replace"] = "replace",
+        mode: Literal["append", "replace"] | None = None,
     ) -> None:
         """Load collection and metadata from disk and emit signals."""
         self._orchestrator.load_collection(path, mode=mode)
         self.emit_full_ui_refresh()
+
+    def new_collection(self) -> None:
+        """Clear the document and emit a full UI refresh."""
+        self._mutate(self._orchestrator.new_collection)
 
     def set_default_save_path(self, path: str | Path) -> None:
         """Set the default save path in the serialization service."""
@@ -446,8 +465,7 @@ class ControllerWrapper(QObject):
 
     def apply_app_parameters(self, params: AppParameters) -> None:
         """Apply updated application parameters to the orchestrator."""
-        self._orchestrator._params = params
-        self._orchestrator.reconfigure_services_from_params()
+        self._orchestrator.apply_params(params)
         self._emit_refresh(UiRefresh.ALL)
 
     # ------------------------------------------------------------------
