@@ -60,3 +60,32 @@ def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
     assert model.data(idx(3), Qt.ItemDataRole.DisplayRole) == "10.00"
     assert model.data(idx(4), Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
     assert model.data(idx(5), Qt.ItemDataRole.DisplayRole) == ""
+
+
+def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> None:
+    """COMPONENT rows expose truncated id and a stable color string."""
+    from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole, ObjectIdRole
+
+    mock_controller.get_app_parameters.return_value.show_id_in_properties_tree = True
+    model = PropertiesModel(mock_controller)
+    model._root_item.children.clear()
+    peak = PropertyItem(
+        name="Peak 1",
+        parent=model._root_item,
+        kind=ItemKind.COMPONENT,
+        region_id="r1",
+        component_id="pabcdef123",
+        component_kind="peak",
+        object_id="pabcdef123",
+    )
+    model._root_item.append_child(peak)
+    model.beginResetModel()
+    model.endResetModel()
+
+    idx = model.index(0, 0, QModelIndex())
+    assert model.data(idx, Qt.ItemDataRole.DisplayRole) == "Peak 1"
+    assert model.data(idx, ObjectIdRole) == "pabcdef123"
+    assert model.data(idx, ObjectIdPrefixRole) == "pabcd"
+    color = model.data(idx, ComponentColorRole)
+    assert isinstance(color, str)
+    assert color.startswith("#")

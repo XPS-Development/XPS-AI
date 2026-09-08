@@ -36,7 +36,7 @@ class ControllerWrapper(QObject):
     propertiesNeedsRefresh: Signal = Signal()
     documentStateChanged: Signal = Signal()
     undoRedoStateChanged: Signal = Signal(bool, bool)
-    selectionChanged: Signal = Signal(object, object)
+    selectionChanged: Signal = Signal(object, object, object)
 
     def __init__(
         self,
@@ -57,6 +57,7 @@ class ControllerWrapper(QObject):
 
         self._selected_spectrum_id: str | None = None
         self._selected_region_id: str | None = None
+        self._selected_component_id: str | None = None
 
     @property
     def collection(self) -> CoreCollection:
@@ -98,13 +99,39 @@ class ControllerWrapper(QObject):
         """Identifier of the currently selected region."""
         return self._selected_region_id
 
-    def set_selection(self, spectrum_id: str | None, region_id: str | None = None) -> None:
-        """Update the current spectrum/region selection."""
-        if spectrum_id == self._selected_spectrum_id and region_id == self._selected_region_id:
+    @property
+    def selected_component_id(self) -> str | None:
+        """Identifier of the currently selected peak or background component."""
+        return self._selected_component_id
+
+    def set_selection(
+        self,
+        spectrum_id: str | None,
+        region_id: str | None = None,
+        component_id: str | None = None,
+    ) -> None:
+        """
+        Update the current spectrum/region/component selection.
+
+        Parameters
+        ----------
+        spectrum_id : str or None
+            Selected spectrum, or ``None`` to clear selection.
+        region_id : str or None, optional
+            Selected region within the spectrum.
+        component_id : str or None, optional
+            Selected peak or background within the region.
+        """
+        if (
+            spectrum_id == self._selected_spectrum_id
+            and region_id == self._selected_region_id
+            and component_id == self._selected_component_id
+        ):
             return
         self._selected_spectrum_id = spectrum_id
         self._selected_region_id = region_id
-        self.selectionChanged.emit(spectrum_id, region_id)
+        self._selected_component_id = component_id
+        self.selectionChanged.emit(spectrum_id, region_id, component_id)
 
     # ------------------------------------------------------------------
     # Mutation API

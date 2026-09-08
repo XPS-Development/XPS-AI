@@ -51,6 +51,7 @@ class PlotCurve:
     y: NDArray
     kind: PlotCurveKind
     peak_index: int | None = None
+    component_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -262,7 +263,14 @@ def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotD
         bg_y = np.zeros_like(x) if region.background is None else region.background.y
 
         if region.background is not None:
-            curves.append(PlotCurve(x=x, y=bg_y, kind="background"))
+            curves.append(
+                PlotCurve(
+                    x=x,
+                    y=bg_y,
+                    kind="background",
+                    component_id=region.background.id_,
+                )
+            )
 
         for peak_index, peak in enumerate(region.peaks):
             curves.append(
@@ -271,6 +279,7 @@ def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotD
                     y=bg_y + peak.y,
                     kind="peak",
                     peak_index=peak_index,
+                    component_id=peak.id_,
                 )
             )
 

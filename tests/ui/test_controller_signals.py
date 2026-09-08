@@ -241,3 +241,45 @@ def test_new_collection_emits_full_refresh(
     assert counts["document"] == 1
     assert ctrl.is_dirty is True
     assert ctrl.query.get_all_spectra_ids() == ()
+
+
+def test_set_selection_includes_component(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+    peak_id: str,
+) -> None:
+    """Selection state tracks spectrum, region, and component together."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    region_id = ctrl.query.get_regions_ids(spectrum_id)[0]
+
+    received: list[tuple[object, object, object]] = []
+    ctrl.selectionChanged.connect(lambda *args: received.append(args))
+
+    ctrl.set_selection(spectrum_id, region_id, peak_id)
+
+    assert ctrl.selected_spectrum_id == spectrum_id
+    assert ctrl.selected_region_id == region_id
+    assert ctrl.selected_component_id == peak_id
+    assert received == [(spectrum_id, region_id, peak_id)]
+
+    ctrl.set_selection(spectrum_id, region_id, peak_id)
+    assert len(received) == 1
+
+
+def test_set_selection_clears_component_when_omitted(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+    peak_id: str,
+) -> None:
+    """Omitting component_id clears the previous component selection."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    region_id = ctrl.query.get_regions_ids(spectrum_id)[0]
+    ctrl.set_selection(spectrum_id, region_id, peak_id)
+
+    ctrl.set_selection(spectrum_id, region_id)
+
+    assert ctrl.selected_component_id is None

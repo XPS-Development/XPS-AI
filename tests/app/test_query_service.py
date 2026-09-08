@@ -15,3 +15,4 @@ def test_get_spectrum_plot_data_returns_display_curves(simple_collection, spectr
     assert "raw" in kinds
     assert "model" in kinds
     assert plot_data.residual_y_range is not None
+    assert any(c.kind == "peak" and c.component_id is not None for c in plot_data.curves)

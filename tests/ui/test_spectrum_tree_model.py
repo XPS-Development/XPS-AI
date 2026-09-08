@@ -60,7 +60,9 @@ def test_spectrum_tree_model_shows_spectrum_id_suffix_when_enabled(
     qapp: QApplication,
     hierarchy_collection,
 ) -> None:
-    """show_spectrum_id_in_tree appends a short id suffix to spectrum labels."""
+    """show_spectrum_id_in_tree exposes a short id via ObjectIdPrefixRole."""
+    from ui.name_id_delegate import ObjectIdPrefixRole
+
     del qapp
     controller = ControllerWrapper(collection=hierarchy_collection)
     controller.orchestrator._params.show_spectrum_id_in_tree = True
@@ -69,7 +71,12 @@ def test_spectrum_tree_model_shows_spectrum_id_suffix_when_enabled(
 
     file_index = model.index(0, 0)
     group_a_index = model.index(0, 0, file_index)
-    spectrum_labels = _child_labels(model, group_a_index)
+    prefixes = [
+        model.data(model.index(row, 0, group_a_index), ObjectIdPrefixRole)
+        for row in range(model.rowCount(group_a_index))
+    ]
+    labels = _child_labels(model, group_a_index)
 
-    assert any(label.endswith(" s1") for label in spectrum_labels)
-    assert any(label.endswith(" s2") for label in spectrum_labels)
+    assert sorted(labels) == ["spec-1", "spec-2"]
+    assert "s1" in prefixes
+    assert "s2" in prefixes

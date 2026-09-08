@@ -211,7 +211,9 @@ class MainWindow(QMainWindow):
             self._controller.selectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
             self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
-            self._controller.selectionChanged.connect(self._properties_view.refresh)
+            self._controller.selectionChanged.connect(
+                self._properties_view.on_controller_selection_changed
+            )
 
     # ------------------------------------------------------------------
     # Slots for actions
@@ -358,7 +360,12 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
-    def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:
+    def _on_selection_changed(
+        self,
+        spectrum_id: str | None,
+        region_id: str | None,
+        component_id: str | None = None,
+    ) -> None:
         """
         React to selection changes by updating the status bar.
 
@@ -368,7 +375,10 @@ class MainWindow(QMainWindow):
             Selected spectrum identifier.
         region_id : str or None
             Selected region identifier.
+        component_id : str or None, optional
+            Selected component identifier.
         """
+        del spectrum_id, region_id, component_id
         self._update_status_bar()
 
     # ------------------------------------------------------------------
@@ -457,12 +467,15 @@ class MainWindow(QMainWindow):
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
+        component_id = self._controller.selected_component_id
 
         selection_parts: list[str] = []
         if spectrum_id is not None:
             selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
         if region_id is not None:
             selection_parts.append(f"Region: {region_id[:5]}")
+        if component_id is not None:
+            selection_parts.append(f"Component: {component_id[:5]}")
 
         extra_selection = ""
         if self._spectrum_tree_panel is not None:

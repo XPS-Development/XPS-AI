@@ -89,3 +89,9 @@ def test_plot_data_from_evaluation_builds_curves(
     assert "raw" in kinds
     assert "model" in kinds
     assert plot_data.residual_y_range is not None
+
+    peaks = [c for c in plot_data.curves if c.kind == "peak"]
+    backgrounds = [c for c in plot_data.curves if c.kind == "background"]
+    assert peaks
+    assert all(c.component_id is not None for c in peaks)
+    assert all(c.component_id is not None for c in backgrounds)

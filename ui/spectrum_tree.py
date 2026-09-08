@@ -9,8 +9,10 @@ from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QTreeView, QWid
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
+from .name_id_delegate import NameWithIdDelegate, ObjectIdPrefixRole, ObjectIdRole
 
 _DEFAULT_INDEX = QModelIndex()
+_ID_DISPLAY_CHARS = 5
 
 
 @dataclass
@@ -25,7 +27,7 @@ class SpectrumTreeItem:
     Parameters
     ----------
     label : str
-        Text shown in the tree view.
+        Text shown in the tree view (without id suffix).
     kind : str
         Item type identifier (e.g. ``\"file\"``, ``\"group\"``, ``\"spectrum\"``).
     parent : SpectrumTreeItem or None, optional
@@ -136,12 +138,20 @@ class SpectrumTreeModel(QAbstractItemModel):
         index: QModelIndex | QPersistentModelIndex,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        """Return the label for display and edit roles."""
+        """Return the label for display and edit roles, plus optional gray id."""
         if not index.isValid():
             return None
 
         item = index.internalPointer()
         if not isinstance(item, SpectrumTreeItem):
+            return None
+
+        if role == ObjectIdRole and item.spectrum_id is not None:
+            return item.spectrum_id
+
+        if role == ObjectIdPrefixRole and item.spectrum_id is not None:
+            if self._controller.get_app_parameters().show_spectrum_id_in_tree:
+                return item.spectrum_id[:_ID_DISPLAY_CHARS]
             return None
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
@@ -163,8 +173,6 @@ class SpectrumTreeModel(QAbstractItemModel):
         """Rebuild tree from controller data."""
         self.beginResetModel()
         self._root_item.children.clear()
-
-        params = self._controller.get_app_parameters()
 
         grouped = defaultdict(lambda: defaultdict(list))
 
@@ -196,15 +204,9 @@ class SpectrumTreeModel(QAbstractItemModel):
                 file_item.append_child(group_item)
 
                 for name, spectrum_id in sorted(spectra):
-                    label_name = name or "No name"
-                    label_name = (
-                        f"{label_name} {spectrum_id[:5]}"
-                        if params.show_spectrum_id_in_tree
-                        else label_name
-                    )
                     spectrum_item = SpectrumTreeItem(
                         _label=name,
-                        label=label_name,
+                        label=name or "No name",
                         kind="spectrum",
                         parent=group_item,
                         spectrum_id=spectrum_id,
@@ -250,6 +252,7 @@ class SpectrumTreeWidget(QTreeView):
         self._controller = controller
         self._model = SpectrumTreeModel(controller, self)
         self.setModel(self._model)
+        self.setItemDelegate(NameWithIdDelegate(self))
         self.setHeaderHidden(True)
         self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
 

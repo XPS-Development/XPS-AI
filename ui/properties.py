@@ -16,10 +16,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
+from .name_id_delegate import (
+    ComponentColorRole,
+    NameWithIdDelegate,
+    ObjectIdPrefixRole,
+    ObjectIdRole,
+)
 
 _DEFAULT_INDEX = QModelIndex()
+_ID_DISPLAY_CHARS = 5
 
 
 class ItemKind(Enum):
@@ -60,7 +68,7 @@ class PropertyItem:
     Parameters
     ----------
     name : str
-        Display name shown in the first column.
+        Display name shown in the first column (without id suffix).
     value : Any, optional
         For ``REGION_SLICE`` / ``COMPONENT_MODEL``, the bound or model name.
         For ``PARAMETER_ROW``, the parameter's value (column 1).
@@ -68,6 +76,8 @@ class PropertyItem:
         Parent item in the tree.
     param_lower, param_upper, param_vary, param_expr : optional
         Used when ``kind`` is ``PARAMETER_ROW`` (columns 2-5).
+    object_id : str or None, optional
+        Full region/component id for gray suffix / clipboard when shown.
     """
 
     name: str
@@ -79,6 +89,7 @@ class PropertyItem:
     component_id: str | None = None
     parameter_name: str | None = None
     component_kind: Literal["peak", "background"] | None = None
+    object_id: str | None = None
     param_lower: Any = None
     param_upper: Any = None
     param_vary: bool = False
@@ -200,12 +211,29 @@ class PropertiesModel(QAbstractItemModel):
         index: QModelIndex | QPersistentModelIndex,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        """Return display, edit, or check-state data for ``index``."""
+        """Return display, edit, decoration, or check-state data for ``index``."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
             return None
 
         col = index.column()
+
+        if role == ObjectIdRole and col == 0 and item.object_id is not None:
+            return item.object_id
+
+        if role == ObjectIdPrefixRole and col == 0 and item.object_id is not None:
+            if self._controller.get_app_parameters().show_id_in_properties_tree:
+                return item.object_id[:_ID_DISPLAY_CHARS]
+            return None
+
+        if (
+            role == ComponentColorRole
+            and col == 0
+            and item.kind == ItemKind.COMPONENT
+            and item.component_id is not None
+        ):
+            kind = item.component_kind or "peak"
+            return color_for_component(item.component_id, kind=kind)
 
         if (
             role == Qt.ItemDataRole.CheckStateRole
@@ -451,7 +479,6 @@ class PropertiesModel(QAbstractItemModel):
         query = self._controller.query
         params = self._controller.get_app_parameters()
         slice_mode = params.region_slice_display_mode
-        show_id = params.show_id_in_properties_tree
 
         region_ids = query.get_regions_ids(spectrum_id)
         if not region_ids:
@@ -460,12 +487,12 @@ class PropertiesModel(QAbstractItemModel):
             return
 
         for idx, region_id in enumerate(region_ids, start=1):
-            region_label = f"Region {idx} {region_id[:5]}" if show_id else f"Region {idx}"
             region_item = PropertyItem(
-                name=region_label,
+                name=f"Region {idx}",
                 parent=self._root_item,
                 kind=ItemKind.REGION,
                 region_id=region_id,
+                object_id=region_id,
             )
             self._root_item.append_child(region_item)
 
@@ -480,13 +507,14 @@ class PropertiesModel(QAbstractItemModel):
             peaks_ids = list(query.get_peaks_ids(region_id))
 
             if background_id is not None:
-                background_name = f"Background {background_id[:5]}" if show_id else "Background"
                 background_item = PropertyItem(
-                    name=background_name,
+                    name="Background",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=background_id,
+                    component_kind="background",
+                    object_id=background_id,
                 )
                 region_item.append_child(background_item)
                 background_dto = query.get_component_dto(background_id)
@@ -504,13 +532,14 @@ class PropertiesModel(QAbstractItemModel):
                 self._add_parameters(background_item, background_id, background_dto.parameters)
 
             for peak_index, peak_id in enumerate(peaks_ids, start=1):
-                peak_name = f"Peak {peak_index} {peak_id[:5]}" if show_id else f"Peak {peak_index}"
                 peak_item = PropertyItem(
-                    name=peak_name,
+                    name=f"Peak {peak_index}",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=peak_id,
+                    component_kind="peak",
+                    object_id=peak_id,
                 )
                 region_item.append_child(peak_item)
                 peak_dto = query.get_component_dto(peak_id)
@@ -613,8 +642,11 @@ class PropertiesView(QTreeView):
         super().__init__(parent)
         self._controller = controller
         self._narrow_section_widths: list[int] = []
+        self._syncing_selection = False
+        self._last_spectrum_id: str | None = None
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
+        self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
         self.setItemDelegateForColumn(1, PropertiesDelegate(controller, self))
         self.setIndentation(12)
         self.setHeaderHidden(False)
@@ -691,6 +723,88 @@ class PropertiesView(QTreeView):
         expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
         self._restore_expanded_stable_keys(expanded)
+        self._last_spectrum_id = self._controller.selected_spectrum_id
+        self.sync_selection_from_controller()
+
+    def on_controller_selection_changed(
+        self,
+        spectrum_id: str | None,
+        _region_id: str | None,
+        _component_id: str | None,
+    ) -> None:
+        """
+        Rebuild when the spectrum changes; otherwise only sync row selection.
+
+        Parameters
+        ----------
+        spectrum_id : str or None
+            Newly selected spectrum.
+        _region_id : str or None
+            Newly selected region (unused beyond sync).
+        _component_id : str or None
+            Newly selected component (unused beyond sync).
+        """
+        if spectrum_id != self._last_spectrum_id:
+            self.refresh()
+            return
+        self.sync_selection_from_controller()
+
+    def sync_selection_from_controller(self) -> None:
+        """Select the row matching the controller's region/component selection."""
+        component_id = self._controller.selected_component_id
+        region_id = self._controller.selected_region_id
+        target = self._find_index_for_selection(component_id=component_id, region_id=region_id)
+        self._syncing_selection = True
+        try:
+            sel = self.selectionModel()
+            if target is None or not target.isValid():
+                sel.clearSelection()
+                return
+            parent = target.parent()
+            while parent.isValid():
+                self.setExpanded(parent, True)
+                parent = parent.parent()
+            sel.select(
+                target,
+                sel.SelectionFlag.ClearAndSelect | sel.SelectionFlag.Rows,
+            )
+            self.setCurrentIndex(target)
+            self.scrollTo(target)
+        finally:
+            self._syncing_selection = False
+
+    def _find_index_for_selection(
+        self,
+        *,
+        component_id: str | None,
+        region_id: str | None,
+    ) -> QModelIndex | None:
+        """Return the model index for the given component or region, if present."""
+
+        def walk(parent: QModelIndex) -> QModelIndex | None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                raw = idx.internalPointer()
+                if isinstance(raw, PropertyItem):
+                    if (
+                        component_id is not None
+                        and raw.kind == ItemKind.COMPONENT
+                        and raw.component_id == component_id
+                    ):
+                        return idx
+                    if (
+                        component_id is None
+                        and region_id is not None
+                        and raw.kind == ItemKind.REGION
+                        and raw.region_id == region_id
+                    ):
+                        return idx
+                found = walk(idx)
+                if found is not None:
+                    return found
+            return None
+
+        return walk(QModelIndex())
 
     @staticmethod
     def _stable_key_for_item(item: PropertyItem) -> tuple[Any, ...]:
@@ -742,7 +856,7 @@ class PropertiesView(QTreeView):
 
     def _on_selection_changed(self, selected: Any, _deselected: Any) -> None:
         """
-        Update controller region selection from the properties view.
+        Update controller region/component selection from the properties view.
 
         Parameters
         ----------
@@ -752,10 +866,12 @@ class PropertiesView(QTreeView):
             No longer selected indexes (unused).
         """
         del _deselected
+        if self._syncing_selection:
+            return
 
         indexes = selected.indexes()
         if not indexes:
-            self._controller.set_selection(self._controller.selected_spectrum_id, None)
+            # Model resets clear the view selection; do not wipe controller state.
             return
 
         index = indexes[0]
@@ -763,12 +879,26 @@ class PropertiesView(QTreeView):
         if not isinstance(item, PropertyItem):
             return
 
-        region_item = item
-        while region_item is not None and region_item.region_id is None:
-            region_item = region_item.parent
+        region_id: str | None = None
+        component_id: str | None = None
+        cursor: PropertyItem | None = item
+        while cursor is not None:
+            if component_id is None and cursor.component_id is not None:
+                if cursor.kind in {
+                    ItemKind.COMPONENT,
+                    ItemKind.COMPONENT_MODEL,
+                    ItemKind.PARAMETER_ROW,
+                }:
+                    component_id = cursor.component_id
+            if region_id is None and cursor.region_id is not None:
+                region_id = cursor.region_id
+            cursor = cursor.parent
 
-        region_id = region_item.region_id if region_item is not None else None
-        self._controller.set_selection(self._controller.selected_spectrum_id, region_id)
+        self._controller.set_selection(
+            self._controller.selected_spectrum_id,
+            region_id,
+            component_id,
+        )
 
     def _selected_component_id(self) -> str | None:
         """Return the component id for the current selection, if any."""
@@ -786,7 +916,7 @@ class PropertiesView(QTreeView):
         """Copy the selected component id to the system clipboard."""
         cid = self._selected_component_id()
         if cid:
-            QApplication.clipboard().setText(cid[:5])
+            QApplication.clipboard().setText(cid)
 
     def _delete_selected_component(self) -> None:
         """Remove the selected component and refresh."""
