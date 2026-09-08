@@ -173,14 +173,17 @@ def test_create_default_registry_has_all_mappings():
 
 
 def test_command_executor_execute_applies_and_pushes(ctx, peak_id):
-    """execute builds command, applies it, and pushes to stack."""
+    """execute builds command, applies it, pushes to stack, and returns the command."""
+    from app.command.refresh import UiRefresh
+
     stack = UndoRedoStack()
     executor = CommandExecutor(ctx, stack)
     change = UpdateParameter(peak_id, "cen", "value", 7.0)
 
-    executor.execute(change)
+    cmd = executor.execute(change)
 
     assert stack.can_undo is True
+    assert cmd.combined_ui_refresh() == UiRefresh.FIT
     param = ctx.component.get_parameter(peak_id, "cen")
     assert param["value"] == 7.0
 

@@ -137,13 +137,13 @@ def test_controller_export_peak_forwards_to_orchestrator(
         ("rename_file", ("file-a", "file-b")),
     ],
 )
-def test_rename_emits_hierarchy_not_plot(
+def test_rename_emits_metadata_not_plot(
     qapp: QApplication,
     hierarchy_collection,
     rename_method: str,
     rename_args: tuple[str, ...],
 ) -> None:
-    """Hierarchy renames should refresh tree and document, not plot or properties."""
+    """Hierarchy renames follow SetMetadata refresh: tree, properties, document."""
     del qapp
     ctrl = ControllerWrapper(collection=hierarchy_collection)
     seed_hierarchy_metadata(ctrl.orchestrator.ctx.metadata)
@@ -152,7 +152,73 @@ def test_rename_emits_hierarchy_not_plot(
     getattr(ctrl, rename_method)(*rename_args)
 
     assert counts["hierarchy"] == 1
+    assert counts["properties"] == 1
     assert counts["document"] == 1
     assert counts["undo_redo"] == 1
     assert counts["plot"] == 0
-    assert counts["properties"] == 0
+
+
+def test_remove_peak_emits_fit_not_hierarchy(
+    qapp: QApplication,
+    simple_collection,
+    peak_id: str,
+) -> None:
+    """Removing a non-spectrum object refreshes fit panels only."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    counts = _connect_signal_counts(ctrl)
+
+    ctrl.remove_object(peak_id)
+
+    assert counts["hierarchy"] == 0
+    assert counts["plot"] == 1
+    assert counts["properties"] == 1
+    assert counts["document"] == 1
+
+
+def test_remove_spectrum_emits_all(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+) -> None:
+    """Removing a spectrum root invalidates hierarchy as well as fit panels."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    counts = _connect_signal_counts(ctrl)
+
+    ctrl.remove_object(spectrum_id)
+
+    assert counts["hierarchy"] == 1
+    assert counts["plot"] == 1
+    assert counts["properties"] == 1
+    assert counts["document"] == 1
+
+
+def test_auto_fit_emits_once_for_two_internal_executes(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+    peak_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """auto_fit accumulates pending flags; controller emits a single refresh cycle."""
+    from app.command.changes import UpdateParameter
+
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    counts = _connect_signal_counts(ctrl)
+
+    def fake_auto_fit(ids, **_kwargs):
+        del ids
+        orch = ctrl.orchestrator
+        orch.execute(UpdateParameter(peak_id, "amp", "value", 1.5, normalized=False))
+        orch.execute(UpdateParameter(peak_id, "cen", "value", 0.5, normalized=False))
+
+    monkeypatch.setattr(ctrl.orchestrator, "auto_fit", fake_auto_fit)
+    ctrl.auto_fit_spectra([spectrum_id])
+
+    assert counts["plot"] == 1
+    assert counts["properties"] == 1
+    assert counts["document"] == 1
+    assert counts["undo_redo"] == 1
+    assert counts["hierarchy"] == 0

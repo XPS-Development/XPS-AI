@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from PySide6.QtCore import QObject, Signal
 
-from app.command.changes import ParameterField
-from app.command.commands import Command
 from app.command.refresh import UiRefresh
 from app.orchestration import AppOrchestrator
 from app.parameters import AppParameters
-from app.query_service import QueryService
 from core.collection import CoreCollection
-from core.metadata import Metadata
-from core.objects import Spectrum
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+    from pathlib import Path
+
+    from app.command.changes import ParameterField
+    from app.command.commands import Command
+    from app.query_service import QueryService
+    from core.metadata import Metadata
 
 _T = TypeVar("_T")
 
@@ -26,7 +28,7 @@ class ControllerWrapper(QObject):
     Qt-aware wrapper around :class:`AppOrchestrator`.
 
     Owns selection state, forwards mutations to the orchestrator, and emits Qt
-    signals when the underlying model or undo/redo state changes.
+    signals from command :class:`~app.command.refresh.UiRefresh` flags.
     """
 
     spectrumHierarchyChanged: Signal = Signal()
@@ -111,15 +113,11 @@ class ControllerWrapper(QObject):
 
     def import_spectra(self, path: str | Path) -> None:
         """Import spectra from a file and emit signals."""
-        self._mutate(
-            UiRefresh.HIERARCHY | UiRefresh.DOCUMENT,
-            self._orchestrator.import_spectra,
-            path,
-        )
+        self._mutate(self._orchestrator.import_spectra, path)
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """Run the segmenter pipeline and emit signals."""
-        self._mutate(UiRefresh.FIT, self._orchestrator.run_segmenter, spectrum_ids)
+        self._mutate(self._orchestrator.run_segmenter, spectrum_ids)
 
     def optimize_regions(
         self,
@@ -130,7 +128,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Run optimization for regions and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.optimize_regions,
             region_ids=region_ids,
             spectrum_ids=spectrum_ids,
@@ -139,7 +136,7 @@ class ControllerWrapper(QObject):
 
     def auto_fit_spectra(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
         """Run the segmenter then optimize regions for the given spectra."""
-        self._mutate(UiRefresh.FIT, self._orchestrator.auto_fit, spectrum_ids, **kwargs)
+        self._mutate(self._orchestrator.auto_fit, spectrum_ids, **kwargs)
 
     def update_parameter(
         self,
@@ -152,7 +149,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Update a single parameter attribute and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.update_parameter,
             component_id=component_id,
             name=name,
@@ -170,7 +166,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Update multiple parameter values at once and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.update_parameters,
             component_id=component_id,
             parameters=parameters,
@@ -186,7 +181,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Update the slice of a region and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.update_region_slice,
             region_id,
             start,
@@ -202,7 +196,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Replace a peak's model and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.replace_peak_model,
             peak_id,
             new_model_name,
@@ -218,7 +211,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Replace the background model for a region and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.replace_background_model,
             region_id,
             new_model_name,
@@ -234,7 +226,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Create a new spectrum and emit signals."""
         self._mutate(
-            UiRefresh.ALL,
             self._orchestrator.create_spectrum,
             x=x,
             y=y,
@@ -251,7 +242,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Create a new region and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.create_region,
             spectrum_id=spectrum_id,
             start=start,
@@ -269,7 +259,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Create a new peak component and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.create_peak,
             region_id=region_id,
             model_name=model_name,
@@ -304,7 +293,6 @@ class ControllerWrapper(QObject):
             Identifier of the created peak.
         """
         return self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.create_peak_and_return_id,
             region_id=region_id,
             model_name=model_name,
@@ -321,7 +309,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Create or replace a background component and emit signals."""
         self._mutate(
-            UiRefresh.FIT,
             self._orchestrator.create_background,
             region_id=region_id,
             model_name=model_name,
@@ -331,21 +318,15 @@ class ControllerWrapper(QObject):
 
     def set_metadata(self, obj_id: str, metadata: Metadata) -> None:
         """Set metadata for an object and emit signals."""
-        self._mutate(UiRefresh.METADATA, self._orchestrator.set_metadata, obj_id, metadata)
+        self._mutate(self._orchestrator.set_metadata, obj_id, metadata)
 
     def rename_spectrum(self, spectrum_id: str, new_name: str) -> None:
-        """Rename a single spectrum and emit collection/undo-redo signals."""
-        self._mutate(
-            UiRefresh.HIERARCHY | UiRefresh.DOCUMENT,
-            self._orchestrator.rename_spectrum,
-            spectrum_id,
-            new_name,
-        )
+        """Rename a single spectrum and emit UI refresh signals."""
+        self._mutate(self._orchestrator.rename_spectrum, spectrum_id, new_name)
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
-        """Rename a group within a file and emit collection/undo-redo signals."""
+        """Rename a group within a file and emit UI refresh signals."""
         self._mutate(
-            UiRefresh.HIERARCHY | UiRefresh.DOCUMENT,
             self._orchestrator.rename_group,
             file_label,
             old_group_label,
@@ -353,45 +334,32 @@ class ControllerWrapper(QObject):
         )
 
     def rename_file(self, old_file_label: str, new_file_label: str) -> None:
-        """Rename a file bucket and emit collection/undo-redo signals."""
-        self._mutate(
-            UiRefresh.HIERARCHY | UiRefresh.DOCUMENT,
-            self._orchestrator.rename_file,
-            old_file_label,
-            new_file_label,
-        )
+        """Rename a file bucket and emit UI refresh signals."""
+        self._mutate(self._orchestrator.rename_file, old_file_label, new_file_label)
 
     def remove_object(self, obj_id: str) -> None:
         """Remove an object and its descendants and emit signals."""
-        flags = UiRefresh.FIT
-        if self._orchestrator.query.check_object_exists(obj_id):
-            if isinstance(self._collection.get(obj_id), Spectrum):
-                flags |= UiRefresh.HIERARCHY
-        self._mutate(flags, self._orchestrator.remove_object, obj_id)
+        self._mutate(self._orchestrator.remove_object, obj_id)
 
     def remove_metadata(self, obj_id: str) -> None:
         """Remove metadata for an object and emit signals."""
-        self._mutate(
-            UiRefresh.HIERARCHY | UiRefresh.DOCUMENT,
-            self._orchestrator.remove_metadata,
-            obj_id,
-        )
+        self._mutate(self._orchestrator.remove_metadata, obj_id)
 
     def full_remove_object(self, obj_id: str) -> None:
         """Remove an object, all descendants, and their metadata and emit signals."""
-        self._mutate(UiRefresh.ALL, self._orchestrator.full_remove_object, obj_id)
+        self._mutate(self._orchestrator.full_remove_object, obj_id)
 
     def remove_spectrum(self, spectrum_id: str) -> None:
         """Remove a spectrum and emit signals."""
-        self._mutate(UiRefresh.ALL, self._orchestrator.full_remove_object, spectrum_id)
+        self._mutate(self._orchestrator.full_remove_object, spectrum_id)
 
     def remove_group(self, file_label: str, group_label: str) -> None:
         """Remove all spectra belonging to a given file/group combination."""
-        self._mutate(UiRefresh.ALL, self._orchestrator.remove_group, file_label, group_label)
+        self._mutate(self._orchestrator.remove_group, file_label, group_label)
 
     def remove_file(self, file_label: str) -> None:
         """Remove all spectra associated with a given file label."""
-        self._mutate(UiRefresh.ALL, self._orchestrator.remove_file, file_label)
+        self._mutate(self._orchestrator.remove_file, file_label)
 
     def dump_collection(
         self,
@@ -401,7 +369,6 @@ class ControllerWrapper(QObject):
     ) -> None:
         """Persist the collection and metadata to disk and emit signals."""
         self._mutate(
-            UiRefresh.DOCUMENT,
             self._orchestrator.dump_collection,
             path=path,
             indent=indent,
@@ -493,15 +460,14 @@ class ControllerWrapper(QObject):
 
     def _mutate(
         self,
-        flags: UiRefresh,
         fn: Callable[..., _T],
         /,
         *args: Any,
         **kwargs: Any,
     ) -> _T:
-        """Run an orchestrator mutation and emit the requested UI refresh flags."""
+        """Run an orchestrator mutation and emit refresh flags from the command layer."""
         result = fn(*args, **kwargs)
-        self._emit_refresh(flags)
+        self._emit_refresh(self._orchestrator.consume_pending_ui_refresh())
         return result
 
     def _emit_refresh(self, flags: UiRefresh) -> None:

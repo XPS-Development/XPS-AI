@@ -254,11 +254,12 @@ class CommandExecutor:
         self.stack = stack
         self._registry = registry if registry is not None else create_default_registry()
 
-    def execute(self, change: BaseChange) -> None:
-        """Map change to command, apply it, and push to the undo stack (clears redo)."""
+    def execute(self, change: BaseChange) -> Command:
+        """Map change to command, apply it, push to the undo stack, and return it."""
         cmd = self._registry.build(change, self.ctx)
         cmd.apply(self.ctx)
         self.stack.push(cmd)
+        return cmd
 
     def undo(self) -> None:
         """Pop the last command, undo it, and push to the redo stack."""

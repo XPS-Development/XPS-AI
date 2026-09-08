@@ -30,6 +30,7 @@ from .command.changes import (
 )
 from .command.commands import Command
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
+from .command.refresh import UiRefresh
 from .csv_export import CSVExportService
 from .error_dump import apply_safe_execution_to_class
 from .import_service import import_spectra as import_spectra_changes
@@ -87,6 +88,7 @@ class AppOrchestrator:
         self._editing = EditingUseCases(self._query, params)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
+        self._pending_ui_refresh = UiRefresh(0)
 
     @property
     def core_collection(self) -> CoreCollection:
@@ -162,13 +164,36 @@ class AppOrchestrator:
         """
         Execute a change (build command, apply, push to undo stack).
 
+        Accumulates :class:`~app.command.refresh.UiRefresh` flags from the
+        executed command for later consumption by the UI layer.
+
         Parameters
         ----------
         change : BaseChange
             Any change (single or CompositeChange).
         """
-        self._executor.execute(change)
+        cmd = self._executor.execute(change)
+        self._pending_ui_refresh |= cmd.combined_ui_refresh()
         self._serialization.mark_dirty()
+
+    def execute_optional(self, change: BaseChange | None) -> None:
+        """Execute ``change`` when it is not ``None``; otherwise no-op."""
+        if change is not None:
+            self.execute(change)
+
+    def consume_pending_ui_refresh(self) -> UiRefresh:
+        """
+        Return and clear UI refresh flags accumulated since the last consume.
+
+        Returns
+        -------
+        UiRefresh
+            Combined flags from executed commands (and document ops that set
+            pending explicitly).
+        """
+        flags = self._pending_ui_refresh
+        self._pending_ui_refresh = UiRefresh(0)
+        return flags
 
     def undo(self) -> None:
         """Undo the last executed command."""
@@ -244,9 +269,7 @@ class AppOrchestrator:
             Identifiers of the parent spectra for CreateRegion.
         """
         change = self._analysis.run_segmenter(spectrum_ids)
-        if change is None:
-            return
-        self.execute(change)
+        self.execute_optional(change)
 
     def auto_fit(self, spectrum_ids: Sequence[str], **kwargs) -> None:
         """
@@ -515,9 +538,9 @@ class AppOrchestrator:
         new_group_label : str
             New group label.
         """
-        change = self._hierarchy.rename_group(file_label, old_group_label, new_group_label)
-        if change is not None:
-            self.execute(change)
+        self.execute_optional(
+            self._hierarchy.rename_group(file_label, old_group_label, new_group_label)
+        )
 
     def rename_file(self, old_file_label: str, new_file_label: str) -> None:
         """
@@ -530,9 +553,7 @@ class AppOrchestrator:
         new_file_label : str
             New file label.
         """
-        change = self._hierarchy.rename_file(old_file_label, new_file_label)
-        if change is not None:
-            self.execute(change)
+        self.execute_optional(self._hierarchy.rename_file(old_file_label, new_file_label))
 
     # ---- Remove ----
 
@@ -559,9 +580,7 @@ class AppOrchestrator:
         group_label : str
             Group label to remove.
         """
-        change = self._hierarchy.remove_group(file_label, group_label)
-        if change is not None:
-            self.execute(change)
+        self.execute_optional(self._hierarchy.remove_group(file_label, group_label))
 
     def remove_file(self, file_label: str) -> None:
         """
@@ -572,9 +591,7 @@ class AppOrchestrator:
         file_label : str
             File label whose spectra should be removed.
         """
-        change = self._hierarchy.remove_file(file_label)
-        if change is not None:
-            self.execute(change)
+        self.execute_optional(self._hierarchy.remove_file(file_label))
 
     # ---- Serialization ----
 
@@ -621,6 +638,7 @@ class AppOrchestrator:
             compresslevel=self._params.default_serialization_compresslevel,
         )
         self.set_default_save_path(resolved_path)
+        self._pending_ui_refresh |= UiRefresh.DOCUMENT
 
     def load_collection(
         self,
