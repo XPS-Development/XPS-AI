@@ -369,6 +369,45 @@ def test_orchestrator_dump_load_replace_clears_undo_stack(
     orch.load_collection(fp, mode="replace")
     assert orch.can_undo is False
     assert orch.can_redo is False
+    assert orch.is_dirty is False
+
+
+def test_orchestrator_dump_load_append_clears_undo_stack(orchestrator_with_data, peak_id, tmp_path):
+    """load_collection with mode=append clears undo/redo stack."""
+    orch = orchestrator_with_data
+    fp = tmp_path / "coll.json"
+    orch.dump_collection(path=fp)
+    orch.update_parameter(peak_id, "cen", "value", 99.0)
+    assert orch.can_undo
+    orch.load_collection(fp, mode="append")
+    assert orch.can_undo is False
+    assert orch.can_redo is False
+    assert orch.is_dirty is False
+
+
+def test_orchestrator_undo_after_save_restores_clean(orchestrator_with_data, peak_id, tmp_path):
+    """After save, undoing post-save edits back to the saved depth is clean."""
+    orch = orchestrator_with_data
+    fp = tmp_path / "saved.json"
+    orch.update_parameter(peak_id, "cen", "value", 1.0)
+    orch.update_parameter(peak_id, "cen", "value", 2.0)
+    orch.dump_collection(path=fp)
+    orch.update_parameter(peak_id, "cen", "value", 3.0)
+    assert orch.is_dirty is True
+    orch.undo()
+    assert orch.is_dirty is False
+
+
+def test_orchestrator_undo_before_saved_depth_marks_dirty(
+    orchestrator_with_data, peak_id, tmp_path
+):
+    """Undoing past the saved depth marks the document dirty again."""
+    orch = orchestrator_with_data
+    fp = tmp_path / "saved.json"
+    orch.update_parameter(peak_id, "cen", "value", 1.0)
+    orch.dump_collection(path=fp)
+    orch.undo()
+    assert orch.is_dirty is True
 
 
 def test_orchestrator_set_get_default_save_path(orchestrator_with_data, tmp_path):
@@ -444,11 +483,11 @@ def test_orchestrator_dump_collection_sets_default_save_path(orchestrator_with_d
     assert orch.get_default_save_path() == fp
 
 
-# ---- Automatic methods (AutomatizationAdapter) ----
+# ---- Automatic methods (EditingUseCases) ----
 
 
 def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple_gauss_spectrum):
-    """create_peak with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
+    """create_peak with parameters=None guesses params when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
     orch.create_spectrum(x, y, spectrum_id="s1")
@@ -469,7 +508,7 @@ def test_create_peak_auto_params_when_automatic_methods(empty_collection, simple
 def test_create_background_auto_params_when_automatic_methods(
     empty_collection, simple_gauss_spectrum
 ):
-    """create_background with parameters=None uses AutomatizationAdapter when automatic_methods=True."""
+    """create_background with parameters=None guesses params when automatic_methods=True."""
     x, y = simple_gauss_spectrum
     orch = AppOrchestrator(empty_collection, AppParameters(automatic_methods=True))
     orch.create_spectrum(x, y, spectrum_id="s1")

@@ -1,9 +1,9 @@
 """
 App-level serialization service for collection and metadata.
 
-Wraps core.io.serialization and tracks dirty state.
-Caller (orchestrator) is responsible for clearing undo/redo and replacing
-context when loading with replace mode.
+Wraps core.io.serialization for dump/load. Dirty state is tracked on the
+undo stack (:class:`~app.command.core.UndoRedoStack`); the orchestrator
+calls :meth:`UndoRedoStack.mark_saved` after a successful save or load.
 """
 
 from pathlib import Path
@@ -19,23 +19,9 @@ class SerializationService:
     """
     App-level service for saving/loading collection and metadata.
 
-    Tracks whether the current state is dirty.
     Does not clear the undo/redo stack or replace orchestrator state;
-    the orchestrator must do that when loading with replace mode.
+    the orchestrator must do that when loading.
     """
-
-    def __init__(self) -> None:
-        """Initialize the serialization service."""
-        self._dirty = False
-
-    @property
-    def is_dirty(self) -> bool:
-        """True if there are unsaved changes."""
-        return self._dirty
-
-    def mark_dirty(self) -> None:
-        """Mark the document as having unsaved changes."""
-        self._dirty = True
 
     def dump(
         self,
@@ -74,7 +60,6 @@ class SerializationService:
             use_gzip=use_gzip,
             compresslevel=compresslevel,
         )
-        self._dirty = False
 
     def load(
         self,
@@ -82,7 +67,7 @@ class SerializationService:
         collection: CoreCollection,
         metadata_service: MetadataService,
         *,
-        mode: Literal["append", "replace"] = "replace",  # "new" is not supported
+        mode: Literal["append", "replace"] = "replace",
         use_gzip: bool | None = None,
     ) -> None:
         """
@@ -103,12 +88,9 @@ class SerializationService:
             If True, read as gzip. If False, plain text. If None, detect from
             path suffix or file magic bytes.
 
-        Note: new mode is not supported.
-
         Notes
         -----
-        On success, dirty is cleared. For replace, the caller must clear the
-        execution manager (undo/redo stack) and replace collection/context.
+        For replace, the caller must clear the execution manager (undo/redo stack).
         """
         load_collection(
             fp=path,
@@ -117,4 +99,3 @@ class SerializationService:
             mode=mode,
             use_gzip=use_gzip,
         )
-        self._dirty = False

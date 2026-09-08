@@ -49,11 +49,30 @@ class UndoRedoStack:
 
     Maintains separate undo and redo stacks. Executing a new command clears
     the redo stack (branching is discarded).
+
+    Dirty state is derived by comparing the current undo depth with the depth
+    recorded at the last save (:meth:`mark_saved`).
     """
 
     def __init__(self) -> None:
         self._undo_stack: list[Command] = []
         self._redo_stack: list[Command] = []
+        self._saved_undo_depth: int | None = 0
+
+    @property
+    def is_dirty(self) -> bool:
+        """True when the document differs from the last saved undo position."""
+        if self._saved_undo_depth is None:
+            return True
+        return len(self._undo_stack) != self._saved_undo_depth
+
+    def mark_saved(self) -> None:
+        """Record the current undo depth as matching the on-disk document."""
+        self._saved_undo_depth = len(self._undo_stack)
+
+    def mark_unsaved(self) -> None:
+        """Mark the document as having no save baseline (e.g. after new document)."""
+        self._saved_undo_depth = None
 
     @property
     def can_undo(self) -> bool:
@@ -254,11 +273,12 @@ class CommandExecutor:
         self.stack = stack
         self._registry = registry if registry is not None else create_default_registry()
 
-    def execute(self, change: BaseChange) -> None:
-        """Map change to command, apply it, and push to the undo stack (clears redo)."""
+    def execute(self, change: BaseChange) -> Command:
+        """Map change to command, apply it, push to the undo stack, and return it."""
         cmd = self._registry.build(change, self.ctx)
         cmd.apply(self.ctx)
         self.stack.push(cmd)
+        return cmd
 
     def undo(self) -> None:
         """Pop the last command, undo it, and push to the redo stack."""

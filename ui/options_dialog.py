@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.json_utils import parse_json_object
-from app.orchestration import AppParameters
+from app.parameters import AppParameters
 
 
 class OptionsDialog(QDialog):
@@ -222,8 +222,8 @@ class OptionsDialog(QDialog):
         params.optimization_kwargs = kwargs if kwargs is not None else {}
 
         mode_text = self._serialization_mode_edit.text().strip() or "replace"
-        if mode_text not in ("append", "replace", "new"):
-            raise ValueError("Default serialization mode must be append, replace, or new")
+        if mode_text not in ("append", "replace"):
+            raise ValueError("Default serialization mode must be append or replace")
         params.default_serialization_mode = mode_text
 
         path_text = self._serialization_path_edit.text().strip()

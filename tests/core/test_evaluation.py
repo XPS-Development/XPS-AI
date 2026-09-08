@@ -8,7 +8,13 @@ import numpy as np
 import pytest
 
 from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
-from core.evaluation import component_result, component_y, region_bundle, spectrum_bundle
+from core.evaluation import (
+    component_result,
+    component_y,
+    plot_data_from_evaluation,
+    region_bundle,
+    spectrum_bundle,
+)
 
 
 @pytest.fixture
@@ -68,3 +74,18 @@ def test_spectrum_bundle(
 ) -> None:
     result = spectrum_bundle(*simple_spectrum_bundle)
     assert len(result.regions) == 1
+
+
+def test_plot_data_from_evaluation_builds_curves(
+    simple_spectrum_bundle: tuple[
+        SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]
+    ],
+) -> None:
+    """plot_data_from_evaluation returns raw, fit, and residual curves."""
+    evaluated = spectrum_bundle(*simple_spectrum_bundle)
+    plot_data = plot_data_from_evaluation(evaluated)
+
+    kinds = {curve.kind for curve in plot_data.curves}
+    assert "raw" in kinds
+    assert "model" in kinds
+    assert plot_data.residual_y_range is not None

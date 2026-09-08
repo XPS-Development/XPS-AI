@@ -1,6 +1,10 @@
 """Tests for EditingUseCases Change construction (automatic_methods on/off)."""
 
-from app.automatization import AutomatizationAdapter
+from typing import Any, cast
+
+import numpy as np
+import pytest
+
 from app.command.changes import (
     CompositeChange,
     CreateBackground,
@@ -10,8 +14,11 @@ from app.command.changes import (
     UpdateMultipleParameterValues,
     UpdateRegionSlice,
 )
-from app.orchestration import AppParameters, QueryService
+from app.parameters import AppParameters
+from app.query_service import QueryService
 from app.usecases.editing import EditingUseCases
+from core.dto import ComponentDTO, SpectrumDTO
+from core.math_models import ParametricModelLike
 from core.services import CoreContext
 
 
@@ -23,7 +30,6 @@ def _editing(
     ctx = CoreContext.from_collection(collection)
     return EditingUseCases(
         QueryService(ctx),
-        AutomatizationAdapter(),
         AppParameters(automatic_methods=automatic_methods),
     )
 
@@ -67,6 +73,19 @@ def test_create_background_auto_guesses_intensities(simple_collection, region_id
     assert "i2" in change.parameters
 
 
+def test_create_background_auto_guesses_constant(simple_collection, region_id) -> None:
+    """automatic_methods guesses a finite const for the constant background model."""
+    change = _editing(simple_collection, automatic_methods=True).create_background(
+        region_id, "constant", parameters=None
+    )
+
+    assert isinstance(change, CreateBackground)
+    assert change.model_name == "constant"
+    assert change.parameters is not None
+    assert set(change.parameters) == {"const"}
+    assert np.isfinite(change.parameters["const"])
+
+
 def test_create_background_explicit_when_automatic_methods_false(
     simple_collection, region_id
 ) -> None:
@@ -98,6 +117,39 @@ def test_update_region_slice_composites_background_when_auto(
     assert slice_change.stop == 170
     assert isinstance(bg_change, UpdateMultipleParameterValues)
     assert bg_change.component_id == background_id
+
+
+def test_update_region_slice_guesses_via_model_registry(
+    simple_collection, region_id, background_id, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Slice sync passes the new bounds into model guess_initial."""
+    captured: dict[str, object] = {}
+
+    class _FakeModel:
+        def guess_initial(self, x, y, **kwargs):  # type: ignore[no-untyped-def]
+            captured["x"] = x
+            captured["y"] = y
+            captured.update(kwargs)
+            return {"i1": 1.0, "i2": 2.0}
+
+    monkeypatch.setattr(
+        "app.usecases.editing.ModelRegistry.get",
+        lambda name: _FakeModel(),
+    )
+
+    change = _editing(simple_collection, automatic_methods=True).update_region_slice(
+        region_id, 25, 175
+    )
+
+    assert isinstance(change, CompositeChange)
+    bg_change = change.changes[1]
+    assert isinstance(bg_change, UpdateMultipleParameterValues)
+    assert bg_change.component_id == background_id
+    assert bg_change.parameters == {"i1": 1.0, "i2": 2.0}
+    assert captured["start"] == 25
+    assert captured["stop"] == 175
+    assert captured["mode"] == "index"
+    assert captured["avg_on"] == 3
 
 
 def test_update_region_slice_plain_when_automatic_methods_false(
@@ -173,3 +225,79 @@ def test_replace_peak_model_explicit_params_skip_transfer(simple_collection, pea
 
     assert isinstance(change, ReplacePeakModel)
     assert change.parameters == params
+
+
+def test_create_peak_and_return_id_embeds_peak_id(simple_collection, region_id) -> None:
+    """create_peak_and_return_id returns a change with a known peak identifier."""
+    editing = _editing(simple_collection, automatic_methods=False)
+    change, peak_id = editing.create_peak_and_return_id(
+        region_id, "pseudo-voigt", parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
+    )
+
+    assert isinstance(change, CreatePeak)
+    assert change.peak_id == peak_id
+    assert peak_id.startswith("p")
+
+
+def test_guess_background_parameters_forwards_slice_bounds() -> None:
+    """_guess_background_parameters calls model guess_initial with slice kwargs."""
+    x = np.linspace(0.0, 10.0, 201)
+    y = np.linspace(1.0, 2.0, 201)
+    spectrum = SpectrumDTO(id_="spec-1", parent_id="root", normalized=False, x=x, y=y)
+
+    params = EditingUseCases._guess_background_parameters(
+        "constant",
+        spectrum,
+        (25, 175),
+        slice_mode="index",
+        avg_on=3,
+    )
+
+    assert set(params.keys()) == {"const"}
+    assert np.isfinite(params["const"])
+
+
+def test_guess_peak_parameters_uses_residuals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_guess_peak_parameters passes peak_index from residuals into guess_initial."""
+    from core.dto import RegionDTO
+
+    region = RegionDTO(
+        id_="region-1",
+        parent_id="spec-1",
+        normalized=False,
+        x=np.linspace(0.0, 10.0, 201),
+        y=np.linspace(1.0, 2.0, 201),
+    )
+
+    class _DummyModel:
+        name = "shirley"
+
+        def evaluate(self, x, y=None, **params):  # type: ignore[no-untyped-def]
+            return np.zeros_like(x)
+
+    components = (
+        ComponentDTO(
+            id_="c1",
+            parent_id=region.id_,
+            normalized=False,
+            parameters={},
+            model=cast(ParametricModelLike[Any], _DummyModel()),
+            kind="background",
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeModel:
+        def guess_initial(self, x, y, **kwargs):  # type: ignore[no-untyped-def]
+            captured["peak_index"] = kwargs.get("peak_index")
+            return {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5}
+
+    monkeypatch.setattr(
+        "app.usecases.editing.ModelRegistry.get",
+        lambda name: _FakeModel(),
+    )
+
+    params = EditingUseCases._guess_peak_parameters(region, components, "pseudo-voigt")
+
+    assert set(params) == {"amp", "cen", "sig", "frac"}
+    assert captured["peak_index"] is not None

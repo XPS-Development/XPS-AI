@@ -43,9 +43,11 @@ debug/ → core/evaluation → core/dto   (notebooks / interactive only)
 
 **`app/` adapters are not duplicates**
 
-`app/optimization.py`, `app/serialization.py`, `app/csv_export.py`,
-`app/automatization.py` wrap library modules and return `Change` objects or track
-dirty state. Keep that boundary; do not merge layers or copy logic both ways.
+`app/optimization.py`, `app/serialization.py`, and `app/csv_export.py` wrap
+library modules and return `Change` objects or track dirty state. Keep that
+boundary; do not merge layers or copy logic both ways. Initial parameter
+guessing for edits lives in `EditingUseCases` (calling model `guess_initial`
+in `core/`).
 
 ## Tooling
 
@@ -78,6 +80,8 @@ uv run pytest
 | Lmfit optimization | `core/fitting/` |
 | Document serialization / CSV export | `core/io/` |
 | Workflow that returns `Change`s | `app/usecases/` then wire from orchestrator |
+| CSV export workflow | `app/usecases/export.py` |
+| Dump / load / new document | `app/usecases/document.py` |
 | Undoable mutation | `app/command/changes.py` + `commands.py` + registry |
 | Initial parameter guess | model `guess_initial` on `core/math_models` (+ helpers in `guess_helpers.py`) |
 | File format parse | `formats/` + dispatcher in `__init__.py` |
@@ -86,9 +90,9 @@ uv run pytest
 | Matplotlib debug / notebook plotting | `debug/` — not `ui/` |
 | One-off scripts | `scripts/` — do not grow top-level packages with scripts |
 
-Prefer extending `EditingUseCases` / `AnalysisUseCases` over growing
-`AppOrchestrator` further. Extract `QueryService` / `AppParameters` out of
-`orchestration.py` before adding more façade methods if you need those types.
+Prefer extending `EditingUseCases` / `AnalysisUseCases` / `HierarchyUseCases` /
+`ExportUseCases` / `DocumentUseCases` over growing `AppOrchestrator` further.
+Keep orchestrator as a thin execute-and-forward façade.
 
 ## Known debt — do not make worse
 
@@ -96,9 +100,9 @@ These are intentional temporary states. Avoid reinforcing them.
 
 1. **Do not reintroduce a SPECS parser.** Notebook matplotlib plotting lives in
    `debug/viewer.py`; one-offs in `scripts/`.
-2. **UI leakage exists** (`plot_area` → `spectrum_bundle`, dialogs →
-   `ModelRegistry`). New features must not add more `core` imports in
-   `ui/` for business logic.
+2. **UI leakage exists** (dialogs still import `ParameterSpec` types from
+   `core`). New features must not add more `core` imports in `ui/` for
+   business logic; prefer `controller.query` / app DTOs.
 3. **`model/` cannot train after `uv sync`** (no torch/lightning deps; broken
    imports; no ONNX export script). App consumes
    `assets/models/model.onnx` only. Do not “fix” training casually; treat
@@ -110,10 +114,11 @@ These are intentional temporary states. Avoid reinforcing them.
 ## Commands / undo notes
 
 - New change types need: dataclass in `changes.py`, command in `commands.py`,
-  entry in `create_default_registry()`.
-- UI refresh flags in `ui/controller.py` use `isinstance` on concrete command
-  classes — if you add a command that should not full-refresh the UI, update
-  that mapping or over-invalidation will happen.
+  entry in `create_default_registry()`, and a `ui_refresh` (or
+  `combined_ui_refresh`) on the command class.
+- UI invalidation comes from `Command.combined_ui_refresh()` via orchestrator
+  pending flags — do not hard-code `UiRefresh` bits in `ControllerWrapper`
+  mutation methods.
 
 ## Git / PR
 

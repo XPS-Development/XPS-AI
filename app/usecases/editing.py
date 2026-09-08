@@ -1,13 +1,14 @@
 """
 Editing use-cases: smart defaults around region, peak, and background mutations.
 
-Builds Change objects from query state, AppParameters.automatic_methods, and
-AutomatizationAdapter. Does not execute commands.
+Builds Change objects from query state and AppParameters.automatic_methods.
+Parameter guessing uses model ``guess_initial`` in core. Does not execute commands.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
 
 from app.command.changes import (
     BaseChange,
@@ -16,14 +17,17 @@ from app.command.changes import (
     CreatePeak,
     ReplaceBackgroundModel,
     ReplacePeakModel,
+    UpdateMultipleParameterValues,
     UpdateRegionSlice,
 )
+from core.evaluation import region_bundle
 from core.math_models import ModelRegistry
+from core.math_models.guess_helpers import peak_index_from_residuals
 
 if TYPE_CHECKING:
-    from app.automatization import AutomatizationAdapter
-    from app.orchestration import AppParameters, QueryService
-    from core.dto import ComponentDTO
+    from app.parameters import AppParameters
+    from app.query_service import QueryService
+    from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
 
 
 class EditingUseCases:
@@ -37,7 +41,6 @@ class EditingUseCases:
     def __init__(
         self,
         query: QueryService,
-        automatization: AutomatizationAdapter,
         params: AppParameters,
     ) -> None:
         """
@@ -47,13 +50,10 @@ class EditingUseCases:
         ----------
         query
             Read-only query façade for collection and DTO access.
-        automatization
-            Adapter that turns guessed parameters into Change objects.
         params
             Application parameters; ``automatic_methods`` is read live.
         """
         self._query = query
-        self._automatization = automatization
         self._params = params
 
     def create_peak(
@@ -84,18 +84,51 @@ class EditingUseCases:
             ``CreatePeak`` with guessed or explicit parameters.
         """
         if self._params.automatic_methods and parameters is None:
-            region_repr = self._query.get_region_dto_repr(region_id, normalized=False)
-            return self._automatization.create_peak(
-                region_repr[0],
-                region_repr[1],
-                model_name=model_name,
-            )
+            region, components = self._query.get_region_dto_repr(region_id, normalized=False)
+            parameters = self._guess_peak_parameters(region, components, model_name)
         return CreatePeak(
             region_id=region_id,
             model_name=model_name,
             parameters=parameters,
             peak_id=peak_id,
         )
+
+    def create_peak_and_return_id(
+        self,
+        region_id: str,
+        model_name: str,
+        parameters: dict[str, float] | None = None,
+        peak_id: str | None = None,
+    ) -> tuple[BaseChange, str]:
+        """
+        Build a peak-creation change with a known component identifier.
+
+        Parameters
+        ----------
+        region_id
+            Parent region identifier.
+        model_name
+            Registered peak model name.
+        parameters
+            Explicit parameter values. If None and automatic methods are on,
+            parameters are guessed from residuals via the model.
+        peak_id
+            Optional explicit peak identifier. When omitted, a new id is
+            generated and embedded in the returned change.
+
+        Returns
+        -------
+        tuple[BaseChange, str]
+            Change to execute and the peak identifier that will be created.
+        """
+        resolved_id = peak_id or f"p{uuid4().hex}"
+        change = self.create_peak(
+            region_id,
+            model_name,
+            parameters=parameters,
+            peak_id=resolved_id,
+        )
+        return change, resolved_id
 
     def create_background(
         self,
@@ -128,13 +161,11 @@ class EditingUseCases:
             spectrum_id = self._query.get_parent_id(region_id)
             spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
             start, stop = self._query.get_region_slice(region_id, mode="index")
-            return self._automatization.create_background(
-                region_id=region_id,
-                spectrum_dto=spectrum,
-                new_slice=(start, stop),
+            parameters = self._guess_background_parameters(
+                model_name,
+                spectrum,
+                (start, stop),
                 slice_mode="index",
-                model_name=model_name,
-                background_id=background_id,
             )
         return CreateBackground(
             region_id=region_id,
@@ -186,17 +217,21 @@ class EditingUseCases:
 
         # If start/stop are omitted, `UpdateRegionSlice` will keep the current
         # slice boundaries. For automatic background syncing we must therefore
-        # feed `update_intensities` the effective slice, not `(None, None)`.
+        # feed intensity guessing the effective slice, not `(None, None)`.
         if start is None or stop is None:
             eff_start, eff_stop = self._query.get_region_slice(region_id, mode=mode)
         else:
             eff_start, eff_stop = start, stop
 
-        bg_change = self._automatization.update_intensities(
-            background_dto=background_dto,
-            spectrum_dto=spectrum,
-            new_slice=(eff_start, eff_stop),
+        params = self._guess_background_parameters(
+            background_dto.model.name,
+            spectrum,
+            (eff_start, eff_stop),
             slice_mode=mode,
+        )
+        bg_change = UpdateMultipleParameterValues(
+            component_id=background_dto.id_,
+            parameters=params,
         )
         return CompositeChange(changes=[change, bg_change])
 
@@ -233,11 +268,11 @@ class EditingUseCases:
                 normalized=False,
             )
             reg_slice = self._query.get_region_slice(region_id, mode="index")
-            parameters = self._automatization.get_bg_parameters(
+            parameters = self._guess_background_parameters(
                 new_model_name,
                 spectrum_dto,
                 reg_slice,
-                "index",
+                slice_mode="index",
             )
         return ReplaceBackgroundModel(
             region_id=region_id,
@@ -286,11 +321,7 @@ class EditingUseCases:
             region_id = self._query.get_parent_id(peak_id)
             region, components = self._query.get_region_dto_repr(region_id, normalized=False)
             other_components = tuple(c for c in components if c.id_ != peak_id)
-            guessed = self._automatization.guess_peak_parameters(
-                region,
-                other_components,
-                new_model_name,
-            )
+            guessed = self._guess_peak_parameters(region, other_components, new_model_name)
             parameters = {**guessed, **transferred}
         else:
             parameters = transferred or None
@@ -299,6 +330,40 @@ class EditingUseCases:
             peak_id=peak_id,
             new_model_name=new_model_name,
             parameters=parameters,
+        )
+
+    @staticmethod
+    def _guess_peak_parameters(
+        region: RegionDTO,
+        components: tuple[ComponentDTO, ...],
+        model_name: str,
+    ) -> dict[str, float]:
+        """Guess peak parameters from residuals via model ``guess_initial``."""
+        region_eval = region_bundle(region, components)
+        peak_index = peak_index_from_residuals(region_eval.residuals)
+        return ModelRegistry.get(model_name).guess_initial(
+            region_eval.x,
+            region_eval.y,
+            peak_index=peak_index,
+        )
+
+    @staticmethod
+    def _guess_background_parameters(
+        model_name: str,
+        spectrum_dto: SpectrumDTO,
+        reg_slice: tuple[int | float, int | float],
+        *,
+        slice_mode: Literal["value", "index"] = "index",
+        avg_on: int = 3,
+    ) -> dict[str, float]:
+        """Guess background parameters via model ``guess_initial``."""
+        return ModelRegistry.get(model_name).guess_initial(
+            spectrum_dto.x,
+            spectrum_dto.y,
+            start=reg_slice[0],
+            stop=reg_slice[1],
+            mode=slice_mode,
+            avg_on=avg_on,
         )
 
     @staticmethod

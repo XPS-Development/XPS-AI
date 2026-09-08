@@ -17,7 +17,8 @@ if TYPE_CHECKING:
 
     from app.nn_service import NNService
     from app.optimization import OptimizationService
-    from app.orchestration import AppParameters, QueryService
+    from app.parameters import AppParameters
+    from app.query_service import QueryService
     from core.dto import ComponentDTO, RegionDTO
 
 

@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
 
+from app.orchestration import AppOrchestrator, AppParameters
 from core.collection import CoreCollection
 from core.math_models import ConstantBackgroundModel, ModelRegistry, PseudoVoigtPeakModel
 from core.math_models.model_funcs import pvoigt
+from core.metadata import SpectrumMetadata
 from core.objects import Background, Peak, Region, Spectrum
+from core.services import MetadataService
 
 RNG = np.random.default_rng(seed=42)
 
@@ -110,3 +113,49 @@ def background_id(simple_collection):
     return next(
         obj.id_ for obj in simple_collection.objects_index.values() if isinstance(obj, Background)
     )
+
+
+HIERARCHY_SPECTRUM_METADATA: dict[str, SpectrumMetadata] = {
+    "s1": SpectrumMetadata(name="spec-1", group="group-a", file="file-a"),
+    "s2": SpectrumMetadata(name="spec-2", group="group-a", file="file-a"),
+    "s3": SpectrumMetadata(name="spec-3", group="group-b", file="file-a"),
+}
+
+
+def seed_hierarchy_metadata(metadata_service: MetadataService) -> None:
+    """Attach file/group metadata to the three-spectrum hierarchy fixture."""
+    for spectrum_id, metadata in HIERARCHY_SPECTRUM_METADATA.items():
+        metadata_service.set_metadata(spectrum_id, metadata)
+
+
+@pytest.fixture
+def hierarchy_collection(empty_collection, x_axis, simple_gauss, noise) -> CoreCollection:
+    """
+    Collection with three spectra for hierarchy rename tests.
+
+    ``s1`` and ``s2`` share file ``file-a`` / group ``group-a``;
+    ``s3`` is in ``file-a`` / ``group-b``.
+    """
+    collection = empty_collection
+    y = simple_gauss + noise + 1.0
+    for spectrum_id in HIERARCHY_SPECTRUM_METADATA:
+        collection.add(Spectrum(x_axis, y, id_=spectrum_id))
+    return collection
+
+
+@pytest.fixture
+def hierarchy_ctx(hierarchy_collection):
+    """Core context with three spectra and hierarchy metadata pre-seeded."""
+    from core.services import CoreContext
+
+    context = CoreContext.from_collection(hierarchy_collection)
+    seed_hierarchy_metadata(context.metadata)
+    return context
+
+
+@pytest.fixture
+def hierarchy_orchestrator(hierarchy_collection):
+    """AppOrchestrator with three spectra and hierarchy metadata pre-seeded."""
+    orchestrator = AppOrchestrator(hierarchy_collection, AppParameters())
+    seed_hierarchy_metadata(orchestrator.ctx.metadata)
+    return orchestrator
