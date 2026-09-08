@@ -19,6 +19,7 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 _ORCHESTRATOR_ERROR_USER_ATTR = "_ai_xps_orchestrator_error_user_notified"
+_ORCHESTRATOR_ERROR_DUMP_ATTR = "_ai_xps_orchestrator_error_dumped"
 
 _user_exception_ui_enabled: bool = False
 
@@ -99,12 +100,14 @@ def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
         try:
             return func(*args, **kwargs)
         except Exception as exc:
-            dump_path = save_error_dump(exc)
-            func_name = getattr(
-                func, "__qualname__", getattr(func, "__name__", type(func).__name__)
-            )
-            logger.exception("Error in %s", func_name)
-            _notify_orchestrator_error_ui(exc, dump_path)
+            if not getattr(exc, _ORCHESTRATOR_ERROR_DUMP_ATTR, False):
+                dump_path = save_error_dump(exc)
+                setattr(exc, _ORCHESTRATOR_ERROR_DUMP_ATTR, True)
+                func_name = getattr(
+                    func, "__qualname__", getattr(func, "__name__", type(func).__name__)
+                )
+                logger.exception("Error in %s", func_name)
+                _notify_orchestrator_error_ui(exc, dump_path)
             raise
 
     return wrapper
@@ -113,7 +116,16 @@ def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
 def apply_safe_execution_to_class(
     cls: _C,
     *,
-    skip: Collection[str] = ("__init__",),
+    skip: Collection[str] = (
+        "__init__",
+        "execute",
+        "execute_optional",
+        "undo",
+        "redo",
+        "peek_undo_command",
+        "peek_redo_command",
+        "consume_pending_ui_refresh",
+    ),
 ) -> _C:
     """
     Apply :func:`safe_execution` to each function defined on ``cls``.

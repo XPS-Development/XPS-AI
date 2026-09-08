@@ -215,7 +215,7 @@ def test_auto_fit_emits_once_for_two_internal_executes(
         orch.execute(UpdateParameter(peak_id, "cen", "value", 0.5, normalized=False))
 
     monkeypatch.setattr(ctrl.orchestrator, "auto_fit", fake_auto_fit)
-    ctrl.auto_fit_spectra([spectrum_id])
+    ctrl.auto_fit([spectrum_id])
 
     assert counts["plot"] == 1
     assert counts["properties"] == 1

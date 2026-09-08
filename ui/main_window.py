@@ -332,7 +332,7 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
             return
 
-        self._controller.auto_fit_spectra(spectrum_ids)
+        self._controller.auto_fit(spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""

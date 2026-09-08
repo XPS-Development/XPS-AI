@@ -74,7 +74,7 @@ class SpectrumTreePanel(QWidget):
                 "Select one or more spectra before auto fit.",
             )
             return
-        self._controller.auto_fit_spectra(spectrum_ids)
+        self._controller.auto_fit(spectrum_ids)
 
     def _on_optimize_clicked(self) -> None:
         """Optimize all regions under each selected spectrum."""

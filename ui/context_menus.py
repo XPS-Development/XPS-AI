@@ -65,7 +65,7 @@ class SpectrumContextMenuActions:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.auto_fit_spectra([spectrum_id])
+        self._controller.auto_fit([spectrum_id])
 
     def _on_export_spectrum_csv(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id

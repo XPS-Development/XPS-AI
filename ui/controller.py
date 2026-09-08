@@ -149,7 +149,7 @@ class ControllerWrapper(QObject):
             **kwargs,
         )
 
-    def auto_fit_spectra(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
         """Run the segmenter then optimize regions for the given spectra."""
         self._mutate(self._orchestrator.auto_fit, spectrum_ids, **kwargs)
 
@@ -363,10 +363,6 @@ class ControllerWrapper(QObject):
     def full_remove_object(self, obj_id: str) -> None:
         """Remove an object, all descendants, and their metadata and emit signals."""
         self._mutate(self._orchestrator.full_remove_object, obj_id)
-
-    def remove_spectrum(self, spectrum_id: str) -> None:
-        """Remove a spectrum and emit signals."""
-        self._mutate(self._orchestrator.full_remove_object, spectrum_id)
 
     def remove_group(self, file_label: str, group_label: str) -> None:
         """Remove all spectra belonging to a given file/group combination."""
