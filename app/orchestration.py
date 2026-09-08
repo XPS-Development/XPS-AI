@@ -192,7 +192,7 @@ class AppOrchestrator:
     @property
     def is_dirty(self) -> bool:
         """True if there are unsaved changes."""
-        return self._serialization.is_dirty
+        return self.__stack.is_dirty
 
     def execute(self, change: BaseChange) -> None:
         """
@@ -208,7 +208,6 @@ class AppOrchestrator:
         """
         cmd = self._executor.execute(change)
         self._pending_ui_refresh |= cmd.combined_ui_refresh()
-        self._serialization.mark_dirty()
 
     def execute_optional(self, change: BaseChange | None) -> None:
         """Execute ``change`` when it is not ``None``; otherwise no-op."""
@@ -668,7 +667,7 @@ class AppOrchestrator:
         Load collection and metadata from a JSON file.
 
         If mode is omitted, AppParameters.default_serialization_mode is used.
-        For replace mode, the undo/redo stack is cleared.
+        The undo/redo stack is cleared after a successful load.
         Plain vs gzip input is auto-detected (``.gz`` suffix or gzip magic bytes).
 
         Parameters

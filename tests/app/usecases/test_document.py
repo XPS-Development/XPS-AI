@@ -41,6 +41,25 @@ def test_dump_and_load_roundtrip(simple_collection, spectrum_id: str, tmp_path) 
     assert spectrum_id in empty.objects_index
 
 
+def test_load_collection_append_clears_undo_and_marks_saved(
+    simple_collection, spectrum_id: str, tmp_path
+) -> None:
+    """load_collection in append mode clears undo history and marks clean."""
+    from core.collection import CoreCollection
+
+    params = AppParameters()
+    doc = _document(simple_collection, params)
+    path = tmp_path / "doc.json"
+    doc.dump_collection(path)
+
+    target = CoreCollection()
+    loaded = _document(target, AppParameters())
+    loaded.load_collection(path, mode="append")
+    assert spectrum_id in target.objects_index
+    assert loaded._executor.stack.can_undo is False
+    assert loaded._executor.stack.is_dirty is False
+
+
 def test_new_collection_clears_state(simple_collection, spectrum_id: str) -> None:
     """new_collection empties the collection and marks the document dirty."""
     params = AppParameters(default_serialization_path=Path("/tmp/x.json"))
@@ -59,5 +78,5 @@ def test_new_collection_clears_state(simple_collection, spectrum_id: str) -> Non
 
     assert spectrum_id not in simple_collection.objects_index
     assert params.default_serialization_path is None
-    assert serialization.is_dirty is True
+    assert executor.stack.is_dirty is True
     assert executor.stack.can_undo is False

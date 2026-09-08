@@ -118,6 +118,67 @@ def test_undo_redo_stack_new_push_clears_redo():
     assert stack.can_redo is False
 
 
+def test_undo_redo_stack_initial_state_not_dirty():
+    """Empty stack with default save marker is clean."""
+    stack = UndoRedoStack()
+    assert stack.is_dirty is False
+
+
+def test_undo_redo_stack_push_marks_dirty():
+    """A new command moves the stack away from the saved depth."""
+    stack = UndoRedoStack()
+    stack.push(_DummyCommand())
+    assert stack.is_dirty is True
+
+
+def test_undo_redo_stack_mark_saved_clears_dirty():
+    """mark_saved records the current depth as the on-disk baseline."""
+    stack = UndoRedoStack()
+    stack.push(_DummyCommand())
+    stack.mark_saved()
+    assert stack.is_dirty is False
+
+
+def test_undo_redo_stack_undo_back_to_saved_depth_is_clean():
+    """Undoing post-save edits back to the saved depth leaves the document clean."""
+    stack = UndoRedoStack()
+    stack.push(_DummyCommand())
+    stack.mark_saved()
+    stack.push(_DummyCommand())
+    assert stack.is_dirty is True
+    stack.pop_undo()
+    assert stack.is_dirty is False
+
+
+def test_undo_redo_stack_undo_before_saved_depth_is_dirty():
+    """Undoing past the saved depth leaves the document dirty."""
+    stack = UndoRedoStack()
+    stack.push(_DummyCommand())
+    stack.mark_saved()
+    stack.push(_DummyCommand())
+    stack.pop_undo()
+    stack.pop_undo()
+    assert stack.is_dirty is True
+
+
+def test_undo_redo_stack_mark_unsaved():
+    """mark_unsaved forces dirty even when the undo stack is empty."""
+    stack = UndoRedoStack()
+    stack.mark_unsaved()
+    assert stack.is_dirty is True
+
+
+def test_undo_redo_stack_clear_all_does_not_reset_save_marker():
+    """clear_all only empties stacks; the caller must update the save marker."""
+    stack = UndoRedoStack()
+    stack.push(_DummyCommand())
+    stack.mark_saved()
+    stack.clear_all()
+    assert stack.is_dirty is True
+    stack.mark_saved()
+    assert stack.is_dirty is False
+
+
 def test_command_registry_build_returns_correct_command(ctx, peak_id, region_id):
     """build returns the correct Command for each registered Change type."""
     registry = create_default_registry()

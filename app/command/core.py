@@ -49,11 +49,30 @@ class UndoRedoStack:
 
     Maintains separate undo and redo stacks. Executing a new command clears
     the redo stack (branching is discarded).
+
+    Dirty state is derived by comparing the current undo depth with the depth
+    recorded at the last save (:meth:`mark_saved`).
     """
 
     def __init__(self) -> None:
         self._undo_stack: list[Command] = []
         self._redo_stack: list[Command] = []
+        self._saved_undo_depth: int | None = 0
+
+    @property
+    def is_dirty(self) -> bool:
+        """True when the document differs from the last saved undo position."""
+        if self._saved_undo_depth is None:
+            return True
+        return len(self._undo_stack) != self._saved_undo_depth
+
+    def mark_saved(self) -> None:
+        """Record the current undo depth as matching the on-disk document."""
+        self._saved_undo_depth = len(self._undo_stack)
+
+    def mark_unsaved(self) -> None:
+        """Mark the document as having no save baseline (e.g. after new document)."""
+        self._saved_undo_depth = None
 
     @property
     def can_undo(self) -> bool:

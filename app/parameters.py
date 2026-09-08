@@ -44,7 +44,7 @@ class AppParameters:
     optimization_kwargs: dict[str, Any] = field(default_factory=dict)
 
     # ---- Serialization service parameters ----
-    default_serialization_mode: Literal["append", "replace", "new"] = "replace"
+    default_serialization_mode: Literal["append", "replace"] = "replace"
     default_serialization_path: str | Path | None = None
     default_serialization_indent: int | None = None
     default_serialization_use_gzip: bool = True

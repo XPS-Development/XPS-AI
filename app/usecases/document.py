@@ -35,11 +35,11 @@ class DocumentUseCases:
         metadata
             Metadata store bound to the same document.
         serialization
-            Dirty-tracking dump/load adapter.
+            Dump/load adapter for collection persistence.
         params
             Application parameters providing dump/load defaults.
         executor
-            Command executor whose undo/redo stacks are cleared on replace/new.
+            Command executor whose undo/redo stacks are cleared on load/new.
         """
         self._collection = collection
         self._metadata = metadata
@@ -92,6 +92,7 @@ class DocumentUseCases:
             compresslevel=self._params.default_serialization_compresslevel,
         )
         self._params.default_serialization_path = resolved_path
+        self._executor.stack.mark_saved()
         return PathCls(resolved_path)
 
     def load_collection(
@@ -109,18 +110,8 @@ class DocumentUseCases:
             Path to the JSON file (plain or gzip-compressed).
         mode
             ``append`` or ``replace``. If None, uses parameter default.
-
-        Raises
-        ------
-        ValueError
-            If the resolved mode is not append or replace.
         """
         resolved_mode = mode if mode is not None else self._params.default_serialization_mode
-        if resolved_mode not in ("append", "replace"):
-            raise ValueError(
-                f"mode must be 'append' or 'replace', got {resolved_mode!r}; "
-                "AppParameters.default_serialization_mode='new' is not supported"
-            )
         self._serialization.load(
             path=path,
             collection=self._collection,
@@ -128,13 +119,13 @@ class DocumentUseCases:
             mode=resolved_mode,
         )
         self._params.default_serialization_path = path
-        if resolved_mode == "replace":
-            self._executor.clear()
+        self._executor.clear()
+        self._executor.stack.mark_saved()
 
     def new_collection(self) -> None:
         """Clear collection, metadata, undo stack, and reset the save path."""
         self._collection.clear()
         self._metadata.clear()
         self._params.default_serialization_path = None
-        self._serialization.mark_dirty()
         self._executor.clear()
+        self._executor.stack.mark_unsaved()
