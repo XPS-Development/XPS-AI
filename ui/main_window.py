@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
 
 from .controller import ControllerWrapper
@@ -253,27 +253,11 @@ class MainWindow(QMainWindow):
 
     def _on_save_triggered(self) -> None:
         """Save the collection using the default or last used path."""
-        if self._controller.get_default_save_path() is None:
-            self._on_save_as_triggered()
-            return
-        self._controller.dump_collection()
-        self._update_window_title()
-        self._update_status_bar()
+        self._try_save()
 
     def _on_save_as_triggered(self) -> None:
         """Save the collection to a user-selected path."""
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save collection as",
-            "",
-            "JSON files (*.json);;All files (*)",
-        )
-        if not filename:
-            return
-
-        self._controller.dump_collection(filename)
-        self._update_window_title()
-        self._update_status_bar()
+        self._try_save_as()
 
     def _on_undo_triggered(self) -> None:
         """Trigger an undo via the controller."""
@@ -398,8 +382,61 @@ class MainWindow(QMainWindow):
         if self._action_redo is not None:
             self._action_redo.setEnabled(can_redo)
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """
+        Prompt to save unsaved changes before the window closes.
+
+        Parameters
+        ----------
+        event : QCloseEvent
+            Qt close event; ignored if the user cancels or save fails.
+        """
+        if self._confirm_close():
+            event.accept()
+        else:
+            event.ignore()
+
+    def _try_save(self) -> bool:
+        """
+        Save the collection to the default path, or run Save As if unset.
+
+        Returns
+        -------
+        bool
+            True if the document was saved successfully.
+        """
+        if self._controller.get_default_save_path() is None:
+            return self._try_save_as()
+        self._controller.dump_collection()
+        self._update_window_title()
+        self._update_status_bar()
+        return True
+
+    def _try_save_as(self) -> bool:
+        """
+        Save the collection to a path chosen by the user.
+
+        Returns
+        -------
+        bool
+            True if the user picked a path and the document was saved.
+        """
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save collection as",
+            "",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not filename:
+            return False
+
+        self._controller.dump_collection(filename)
+        self._update_window_title()
+        self._update_status_bar()
+        return True
+
     def _update_window_title(self) -> None:
-        """Set the window title based on save path."""
+        """Set the window title from save path and dirty state."""
         path: Path | None = self._controller.get_default_save_path()
 
         if path is None:
@@ -407,8 +444,8 @@ class MainWindow(QMainWindow):
         else:
             name = path.name
 
-        title = f"Spectrum Viewer - {name}"
-        self.setWindowTitle(title)
+        dirty = "*" if self._controller.is_dirty else ""
+        self.setWindowTitle(f"Spectrum Viewer - {dirty}{name}")
 
     def _update_status_bar(self) -> None:
         """Refresh the status bar text with path, dirty flag, and selection."""
@@ -467,6 +504,33 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No,
         )
         return answer == QMessageBox.StandardButton.Yes
+
+    def _confirm_close(self) -> bool:
+        """
+        Ask whether to save, discard, or cancel when closing with dirty state.
+
+        Returns
+        -------
+        bool
+            True if the window may close, False to keep it open.
+        """
+        if not self._controller.is_dirty:
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "Unsaved changes",
+            "Save changes before closing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Save:
+            return self._try_save()
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        return False
 
     def _show_info(self, title: str, message: str) -> None:
         """

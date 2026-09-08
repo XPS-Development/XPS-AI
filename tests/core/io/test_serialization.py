@@ -539,3 +539,46 @@ def test_deserialize_new_requires_none():
             metadata_service=MetadataService(CoreCollection()),
             mode="new",
         )
+
+
+def test_dump_failed_write_preserves_existing_file(simple_collection, tmp_path, monkeypatch):
+    """
+    A failure during rewrite must leave the previous file contents intact.
+
+    Atomic replace only happens after a successful temp write, so an exception
+    from ``json.dump`` must not truncate the destination.
+    """
+    file_path = tmp_path / "collection.json"
+    dump(simple_collection, file_path)
+    original_bytes = file_path.read_bytes()
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(json, "dump", _boom)
+
+    with pytest.raises(OSError, match="simulated write failure"):
+        dump(simple_collection, file_path)
+
+    assert file_path.read_bytes() == original_bytes
+    leftovers = list(tmp_path.glob(".collection.json.*.tmp"))
+    assert leftovers == []
+
+
+def test_dump_failed_gzip_write_preserves_existing_file(simple_collection, tmp_path, monkeypatch):
+    """Gzip rewrite failures must also preserve the previous destination file."""
+    file_path = tmp_path / "collection.json.gz"
+    dump(simple_collection, file_path, use_gzip=True)
+    original_bytes = file_path.read_bytes()
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("simulated gzip write failure")
+
+    monkeypatch.setattr(json, "dump", _boom)
+
+    with pytest.raises(OSError, match="simulated gzip write failure"):
+        dump(simple_collection, file_path, use_gzip=True)
+
+    assert file_path.read_bytes() == original_bytes
+    leftovers = list(tmp_path.glob(".collection.json.gz.*.tmp"))
+    assert leftovers == []

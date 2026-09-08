@@ -7,6 +7,8 @@ preserving object relationships, metadata, and data in a compact representation.
 
 import gzip
 import json
+import os
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal
@@ -297,6 +299,10 @@ def dump(
     """
     Serialize a CoreCollection to JSON and save it to a file.
 
+    Writes to a temporary file in the same directory, then replaces the
+    destination atomically via :func:`os.replace` so a crash or I/O error
+    mid-write cannot leave a truncated document.
+
     Parameters
     ----------
     collection : CoreCollection
@@ -315,12 +321,27 @@ def dump(
     path = Path(fp)
     data = serialize(collection, metadata_service)
     path.parent.mkdir(parents=True, exist_ok=True)
-    if use_gzip:
-        with gzip.open(path, "wt", encoding="utf-8", compresslevel=compresslevel) as f:
-            json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
-    else:
-        with path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
+
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        os.close(fd)
+        if use_gzip:
+            with gzip.open(tmp_name, "wt", encoding="utf-8", compresslevel=compresslevel) as f:
+                json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
+        else:
+            with Path(tmp_name).open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=indent, ensure_ascii=False, default=_json_default)
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def _convert_json_value(value: Any) -> Any:
