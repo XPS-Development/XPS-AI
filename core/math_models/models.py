@@ -1,13 +1,20 @@
 """Concrete peak and background models registered with :class:`ModelRegistry`."""
 
+import math
 from typing import ClassVar, Literal, cast
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .base_models import BaseBackgroundModel, BasePeakModel, ParameterSpec
+from .base_models import BaseBackgroundModel, BasePeakModel, ParameterSpec, ParametricModel
 from .guess_helpers import amp_from_height, edge_intensities, half_max_sigma
 from .model_funcs import linear_background, pvoigt, static_shirley_background
+from .soft_ranges import (
+    clip_soft_range,
+    intensity_soft_range,
+    prefer_finite_hard_bounds,
+    soft_window_around,
+)
 
 
 def _bg_slice_kwargs(
@@ -65,6 +72,41 @@ class PseudoVoigtPeakModel(BasePeakModel):
         amp = amp_from_height(y, peak_index, sig, frac)
         return {"amp": amp, "cen": float(x[peak_index]), "sig": sig, "frac": frac}
 
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider ranges for amp/cen/sig/frac."""
+        hard = prefer_finite_hard_bounds(lower, upper)
+        if hard is not None:
+            return hard
+        key = name.lower()
+        v = float(value) if math.isfinite(value) else 0.0
+        if key == "frac":
+            return (0.0, 1.0)
+        if key == "cen":
+            if x_min is not None and x_max is not None and x_max != x_min:
+                lo, hi = (
+                    (float(x_min), float(x_max)) if x_min < x_max else (float(x_max), float(x_min))
+                )
+                return (lo, hi)
+            span = max(abs(v) * 0.1, 5.0)
+            return soft_window_around(v, span=span, lower=lower, upper=upper)
+        if key == "sig":
+            return clip_soft_range(0.1, 30.0, lower, upper)
+        if key == "amp":
+            return intensity_soft_range(v, lower, upper, y_max=y_max, non_negative=True)
+        return ParametricModel.soft_parameter_range(
+            name, value, lower, upper, x_min=x_min, x_max=x_max, y_max=y_max
+        )
+
 
 class ConstantBackgroundModel(BaseBackgroundModel):
     """Constant (flat) background."""
@@ -89,6 +131,20 @@ class ConstantBackgroundModel(BaseBackgroundModel):
         start, stop, mode, avg_on = _bg_slice_kwargs(kwargs)
         edges = edge_intensities(x, y, start, stop, mode=mode, avg_on=avg_on)
         return {"const": min(edges["i1"], edges["i2"])}
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider range for ``const``."""
+        return intensity_soft_range(value, lower, upper, y_max=y_max)
 
 
 class LinearBackgroundModel(BaseBackgroundModel):
@@ -115,6 +171,20 @@ class LinearBackgroundModel(BaseBackgroundModel):
         """Guess ``i1`` / ``i2`` from edge intensities at start/stop."""
         start, stop, mode, avg_on = _bg_slice_kwargs(kwargs)
         return edge_intensities(x, y, start, stop, mode=mode, avg_on=avg_on)
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider range for ``i1`` / ``i2``."""
+        return intensity_soft_range(value, lower, upper, y_max=y_max)
 
 
 class ShirleyBackgroundModel(BaseBackgroundModel):
@@ -143,3 +213,17 @@ class ShirleyBackgroundModel(BaseBackgroundModel):
         """Guess ``i1`` / ``i2`` from edge intensities at start/stop."""
         start, stop, mode, avg_on = _bg_slice_kwargs(kwargs)
         return edge_intensities(x, y, start, stop, mode=mode, avg_on=avg_on)
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider range for Shirley ``i1`` / ``i2``."""
+        return intensity_soft_range(value, lower, upper, y_max=y_max)

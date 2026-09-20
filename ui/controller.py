@@ -36,7 +36,7 @@ class ControllerWrapper(QObject):
     propertiesNeedsRefresh: Signal = Signal()
     documentStateChanged: Signal = Signal()
     undoRedoStateChanged: Signal = Signal(bool, bool)
-    selectionChanged: Signal = Signal(object, object)
+    selectionChanged: Signal = Signal(object, object, object)
 
     def __init__(
         self,
@@ -57,6 +57,7 @@ class ControllerWrapper(QObject):
 
         self._selected_spectrum_id: str | None = None
         self._selected_region_id: str | None = None
+        self._selected_component_id: str | None = None
 
     @property
     def collection(self) -> CoreCollection:
@@ -98,13 +99,39 @@ class ControllerWrapper(QObject):
         """Identifier of the currently selected region."""
         return self._selected_region_id
 
-    def set_selection(self, spectrum_id: str | None, region_id: str | None = None) -> None:
-        """Update the current spectrum/region selection."""
-        if spectrum_id == self._selected_spectrum_id and region_id == self._selected_region_id:
+    @property
+    def selected_component_id(self) -> str | None:
+        """Identifier of the currently selected peak or background component."""
+        return self._selected_component_id
+
+    def set_selection(
+        self,
+        spectrum_id: str | None,
+        region_id: str | None = None,
+        component_id: str | None = None,
+    ) -> None:
+        """
+        Update the current spectrum/region/component selection.
+
+        Parameters
+        ----------
+        spectrum_id : str or None
+            Selected spectrum, or ``None`` to clear selection.
+        region_id : str or None, optional
+            Selected region within the spectrum.
+        component_id : str or None, optional
+            Selected peak or background within the region.
+        """
+        if (
+            spectrum_id == self._selected_spectrum_id
+            and region_id == self._selected_region_id
+            and component_id == self._selected_component_id
+        ):
             return
         self._selected_spectrum_id = spectrum_id
         self._selected_region_id = region_id
-        self.selectionChanged.emit(spectrum_id, region_id)
+        self._selected_component_id = component_id
+        self.selectionChanged.emit(spectrum_id, region_id, component_id)
 
     # ------------------------------------------------------------------
     # Mutation API
@@ -170,6 +197,73 @@ class ControllerWrapper(QObject):
             parameter_field=parameter_field,
             new_value=new_value,
             normalized=normalized,
+        )
+
+    def preview_parameter_value(
+        self,
+        component_id: str,
+        name: str,
+        value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """Live-preview a parameter value without recording undo."""
+        self._mutate(
+            self._orchestrator.preview_parameter_value,
+            component_id,
+            name,
+            value,
+            normalized=normalized,
+        )
+
+    def commit_parameter_preview(
+        self,
+        component_id: str,
+        name: str,
+        old_value: float,
+        new_value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """Record undo for a value already applied via :meth:`preview_parameter_value`."""
+        self._mutate(
+            self._orchestrator.commit_parameter_preview,
+            component_id,
+            name,
+            old_value,
+            new_value,
+            normalized=normalized,
+        )
+
+    def preview_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        *,
+        mode: Literal["value", "index"] = "value",
+    ) -> None:
+        """Live-preview a region slice without recording undo."""
+        self._mutate(
+            self._orchestrator.preview_region_slice,
+            region_id,
+            start,
+            stop,
+            mode=mode,
+        )
+
+    def commit_region_slice_preview(
+        self,
+        region_id: str,
+        old_start_index: int,
+        old_stop_index: int,
+    ) -> None:
+        """Record undo for a slice already applied via :meth:`preview_region_slice`."""
+        self._mutate(
+            self._orchestrator.commit_region_slice_preview,
+            region_id,
+            old_start_index,
+            old_stop_index,
         )
 
     def update_parameters(

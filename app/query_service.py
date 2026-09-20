@@ -129,6 +129,32 @@ class QueryService:
         """
         return self._ctx.query.get_peaks(region_id)
 
+    def get_spectrum_structure_status(
+        self,
+        spectrum_id: str,
+    ) -> Literal["empty", "regions", "peaks"]:
+        """
+        Return a coarse structural status for status-dot UI.
+
+        Parameters
+        ----------
+        spectrum_id : str
+            Spectrum identifier.
+
+        Returns
+        -------
+        {"empty", "regions", "peaks"}
+            ``empty`` — no regions; ``regions`` — regions but no peaks;
+            ``peaks`` — at least one peak exists.
+        """
+        region_ids = self.get_regions_ids(spectrum_id)
+        if not region_ids:
+            return "empty"
+        for region_id in region_ids:
+            if self.get_peaks_ids(region_id):
+                return "peaks"
+        return "regions"
+
     def get_background_id(self, region_id: str) -> str | None:
         """
         Return the identifier of the unique background component in a region.

@@ -18,6 +18,7 @@ class SpectrumTreePanel(QWidget):
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("SpectrumTreePanel")
         self._controller = controller
         self._search_edit = QLineEdit(self)
         self._search_edit.setPlaceholderText("Search spectra, groups, files…")
@@ -26,13 +27,38 @@ class SpectrumTreePanel(QWidget):
         self._optimize_btn = QPushButton("Optimize", self)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 4, 4, 0)
+        layout.setSpacing(4)
         layout.addWidget(self._search_edit)
         btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+        btn_row.setSpacing(4)
         btn_row.addWidget(self._auto_fit_btn)
         btn_row.addWidget(self._optimize_btn)
         layout.addLayout(btn_row)
         layout.addWidget(self._tree)
+        self.setStyleSheet(
+            """
+            QWidget#SpectrumTreePanel {
+                background: #f7f7f7;
+            }
+            QWidget#SpectrumTreePanel QLineEdit {
+                background: #ffffff;
+                border: 1px solid #d8d8d8;
+                border-radius: 4px;
+                padding: 3px 6px;
+            }
+            QWidget#SpectrumTreePanel QPushButton {
+                background: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                padding: 3px 10px;
+            }
+            QWidget#SpectrumTreePanel QPushButton:hover {
+                background: #f0f0f0;
+            }
+            """
+        )
 
         self._search_edit.textChanged.connect(self._on_search_text_changed)
         self._auto_fit_btn.clicked.connect(self._on_auto_fit_clicked)

@@ -1,5 +1,6 @@
 """Base classes, protocols, and parameter schemas for parametric models."""
 
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar, Protocol, TypeVar
@@ -8,6 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .normalization import NormalizationContext, ParameterNormalizationPolicy
+from .soft_ranges import prefer_finite_hard_bounds, soft_window_around
 
 T = TypeVar("T", bound=np.floating)
 
@@ -44,6 +46,20 @@ class ParametricModelLike(Protocol[T]):
         """Return initial parameter values keyed by ``parameter_schema`` names."""
         ...
 
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Return a finite soft slider range for one named parameter."""
+        ...
+
     def normalize_value(self, val: float, norm_ctx: NormalizationContext) -> float:
         """Map a physical parameter value into normalized space."""
         ...
@@ -77,6 +93,30 @@ class ParametricModel(ParameterNormalizationPolicy, ABC):
         optional ``mode`` and ``avg_on``.
         """
         ...
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """
+        Return a finite soft slider range for one named parameter.
+
+        Default: prefer finite hard bounds, else a window around ``value``.
+        Subclasses override for model-specific soft UI ranges.
+        """
+        hard = prefer_finite_hard_bounds(lower, upper)
+        if hard is not None:
+            return hard
+        v = float(value) if math.isfinite(value) else 0.0
+        span = max(abs(v) * 0.5, 1.0)
+        return soft_window_around(v, span=span, lower=lower, upper=upper)
 
 
 class EvaluationLikeFn(Protocol[T]):

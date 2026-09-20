@@ -1,25 +1,57 @@
 """Properties tree for region slices, models, and component parameters."""
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
-from PySide6.QtGui import QFontMetrics, QResizeEvent
+import numpy as np
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QPersistentModelIndex,
+    QPoint,
+    QRect,
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QHeaderView,
     QMenu,
+    QStyle,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTreeView,
     QWidget,
 )
 
+from core.math_models import ModelRegistry
+from core.math_models.soft_ranges import soft_region_bound_range
+
+from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
+from .name_id_delegate import (
+    ComponentColorRole,
+    NameWithIdDelegate,
+    ObjectIdPrefixRole,
+    ObjectIdRole,
+)
+from .parameter_value_editor import ParameterValueEditor
+from .tree_style import apply_editor_menu_style, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
+_ID_DISPLAY_CHARS = 5
+
+
+def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
+    """Return a plain ``QModelIndex`` (PySide stubs omit persistent conversion)."""
+    model = index.model()
+    if model is None:
+        return QModelIndex()
+    return model.index(index.row(), index.column(), index.parent())
 
 
 class ItemKind(Enum):
@@ -37,14 +69,18 @@ def _format_value(val: Any) -> str:
     r"""
     Format a value for display in the properties tree.
 
-    None -> \"\", bool as-is, numbers with 2 decimal places, else str(val).
+    None -> \"\", bool as-is, non-finite floats as \"—\", numbers with 2
+    decimal places, else str(val).
     """
     if val is None:
         return ""
     if isinstance(val, bool):
         return str(val)
     if isinstance(val, (int, float)):
-        return f"{float(val):.2f}"
+        number = float(val)
+        if not math.isfinite(number):
+            return "—"
+        return f"{number:.2f}"
     return str(val)
 
 
@@ -60,7 +96,7 @@ class PropertyItem:
     Parameters
     ----------
     name : str
-        Display name shown in the first column.
+        Display name shown in the first column (without id suffix).
     value : Any, optional
         For ``REGION_SLICE`` / ``COMPONENT_MODEL``, the bound or model name.
         For ``PARAMETER_ROW``, the parameter's value (column 1).
@@ -68,6 +104,8 @@ class PropertyItem:
         Parent item in the tree.
     param_lower, param_upper, param_vary, param_expr : optional
         Used when ``kind`` is ``PARAMETER_ROW`` (columns 2-5).
+    object_id : str or None, optional
+        Full region/component id for gray suffix / clipboard when shown.
     """
 
     name: str
@@ -79,6 +117,9 @@ class PropertyItem:
     component_id: str | None = None
     parameter_name: str | None = None
     component_kind: Literal["peak", "background"] | None = None
+    object_id: str | None = None
+    soft_lo: float | None = None
+    soft_hi: float | None = None
     param_lower: Any = None
     param_upper: Any = None
     param_vary: bool = False
@@ -200,12 +241,29 @@ class PropertiesModel(QAbstractItemModel):
         index: QModelIndex | QPersistentModelIndex,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        """Return display, edit, or check-state data for ``index``."""
+        """Return display, edit, decoration, or check-state data for ``index``."""
         item = self._item(index)
         if not isinstance(item, PropertyItem):
             return None
 
         col = index.column()
+
+        if role == ObjectIdRole and col == 0 and item.object_id is not None:
+            return item.object_id
+
+        if role == ObjectIdPrefixRole and col == 0 and item.object_id is not None:
+            if self._controller.get_app_parameters().show_id_in_properties_tree:
+                return item.object_id[:_ID_DISPLAY_CHARS]
+            return None
+
+        if (
+            role == ComponentColorRole
+            and col == 0
+            and item.kind == ItemKind.COMPONENT
+            and item.component_id is not None
+        ):
+            kind = item.component_kind or "peak"
+            return color_for_component(item.component_id, kind=kind)
 
         if (
             role == Qt.ItemDataRole.CheckStateRole
@@ -213,6 +271,12 @@ class PropertiesModel(QAbstractItemModel):
             and item.kind == ItemKind.PARAMETER_ROW
         ):
             return Qt.CheckState.Checked if item.param_vary else Qt.CheckState.Unchecked
+
+        if role == Qt.ItemDataRole.ForegroundRole and col in (2, 3):
+            if item.kind == ItemKind.PARAMETER_ROW:
+                raw = item.param_lower if col == 2 else item.param_upper
+                if isinstance(raw, (int, float)) and not math.isfinite(float(raw)):
+                    return QColor("#b0b0b0")
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
@@ -251,7 +315,7 @@ class PropertiesModel(QAbstractItemModel):
                 return base_flags | Qt.ItemFlag.ItemIsEditable
             return base_flags
 
-        if col == 1 and item.kind in {ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}:
+        if col == 1 and item.kind == ItemKind.REGION_SLICE:
             return base_flags | Qt.ItemFlag.ItemIsEditable
 
         return base_flags
@@ -262,8 +326,11 @@ class PropertiesModel(QAbstractItemModel):
         region_id: str,
         start_val: int | float,
         stop_val: int | float,
+        *,
+        slice_mode: Literal["value", "index"],
     ) -> None:
         """Add start and stop rows under parent for the given region slice."""
+        soft_lo, soft_hi = self._slice_soft_range(region_id, slice_mode)
         parent_item.append_child(
             PropertyItem(
                 name="start",
@@ -271,6 +338,8 @@ class PropertiesModel(QAbstractItemModel):
                 parent=parent_item,
                 kind=ItemKind.REGION_SLICE,
                 region_id=region_id,
+                soft_lo=soft_lo,
+                soft_hi=soft_hi,
             )
         )
         parent_item.append_child(
@@ -280,7 +349,34 @@ class PropertiesModel(QAbstractItemModel):
                 parent=parent_item,
                 kind=ItemKind.REGION_SLICE,
                 region_id=region_id,
+                soft_lo=soft_lo,
+                soft_hi=soft_hi,
             )
+        )
+
+    def _slice_soft_range(
+        self,
+        region_id: str,
+        slice_mode: Literal["value", "index"],
+    ) -> tuple[float, float]:
+        """Return soft slider bounds for region start/stop rows."""
+        x_min: float | None = None
+        x_max: float | None = None
+        index_count: int | None = None
+        try:
+            spectrum_id = self._controller.query.get_parent_id(region_id)
+            spectrum = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
+            if spectrum.x.size:
+                x_min = float(np.min(spectrum.x))
+                x_max = float(np.max(spectrum.x))
+                index_count = int(spectrum.x.size)
+        except KeyError:
+            pass
+        return soft_region_bound_range(
+            mode=slice_mode,
+            x_min=x_min,
+            x_max=x_max,
+            index_count=index_count,
         )
 
     def _add_parameters(
@@ -288,9 +384,24 @@ class PropertiesModel(QAbstractItemModel):
         parent_item: PropertyItem,
         component_id: str,
         parameters_dto: dict[str, Any],
+        *,
+        model_name: str,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
     ) -> None:
         """Add one flat row per parameter (value, lower, upper, vary, expr)."""
+        model = ModelRegistry.get(model_name)
         for param_name, param_dto in parameters_dto.items():
+            soft_lo, soft_hi = model.soft_parameter_range(
+                str(param_name),
+                float(param_dto.value),
+                float(param_dto.lower),
+                float(param_dto.upper),
+                x_min=x_min,
+                x_max=x_max,
+                y_max=y_max,
+            )
             parent_item.append_child(
                 PropertyItem(
                     name=str(param_name),
@@ -299,12 +410,32 @@ class PropertiesModel(QAbstractItemModel):
                     kind=ItemKind.PARAMETER_ROW,
                     component_id=component_id,
                     parameter_name=str(param_name),
+                    soft_lo=soft_lo,
+                    soft_hi=soft_hi,
                     param_lower=param_dto.lower,
                     param_upper=param_dto.upper,
                     param_vary=bool(param_dto.vary),
                     param_expr=param_dto.expr,
                 )
             )
+
+    def _region_soft_context(
+        self,
+        region_id: str,
+    ) -> tuple[float | None, float | None, float | None]:
+        """Return ``(x_min, x_max, y_max)`` hints for soft slider ranges."""
+        try:
+            region_dto = self._controller.query.get_region_dto(region_id, normalized=False)
+        except KeyError:
+            return None, None, None
+        x = region_dto.x
+        y = region_dto.y
+        if x.size == 0:
+            return None, None, None
+        x_min = float(np.min(x))
+        x_max = float(np.max(x))
+        y_max = float(np.max(y)) if y.size else None
+        return x_min, x_max, y_max
 
     def setData(
         self,
@@ -396,11 +527,22 @@ class PropertiesModel(QAbstractItemModel):
                 return False
 
             coerced: str | bool | float | None
-            text = str(value)
+            text = str(value).strip().replace(",", ".")
             if field in {"value", "lower", "upper"}:
-                coerced = float(text)
+                if text in {"", "—", "-", "inf", "+inf", "-inf", "∞", "-∞"}:
+                    if field == "lower":
+                        coerced = float("-inf")
+                    elif field == "upper":
+                        coerced = float("inf")
+                    else:
+                        return False
+                else:
+                    try:
+                        coerced = float(text)
+                    except ValueError:
+                        return False
             elif field == "expr":
-                coerced = text.strip() if text.strip() else None
+                coerced = text if text else None
             else:
                 return False
             self._controller.update_parameter(
@@ -418,6 +560,38 @@ class PropertiesModel(QAbstractItemModel):
                 item.param_upper = coerced
             else:
                 item.param_expr = coerced
+            if field in {"lower", "upper", "value"} and item.parameter_name is not None:
+                x_min = x_max = y_max = None
+                region_id = item.region_id
+                if region_id is None and item.component_id is not None:
+                    try:
+                        region_id = self._controller.query.get_parent_id(item.component_id)
+                    except KeyError:
+                        region_id = None
+                if region_id is not None:
+                    x_min, x_max, y_max = self._region_soft_context(region_id)
+                model_name: str | None = None
+                if item.component_id is not None:
+                    try:
+                        model_name = self._controller.query.get_component_dto(
+                            item.component_id
+                        ).model.name
+                    except KeyError:
+                        model_name = None
+                if model_name is not None:
+                    item.soft_lo, item.soft_hi = ModelRegistry.get(model_name).soft_parameter_range(
+                        item.parameter_name,
+                        float(item.value) if isinstance(item.value, (int, float)) else 0.0,
+                        float(item.param_lower)
+                        if isinstance(item.param_lower, (int, float))
+                        else float("-inf"),
+                        float(item.param_upper)
+                        if isinstance(item.param_upper, (int, float))
+                        else float("inf"),
+                        x_min=x_min,
+                        x_max=x_max,
+                        y_max=y_max,
+                    )
             self.dataChanged.emit(
                 index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
             )
@@ -451,7 +625,6 @@ class PropertiesModel(QAbstractItemModel):
         query = self._controller.query
         params = self._controller.get_app_parameters()
         slice_mode = params.region_slice_display_mode
-        show_id = params.show_id_in_properties_tree
 
         region_ids = query.get_regions_ids(spectrum_id)
         if not region_ids:
@@ -460,12 +633,12 @@ class PropertiesModel(QAbstractItemModel):
             return
 
         for idx, region_id in enumerate(region_ids, start=1):
-            region_label = f"Region {idx} {region_id[:5]}" if show_id else f"Region {idx}"
             region_item = PropertyItem(
-                name=region_label,
+                name=f"Region {idx}",
                 parent=self._root_item,
                 kind=ItemKind.REGION,
                 region_id=region_id,
+                object_id=region_id,
             )
             self._root_item.append_child(region_item)
 
@@ -474,19 +647,23 @@ class PropertiesModel(QAbstractItemModel):
                 start_val if start_val is not None else (0 if slice_mode == "index" else 0.0)
             )
             stop_val = stop_val if stop_val is not None else (0 if slice_mode == "index" else 0.0)
-            self._add_region_slice(region_item, region_id, start_val, stop_val)
+            self._add_region_slice(
+                region_item, region_id, start_val, stop_val, slice_mode=slice_mode
+            )
 
             background_id = query.get_background_id(region_id)
             peaks_ids = list(query.get_peaks_ids(region_id))
+            x_min, x_max, y_max = self._region_soft_context(region_id)
 
             if background_id is not None:
-                background_name = f"Background {background_id[:5]}" if show_id else "Background"
                 background_item = PropertyItem(
-                    name=background_name,
+                    name="Background",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=background_id,
+                    component_kind="background",
+                    object_id=background_id,
                 )
                 region_item.append_child(background_item)
                 background_dto = query.get_component_dto(background_id)
@@ -501,16 +678,25 @@ class PropertiesModel(QAbstractItemModel):
                         component_kind="background",
                     )
                 )
-                self._add_parameters(background_item, background_id, background_dto.parameters)
+                self._add_parameters(
+                    background_item,
+                    background_id,
+                    background_dto.parameters,
+                    model_name=background_dto.model.name,
+                    x_min=x_min,
+                    x_max=x_max,
+                    y_max=y_max,
+                )
 
             for peak_index, peak_id in enumerate(peaks_ids, start=1):
-                peak_name = f"Peak {peak_index} {peak_id[:5]}" if show_id else f"Peak {peak_index}"
                 peak_item = PropertyItem(
-                    name=peak_name,
+                    name=f"Peak {peak_index}",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=peak_id,
+                    component_kind="peak",
+                    object_id=peak_id,
                 )
                 region_item.append_child(peak_item)
                 peak_dto = query.get_component_dto(peak_id)
@@ -525,17 +711,162 @@ class PropertiesModel(QAbstractItemModel):
                         component_kind="peak",
                     )
                 )
-                self._add_parameters(peak_item, peak_id, peak_dto.parameters)
+                self._add_parameters(
+                    peak_item,
+                    peak_id,
+                    peak_dto.parameters,
+                    model_name=peak_dto.model.name,
+                    x_min=x_min,
+                    x_max=x_max,
+                    y_max=y_max,
+                )
 
         self.endResetModel()
 
 
 class PropertiesDelegate(QStyledItemDelegate):
-    """Delegate that provides a combo box for the component model row in the value column."""
+    """Delegate for model chips and selected-row soft-range slider editors."""
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """
+        Paint cells; draw model chips and suppress text under open editors.
+
+        Model values always look like compact Cursor-style controls. Persistent
+        slider editors otherwise sit on top of DisplayRole text.
+        """
+        item = index.internalPointer() if index.isValid() else None
+        view = self.parent()
+        has_editor = (
+            isinstance(view, QTreeView)
+            and index.isValid()
+            and view.indexWidget(_as_model_index(index)) is not None
+        )
+        if (
+            has_editor
+            and isinstance(item, PropertyItem)
+            and item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE}
+            and index.column() == 1
+        ):
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""
+            widget = opt.widget
+            style = widget.style() if widget is not None else None
+            if style is not None:
+                style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+                return
+
+        if (
+            isinstance(item, PropertyItem)
+            and item.kind == ItemKind.COMPONENT_MODEL
+            and index.column() == 1
+        ):
+            self._paint_model_chip(painter, option, index, str(item.value or ""))
+            return
+
+        super().paint(painter, option, index)
+
+    def _paint_model_chip(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+        text: str,
+    ) -> None:
+        """Draw a compact Cursor-style value chip that does not change row height."""
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        chip_h = min(22, max(16, opt.rect.height() - 6))
+        y = opt.rect.y() + (opt.rect.height() - chip_h) // 2
+        rect = QRect(opt.rect.x() + 4, y, max(0, opt.rect.width() - 12), chip_h)
+        if rect.width() < 24:
+            painter.restore()
+            return
+
+        painter.setPen(QColor("#d0d0d0"))
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRoundedRect(rect, 6, 6)
+
+        chevron = "▾"
+        metrics = opt.fontMetrics
+        chevron_w = metrics.horizontalAdvance(chevron) + 8
+        text_rect = rect.adjusted(8, 0, -chevron_w, 0)
+        painter.setPen(QColor("#000000"))
+        painter.setFont(opt.font)
+        elided = metrics.elidedText(text, Qt.TextElideMode.ElideRight, text_rect.width())
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            elided,
+        )
+        painter.setPen(QColor("#666666"))
+        painter.drawText(
+            rect.adjusted(0, 0, -6, 0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            chevron,
+        )
+        painter.restore()
+
+    def show_model_menu(self, global_pos: QPoint, index: QModelIndex) -> None:
+        """
+        Show a Cursor-style model picker menu for a ``COMPONENT_MODEL`` cell.
+
+        Parameters
+        ----------
+        global_pos : QPoint
+            Global position for the popup.
+        index : QModelIndex
+            Model value cell index.
+        """
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+            return
+        view = self.parent()
+        if not isinstance(view, QWidget):
+            return
+
+        if item.component_kind == "peak":
+            names = self._controller.query.get_peak_model_names()
+        else:
+            names = self._controller.query.get_background_model_names()
+        current = str(item.value or "")
+
+        menu = QMenu(view)
+        apply_editor_menu_style(menu)
+        for name in names:
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(name == current)
+            action.setData(name)
+
+        menu.move(global_pos)
+        exec_menu: Any = menu.exec
+        chosen = exec_menu()
+        if chosen is None:
+            return
+        new_name = str(chosen.data())
+        if not new_name or new_name == current:
+            return
+        model = index.model()
+        if model is not None:
+            model.setData(index, new_name, Qt.ItemDataRole.EditRole)
 
     def createEditor(
         self,
@@ -543,36 +874,78 @@ class PropertiesDelegate(QStyledItemDelegate):
         option: Any,
         index: QModelIndex | QPersistentModelIndex,
     ) -> QWidget:
-        """Create a combo box editor for the component model column."""
+        """Create a soft-range slider editor for parameter/slice value cells."""
         if index.column() != 1:
             return super().createEditor(parent, option, index)
         item = index.internalPointer() if index.isValid() else None
         if not isinstance(item, PropertyItem):
             return super().createEditor(parent, option, index)
-        if item.kind != ItemKind.COMPONENT_MODEL:
-            return super().createEditor(parent, option, index)
-        combo = QComboBox(parent)
-        if item.component_kind == "peak":
-            combo.addItems(self._controller.query.get_peak_model_names())
-        else:
-            combo.addItems(self._controller.query.get_background_model_names())
-        return combo
+
+        if (
+            item.kind == ItemKind.PARAMETER_ROW
+            and item.component_id is not None
+            and item.parameter_name is not None
+            and item.soft_lo is not None
+            and item.soft_hi is not None
+        ):
+            editor = ParameterValueEditor(
+                self._controller,
+                component_id=item.component_id,
+                parameter_name=item.parameter_name,
+                soft_lo=item.soft_lo,
+                soft_hi=item.soft_hi,
+                parent=parent,
+            )
+
+            def _commit_param() -> None:
+                self.commitData.emit(editor)
+
+            editor.editingFinished.connect(_commit_param)
+            return editor
+
+        if (
+            item.kind == ItemKind.REGION_SLICE
+            and item.region_id is not None
+            and item.name in {"start", "stop"}
+            and item.soft_lo is not None
+            and item.soft_hi is not None
+        ):
+            slice_mode = self._controller.get_app_parameters().region_slice_display_mode
+            editor = ParameterValueEditor(
+                self._controller,
+                region_id=item.region_id,
+                slice_bound=item.name,  # type: ignore[arg-type]
+                slice_mode=slice_mode,
+                soft_lo=item.soft_lo,
+                soft_hi=item.soft_hi,
+                parent=parent,
+            )
+
+            def _commit_slice() -> None:
+                self.commitData.emit(editor)
+
+            editor.editingFinished.connect(_commit_slice)
+            return editor
+
+        return super().createEditor(parent, option, index)
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
-        """Populate the combo box with the current model name."""
+        """Populate the editor with the current parameter or slice value."""
         if index.column() != 1:
             super().setEditorData(editor, index)
             return
         item = index.internalPointer() if index.isValid() else None
-        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+        if not isinstance(item, PropertyItem):
             super().setEditorData(editor, index)
             return
-        combo = editor
-        if isinstance(combo, QComboBox):
-            display = _format_value(item.value)
-            idx = combo.findText(display)
-            if idx >= 0:
-                combo.setCurrentIndex(idx)
+
+        if item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE} and isinstance(
+            editor, ParameterValueEditor
+        ):
+            editor.set_value(float(item.value))
+            return
+
+        super().setEditorData(editor, index)
 
     def setModelData(
         self,
@@ -580,17 +953,55 @@ class PropertiesDelegate(QStyledItemDelegate):
         model: QAbstractItemModel,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        """Commit the selected model name from the combo box."""
+        """Commit a parameter or region-slice value from the slider editor."""
         if index.column() != 1:
             super().setModelData(editor, model, index)
             return
         item = index.internalPointer() if index.isValid() else None
-        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+        if not isinstance(item, PropertyItem):
             super().setModelData(editor, model, index)
             return
-        combo = editor
-        if isinstance(combo, QComboBox):
-            model.setData(index, combo.currentText(), Qt.ItemDataRole.EditRole)
+
+        if item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE} and isinstance(
+            editor, ParameterValueEditor
+        ):
+            editor.commit_if_needed()
+            item.value = editor.value()
+            top_left = model.index(index.row(), index.column(), index.parent())
+            model.dataChanged.emit(
+                top_left,
+                top_left,
+                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole],
+            )
+            return
+
+        super().setModelData(editor, model, index)
+
+    def sizeHint(
+        self,
+        option: Any,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> Any:
+        """Use a taller row only while the soft-range slider editor is open."""
+        hint = super().sizeHint(option, index)
+        view = self.parent()
+        if not (isinstance(view, QTreeView) and index.isValid() and index.column() == 1):
+            return hint
+        widget = view.indexWidget(_as_model_index(index))
+        if isinstance(widget, ParameterValueEditor):
+            hint.setHeight(max(hint.height(), 52))
+            hint.setWidth(max(hint.width(), 100))
+        return hint
+
+    def destroyEditor(
+        self,
+        editor: QWidget,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Restore previewed values when the editor is cancelled."""
+        if isinstance(editor, ParameterValueEditor) and not editor.committed:
+            editor.cancel_preview()
+        super().destroyEditor(editor, index)
 
 
 class PropertiesView(QTreeView):
@@ -613,20 +1024,29 @@ class PropertiesView(QTreeView):
         super().__init__(parent)
         self._controller = controller
         self._narrow_section_widths: list[int] = []
+        self._syncing_selection = False
+        self._updating_from_view = False
+        self._refresh_scheduled = False
+        self._last_spectrum_id: str | None = None
+        self._applied_default_expand = False
+        self._slider_editor_index: QPersistentModelIndex | None = None
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
-        self.setItemDelegateForColumn(1, PropertiesDelegate(controller, self))
+        self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
+        self._value_delegate = PropertiesDelegate(controller, self)
+        self.setItemDelegateForColumn(1, self._value_delegate)
         self.setIndentation(12)
         self.setHeaderHidden(False)
         hdr = self.header()
         hdr.setStretchLastSection(False)
         self._apply_column_widths()
-        self.setUniformRowHeights(True)
-        self.setAlternatingRowColors(True)
+        self.setUniformRowHeights(False)
+        self.setAlternatingRowColors(False)
+        apply_editor_tree_style(self, with_header=True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
-        self.refresh()
+        self._refresh_now()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Keep flexible columns sized to the viewport with Name:Value = 1.5:1."""
@@ -687,10 +1107,172 @@ class PropertiesView(QTreeView):
         return self._model
 
     def refresh(self) -> None:
-        """Refresh tree contents from the controller while preserving expand/collapse state."""
-        expanded = self._collect_expanded_stable_keys()
+        """
+        Schedule a tree rebuild after the current Qt event finishes.
+
+        Deferring avoids resetting the model while a cell editor (e.g. lower /
+        upper) is still leaving the edit stack, which can segfault in Qt.
+        """
+        if self._refresh_scheduled:
+            return
+        self._refresh_scheduled = True
+        QTimer.singleShot(0, self._refresh_now)
+
+    def _refresh_now(self) -> None:
+        """Refresh tree contents and keep the full hierarchy expanded."""
+        self._refresh_scheduled = False
+        self._close_parameter_slider_editor()
         self._model.refresh()
-        self._restore_expanded_stable_keys(expanded)
+        self.expandAll()
+        self._applied_default_expand = True
+        self._last_spectrum_id = self._controller.selected_spectrum_id
+        self.sync_selection_from_controller()
+        self._sync_parameter_slider_editor()
+
+    def _close_parameter_slider_editor(self) -> None:
+        """Close the open parameter slider editor, if any."""
+        if self._slider_editor_index is None:
+            return
+        idx = _as_model_index(self._slider_editor_index)
+        if idx.isValid():
+            widget = self.indexWidget(idx)
+            if isinstance(widget, ParameterValueEditor):
+                widget.commit_if_needed()
+            self.closePersistentEditor(idx)
+        self._slider_editor_index = None
+
+    def _sync_parameter_slider_editor(self) -> None:
+        """Show the soft-range slider on the selected parameter or region-slice cell."""
+        current = self.selectionModel().currentIndex()
+        target_index = QModelIndex()
+        cursor = current
+        while cursor.isValid():
+            ptr = cursor.internalPointer()
+            if isinstance(ptr, PropertyItem) and ptr.kind in {
+                ItemKind.PARAMETER_ROW,
+                ItemKind.REGION_SLICE,
+            }:
+                target_index = cursor
+                break
+            cursor = cursor.parent()
+
+        if not target_index.isValid():
+            self._close_parameter_slider_editor()
+            self.doItemsLayout()
+            return
+
+        value_index = self._model.index(target_index.row(), 1, target_index.parent())
+        if (
+            self._slider_editor_index is not None
+            and _as_model_index(self._slider_editor_index) == value_index
+        ):
+            return
+
+        self._close_parameter_slider_editor()
+        self.openPersistentEditor(value_index)
+        self._slider_editor_index = QPersistentModelIndex(value_index)
+        self.doItemsLayout()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Open the model picker when the model value chip is clicked."""
+        super().mouseReleaseEvent(event)
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        index = self.indexAt(event.position().toPoint())
+        if not index.isValid() or index.column() != 1:
+            return
+        item = index.internalPointer()
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+            return
+        rect = self.visualRect(index)
+        self._value_delegate.show_model_menu(
+            self.viewport().mapToGlobal(rect.bottomLeft()),
+            index,
+        )
+
+    def on_controller_selection_changed(
+        self,
+        spectrum_id: str | None,
+        _region_id: str | None,
+        _component_id: str | None,
+    ) -> None:
+        """
+        Rebuild when the spectrum changes; otherwise only sync row selection.
+
+        Parameters
+        ----------
+        spectrum_id : str or None
+            Newly selected spectrum.
+        _region_id : str or None
+            Newly selected region (unused beyond sync).
+        _component_id : str or None
+            Newly selected component (unused beyond sync).
+        """
+        if spectrum_id != self._last_spectrum_id:
+            self.refresh()
+            return
+        if self._updating_from_view:
+            return
+        self.sync_selection_from_controller()
+
+    def sync_selection_from_controller(self) -> None:
+        """Select the row matching the controller's region/component selection."""
+        component_id = self._controller.selected_component_id
+        region_id = self._controller.selected_region_id
+        target = self._find_index_for_selection(component_id=component_id, region_id=region_id)
+        self._syncing_selection = True
+        try:
+            sel = self.selectionModel()
+            if target is None or not target.isValid():
+                sel.clearSelection()
+                self._sync_parameter_slider_editor()
+                return
+            parent = target.parent()
+            while parent.isValid():
+                self.setExpanded(parent, True)
+                parent = parent.parent()
+            sel.select(
+                target,
+                sel.SelectionFlag.ClearAndSelect | sel.SelectionFlag.Rows,
+            )
+            self.setCurrentIndex(target)
+            self.scrollTo(target)
+        finally:
+            self._syncing_selection = False
+        self._sync_parameter_slider_editor()
+
+    def _find_index_for_selection(
+        self,
+        *,
+        component_id: str | None,
+        region_id: str | None,
+    ) -> QModelIndex | None:
+        """Return the model index for the given component or region, if present."""
+
+        def walk(parent: QModelIndex) -> QModelIndex | None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                raw = idx.internalPointer()
+                if isinstance(raw, PropertyItem):
+                    if (
+                        component_id is not None
+                        and raw.kind == ItemKind.COMPONENT
+                        and raw.component_id == component_id
+                    ):
+                        return idx
+                    if (
+                        component_id is None
+                        and region_id is not None
+                        and raw.kind == ItemKind.REGION
+                        and raw.region_id == region_id
+                    ):
+                        return idx
+                found = walk(idx)
+                if found is not None:
+                    return found
+            return None
+
+        return walk(QModelIndex())
 
     @staticmethod
     def _stable_key_for_item(item: PropertyItem) -> tuple[Any, ...]:
@@ -742,7 +1324,7 @@ class PropertiesView(QTreeView):
 
     def _on_selection_changed(self, selected: Any, _deselected: Any) -> None:
         """
-        Update controller region selection from the properties view.
+        Update controller region/component selection from the properties view.
 
         Parameters
         ----------
@@ -752,10 +1334,13 @@ class PropertiesView(QTreeView):
             No longer selected indexes (unused).
         """
         del _deselected
+        if self._syncing_selection:
+            return
 
         indexes = selected.indexes()
         if not indexes:
-            self._controller.set_selection(self._controller.selected_spectrum_id, None)
+            # Model resets clear the view selection; do not wipe controller state.
+            self._sync_parameter_slider_editor()
             return
 
         index = indexes[0]
@@ -763,12 +1348,31 @@ class PropertiesView(QTreeView):
         if not isinstance(item, PropertyItem):
             return
 
-        region_item = item
-        while region_item is not None and region_item.region_id is None:
-            region_item = region_item.parent
+        region_id: str | None = None
+        component_id: str | None = None
+        cursor: PropertyItem | None = item
+        while cursor is not None:
+            if component_id is None and cursor.component_id is not None:
+                if cursor.kind in {
+                    ItemKind.COMPONENT,
+                    ItemKind.COMPONENT_MODEL,
+                    ItemKind.PARAMETER_ROW,
+                }:
+                    component_id = cursor.component_id
+            if region_id is None and cursor.region_id is not None:
+                region_id = cursor.region_id
+            cursor = cursor.parent
 
-        region_id = region_item.region_id if region_item is not None else None
-        self._controller.set_selection(self._controller.selected_spectrum_id, region_id)
+        self._updating_from_view = True
+        try:
+            self._controller.set_selection(
+                self._controller.selected_spectrum_id,
+                region_id,
+                component_id,
+            )
+        finally:
+            self._updating_from_view = False
+        self._sync_parameter_slider_editor()
 
     def _selected_component_id(self) -> str | None:
         """Return the component id for the current selection, if any."""
@@ -786,7 +1390,7 @@ class PropertiesView(QTreeView):
         """Copy the selected component id to the system clipboard."""
         cid = self._selected_component_id()
         if cid:
-            QApplication.clipboard().setText(cid[:5])
+            QApplication.clipboard().setText(cid)
 
     def _delete_selected_component(self) -> None:
         """Remove the selected component and refresh."""

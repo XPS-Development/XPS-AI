@@ -168,6 +168,21 @@ class MainWindow(QMainWindow):
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setObjectName("MainSplitter")
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet(
+            """
+            QSplitter#MainSplitter::handle:horizontal {
+                background: #c8c8c8;
+                width: 1px;
+                margin: 0;
+                padding: 0;
+            }
+            QSplitter#MainSplitter::handle:horizontal:hover {
+                background: #a8a8a8;
+            }
+            """
+        )
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
@@ -195,6 +210,15 @@ class MainWindow(QMainWindow):
     def _create_status_bar(self) -> None:
         """Create and attach the status bar."""
         status_bar = QStatusBar(self)
+        status_bar.setStyleSheet(
+            """
+            QStatusBar {
+                background: #fafafa;
+                border-top: 1px solid #e5e5e5;
+                color: #666666;
+            }
+            """
+        )
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
 
@@ -206,12 +230,18 @@ class MainWindow(QMainWindow):
 
         if self._spectrum_tree_panel is not None:
             self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
+            # Structure dots depend on regions/peaks created by auto-fit / optimize.
+            self._controller.propertiesNeedsRefresh.connect(
+                self._spectrum_tree_panel.tree.refresh_structure_status
+            )
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
         if self._properties_view is not None:
             self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
-            self._controller.selectionChanged.connect(self._properties_view.refresh)
+            self._controller.selectionChanged.connect(
+                self._properties_view.on_controller_selection_changed
+            )
 
     # ------------------------------------------------------------------
     # Slots for actions
@@ -358,7 +388,12 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
-    def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:
+    def _on_selection_changed(
+        self,
+        spectrum_id: str | None,
+        region_id: str | None,
+        component_id: str | None = None,
+    ) -> None:
         """
         React to selection changes by updating the status bar.
 
@@ -368,7 +403,10 @@ class MainWindow(QMainWindow):
             Selected spectrum identifier.
         region_id : str or None
             Selected region identifier.
+        component_id : str or None, optional
+            Selected component identifier.
         """
+        del spectrum_id, region_id, component_id
         self._update_status_bar()
 
     # ------------------------------------------------------------------
@@ -457,12 +495,15 @@ class MainWindow(QMainWindow):
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
+        component_id = self._controller.selected_component_id
 
         selection_parts: list[str] = []
         if spectrum_id is not None:
             selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
         if region_id is not None:
             selection_parts.append(f"Region: {region_id[:5]}")
+        if component_id is not None:
+            selection_parts.append(f"Component: {component_id[:5]}")
 
         extra_selection = ""
         if self._spectrum_tree_panel is not None:
