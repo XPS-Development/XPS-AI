@@ -26,10 +26,9 @@ from .context_menus import (
 from .controller import ControllerWrapper
 
 # Curve styling constants
-PEN_RAW = pg.mkPen(color="k", width=1)
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
 PEN_BACKGROUND_SELECTED = pg.mkPen(color="k", width=3, style=Qt.PenStyle.DashLine)
-PEN_MODEL = pg.mkPen(color="r", width=1.5)
+PEN_MODEL = pg.mkPen(color="r", width=3.0)
 PEN_RESIDUALS = pg.mkPen(color="#808080", width=2)
 
 REGION_BOUNDS_PEN = pg.mkPen(color="#000000", width=3)
@@ -37,10 +36,14 @@ REGION_BOUNDS_HOVER_PEN = pg.mkPen(color="#000000", width=4)
 REGION_BOUNDS_BRUSH = pg.mkBrush(0, 0, 0, 0)
 REGION_BOUNDS_HOVER_BRUSH = pg.mkBrush(0, 0, 255, 10)
 
-_PEAK_WIDTH = 2.5
-_PEAK_WIDTH_SELECTED = 4.0
-_PEAK_WIDTH_DIMMED = 1.5
-_CURVE_CLICK_WIDTH = 10
+_PEAK_WIDTH = 4.0
+_PEAK_WIDTH_SELECTED = 6.0
+_PEAK_WIDTH_DIMMED = 2.5
+_CURVE_CLICK_WIDTH = 12
+_RAW_SYMBOL_SIZE = 4
+_RAW_COLOR = (140, 140, 140, 220)
+# Fixed left-axis width so main and residuals plot areas stay aligned.
+_LEFT_AXIS_WIDTH = 80
 
 
 class DoubleClickAutoRangeViewBox(pg.ViewBox):
@@ -375,6 +378,7 @@ class PlotAreaWidget(QWidget):
         self._main_plot = RegionContextPlotWidget(controller=self._controller)
         self._main_plot.setBackground("w")
         self._main_plot.showGrid(x=True, y=True, alpha=0.3)
+        self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         layout.addWidget(self._main_plot, stretch=1)
 
         # Residuals plot (shared x-axis, locked y)
@@ -386,6 +390,7 @@ class PlotAreaWidget(QWidget):
         self._res_plot.setBackground("w")
         self._res_plot.showGrid(x=True, y=True, alpha=0.3)
         self._res_plot.setMinimumHeight(80)
+        self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         self._res_plot.getViewBox().setXLink(self._main_plot.getViewBox())
         self._res_plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         layout.addWidget(self._res_plot, stretch=0)
@@ -625,25 +630,61 @@ class PlotAreaWidget(QWidget):
             self._roi_region_ids_in_plot.add(rid)
 
         for curve in plot_data.curves:
-            pen = self._pen_for_curve(curve)
             if curve.kind == "residual":
                 if self._res_plot.isVisible():
-                    self._res_plot.plot(curve.x, curve.y, pen=pen)
-            else:
-                item = self._main_plot.plot(curve.x, curve.y, pen=pen)
-                if curve.component_id is not None and curve.kind in {"peak", "background"}:
-                    item.setZValue(20 if self._is_selected_component(curve.component_id) else 10)
+                    self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                continue
+
+            if curve.kind == "raw":
+                item = self._main_plot.plot(
+                    curve.x,
+                    curve.y,
+                    pen=pg.mkPen(color=_RAW_COLOR, width=1),
+                    symbol="o",
+                    symbolSize=_RAW_SYMBOL_SIZE,
+                    symbolPen=None,
+                    symbolBrush=_RAW_COLOR,
+                )
+                item.setZValue(0)
+                continue
+
+            pen = self._pen_for_curve(curve)
+            item = self._main_plot.plot(curve.x, curve.y, pen=pen)
+            if curve.kind == "model":
+                item.setZValue(30)
+                continue
+            if curve.kind == "background":
+                selected = curve.component_id is not None and self._is_selected_component(
+                    curve.component_id
+                )
+                item.setZValue(20 if selected else 5)
+                if curve.component_id is not None:
                     item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
                     cid = curve.component_id
                     item.sigClicked.connect(
                         lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
                     )
+                continue
+            if curve.kind == "peak" and curve.component_id is not None:
+                item.setZValue(20 if self._is_selected_component(curve.component_id) else 10)
+                item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
+                cid = curve.component_id
+                item.sigClicked.connect(
+                    lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
+                )
 
         if self._res_plot.isVisible():
             if plot_data.residual_y_range is not None:
                 self._res_plot.setYRange(*plot_data.residual_y_range)
             else:
                 self._res_plot.setYRange(-1, 1)
+
+        self._align_plot_axes()
+
+    def _align_plot_axes(self) -> None:
+        """Keep main and residuals left axes the same width so plot areas line up."""
+        self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
+        self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
 
     def _is_selected_component(self, component_id: str) -> bool:
         """Return True if ``component_id`` is the controller's selected component."""
@@ -682,8 +723,6 @@ class PlotAreaWidget(QWidget):
         is_selected = curve.component_id is not None and curve.component_id == selected_id
         has_selection = selected_id is not None
 
-        if curve.kind == "raw":
-            return PEN_RAW
         if curve.kind == "background":
             return PEN_BACKGROUND_SELECTED if is_selected else PEN_BACKGROUND
         if curve.kind == "model":
