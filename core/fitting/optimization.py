@@ -6,8 +6,7 @@ LmfitOptimizer, and optimize()
 for use as a standalone library or via the app layer. Uses core.dto projections;
 """
 
-import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -16,36 +15,18 @@ from lmfit.minimizer import MinimizerResult
 
 from core.dto import ComponentDTO, RegionDTO
 from core.evaluation import component_y
+from core.fitting.expressions import parse_parameter_expression, resolve_component_reference
 
-_COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
-
-
-def resolve_component_reference(token: str, component_ids: Iterable[str]) -> str | None:
-    """
-    Map an expression token to a full component id.
-
-    Exact id match always applies. Otherwise, return the unique component id such that
-    ``id.startswith(token)``.
-
-    Parameters
-    ----------
-    token : str
-        Identifier from an expression (short prefix or full id).
-    component_ids : Iterable[str]
-        Known component ids for the current optimization scope.
-
-    Returns
-    -------
-    str | None
-        Resolved full id, or ``None`` if unknown or ambiguous.
-    """
-    ids = tuple(component_ids)
-    if token in ids:
-        return token
-    matches = [cid for cid in ids if cid.startswith(token)]
-    if len(matches) == 1:
-        return matches[0]
-    return None
+__all__ = [
+    "LmfitOptimizer",
+    "OptimizationContext",
+    "OptimizationExpressionPlan",
+    "OptimizationPlanner",
+    "OptimizedComponent",
+    "build_contexts",
+    "optimize",
+    "resolve_component_reference",
+]
 
 
 def _component_fully_fixed(cmp: ComponentDTO) -> bool:
@@ -161,42 +142,22 @@ def _analyze_parameter_expression(
     owner_component_id: str,
     param_name: str,
     known_ids: frozenset[str],
-    components_by_id: dict[str, ComponentDTO],
+    parameter_names_by_component: dict[str, set[str]],
     graph: dict[str, set[str]],
 ) -> str | None:
-    tokens = _COMPONENT_REF_RE.findall(expr)
-    translated = expr
-    lmfit_ok = True
-
-    for token in tokens:
-        if token.replace(".", "", 1).isdigit():
-            continue
-
-        resolved = resolve_component_reference(token, known_ids)
-        if resolved is None:
-            lmfit_ok = False
-            continue
-
-        if resolved != owner_component_id and resolved in graph:
-            graph[owner_component_id].add(resolved)
-            graph[resolved].add(owner_component_id)
-
-        target = components_by_id.get(resolved)
-        if target is None:
-            lmfit_ok = False
-            continue
-
-        if param_name not in target.parameters:
-            lmfit_ok = False
-            continue
-
-        translated = re.sub(
-            rf"\b{re.escape(token)}\b",
-            f"{resolved}_{param_name}",
-            translated,
-        )
-
-    return translated if lmfit_ok else None
+    """Parse ``expr`` via :func:`parse_parameter_expression` and update ``graph``."""
+    parsed = parse_parameter_expression(
+        expr,
+        owner_component_id=owner_component_id,
+        parameter_name=param_name,
+        known_component_ids=known_ids,
+        parameter_names_by_component=parameter_names_by_component,
+    )
+    for ref in parsed.references:
+        if ref.component_id != owner_component_id and ref.component_id in graph:
+            graph[owner_component_id].add(ref.component_id)
+            graph[ref.component_id].add(owner_component_id)
+    return parsed.lmfit_expr
 
 
 def _build_expression_plan(
@@ -204,7 +165,7 @@ def _build_expression_plan(
 ) -> OptimizationExpressionPlan:
     components = [cmp for ctx in contexts for cmp in ctx.components]
     known_ids = frozenset(cmp.id_ for cmp in components)
-    components_by_id = {cmp.id_: cmp for cmp in components}
+    parameter_names_by_component = {cmp.id_: set(cmp.parameters.keys()) for cmp in components}
 
     graph: dict[str, set[str]] = {}
     for cmp in components:
@@ -221,7 +182,7 @@ def _build_expression_plan(
                 owner_component_id=cmp.id_,
                 param_name=pname,
                 known_ids=known_ids,
-                components_by_id=components_by_id,
+                parameter_names_by_component=parameter_names_by_component,
                 graph=graph,
             )
             lmfit_expr_by_component_param[(cmp.id_, pname)] = lmfit_e
@@ -319,13 +280,16 @@ class LmfitOptimizer:
         param_name: str,
     ) -> str | None:
         known_ids = frozenset(self._component_index.keys())
+        parameter_names_by_component = {
+            cid: set(cmp.parameters.keys()) for cid, cmp in self._component_index.items()
+        }
         graph = {cid: set() for cid in self._component_index}
         return _analyze_parameter_expression(
             expr,
             owner_component_id=owner_component_id,
             param_name=param_name,
             known_ids=known_ids,
-            components_by_id=self._component_index,
+            parameter_names_by_component=parameter_names_by_component,
             graph=graph,
         )
 

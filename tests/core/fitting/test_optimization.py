@@ -269,6 +269,28 @@ class TestLmfitOptimizer:
             by_id["peakBB01xx"].parameters["amp"], by_id["peakAA01xx"].parameters["amp"] * 0.25
         )
 
+    def test_optimize_with_scientific_notation_and_sqrt_in_expr(self):
+        """Sci notation / lmfit builtins must not silently drop the constraint."""
+        x = np.linspace(-5, 5, 100)
+        y = 0.8 * np.exp(-(x**2) / 2)
+
+        cmp1 = _make_component(
+            "peakAA01xx", "r1", {"amp": 0.8, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+        )
+        cmp2 = _make_component(
+            "peakBB01xx",
+            "r1",
+            {"amp": 0.2, "cen": 0.0, "sig": 1.0, "frac": 0.0},
+            amp_expr="sqrt(peakAA * peakAA) * 1.0e0 * 0.25",
+        )
+        ctx = OptimizationContext("r1", "s1", False, x, y, (cmp1, cmp2))
+
+        result = LmfitOptimizer().optimize((ctx,), method="least_squares")
+        by_id = {r.component_id: r for r in result}
+        assert np.isclose(
+            by_id["peakBB01xx"].parameters["amp"], by_id["peakAA01xx"].parameters["amp"] * 0.25
+        )
+
 
 class TestOptimize:
     """Tests for optimize() library entry point."""
