@@ -9,6 +9,7 @@ from app.command.changes import (
     CompositeChange,
     CreateBackground,
     CreatePeak,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     UpdateMultipleParameterValues,
@@ -301,3 +302,11 @@ def test_guess_peak_parameters_uses_residuals(monkeypatch: pytest.MonkeyPatch) -
 
     assert set(params) == {"amp", "cen", "sig", "frac"}
     assert captured["peak_index"] is not None
+
+
+def test_rename_component_builds_change(simple_collection, peak_id) -> None:
+    """rename_component returns a RenameComponent change."""
+    change = _editing(simple_collection, automatic_methods=False).rename_component(peak_id, "C1s")
+    assert isinstance(change, RenameComponent)
+    assert change.component_id == peak_id
+    assert change.new_name == "C1s"

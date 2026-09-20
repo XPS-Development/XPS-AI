@@ -716,6 +716,19 @@ class AppOrchestrator:
         """
         self.execute(self._hierarchy.rename_spectrum(spectrum_id, new_name))
 
+    def rename_component(self, component_id: str, new_name: str | None) -> None:
+        """
+        Set the optional display name of a peak or background.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        new_name : str or None
+            New label, or ``None``/blank to clear.
+        """
+        self.execute(self._editing.rename_component(component_id, new_name))
+
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """
         Rename a group within a file by updating SpectrumMetadata.group.

@@ -15,6 +15,7 @@ from app.command.changes import (
     CompositeChange,
     CreateBackground,
     CreatePeak,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     UpdateMultipleParameterValues,
@@ -365,6 +366,24 @@ class EditingUseCases:
             mode=slice_mode,
             avg_on=avg_on,
         )
+
+    def rename_component(self, component_id: str, new_name: str | None) -> RenameComponent:
+        """
+        Build a change that sets a component display name.
+
+        Parameters
+        ----------
+        component_id
+            Peak or background identifier.
+        new_name
+            New label, or ``None``/blank to clear.
+
+        Returns
+        -------
+        RenameComponent
+            Undoable rename change.
+        """
+        return RenameComponent(component_id=component_id, new_name=new_name)
 
     @staticmethod
     def _same_name_parameters(

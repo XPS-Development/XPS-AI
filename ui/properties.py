@@ -106,6 +106,9 @@ class PropertyItem:
         Used when ``kind`` is ``PARAMETER_ROW`` (columns 2-5).
     object_id : str or None, optional
         Full region/component id for gray suffix / clipboard when shown.
+    stored_name : str or None, optional
+        Optional user label for ``COMPONENT`` rows (edit buffer; may differ
+        from the positional ``name`` fallback shown when unset).
     """
 
     name: str
@@ -118,6 +121,7 @@ class PropertyItem:
     parameter_name: str | None = None
     component_kind: Literal["peak", "background"] | None = None
     object_id: str | None = None
+    stored_name: str | None = None
     soft_lo: float | None = None
     soft_hi: float | None = None
     param_lower: Any = None
@@ -280,6 +284,10 @@ class PropertiesModel(QAbstractItemModel):
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
+                # EditRole uses the stored name (or empty) so positional fallbacks
+                # like "Peak 1" are not written back on a no-op edit.
+                if role == Qt.ItemDataRole.EditRole and item.kind == ItemKind.COMPONENT:
+                    return item.stored_name or ""
                 return item.name
             if item.kind == ItemKind.PARAMETER_ROW:
                 if col == 1:
@@ -314,6 +322,9 @@ class PropertiesModel(QAbstractItemModel):
             if col in (1, 2, 3, 5):
                 return base_flags | Qt.ItemFlag.ItemIsEditable
             return base_flags
+
+        if col == 0 and item.kind == ItemKind.COMPONENT and item.component_id is not None:
+            return base_flags | Qt.ItemFlag.ItemIsEditable
 
         if col == 1 and item.kind == ItemKind.REGION_SLICE:
             return base_flags | Qt.ItemFlag.ItemIsEditable
@@ -473,6 +484,14 @@ class PropertiesModel(QAbstractItemModel):
         if role != Qt.ItemDataRole.EditRole:
             return False
 
+        if item.kind == ItemKind.COMPONENT and col == 0 and item.component_id is not None:
+            new_name = str(value).strip() or None
+            if new_name == item.stored_name:
+                return True
+            self._controller.rename_component(item.component_id, new_name)
+            self.refresh()
+            return True
+
         if item.kind == ItemKind.REGION_SLICE and col == 1 and item.region_id is not None:
             slice_mode = self._controller.get_app_parameters().region_slice_display_mode
             new_bound = int(value) if slice_mode == "index" else float(value)
@@ -542,7 +561,7 @@ class PropertiesModel(QAbstractItemModel):
                     except ValueError:
                         return False
             elif field == "expr":
-                coerced = text if text else None
+                coerced = text or None
             else:
                 return False
             self._controller.update_parameter(
@@ -656,17 +675,18 @@ class PropertiesModel(QAbstractItemModel):
             x_min, x_max, y_max = self._region_soft_context(region_id)
 
             if background_id is not None:
+                background_dto = query.get_component_dto(background_id)
                 background_item = PropertyItem(
-                    name="Background",
+                    name=background_dto.name or "Background",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=background_id,
                     component_kind="background",
                     object_id=background_id,
+                    stored_name=background_dto.name,
                 )
                 region_item.append_child(background_item)
-                background_dto = query.get_component_dto(background_id)
                 background_item.append_child(
                     PropertyItem(
                         name="model",
@@ -689,17 +709,18 @@ class PropertiesModel(QAbstractItemModel):
                 )
 
             for peak_index, peak_id in enumerate(peaks_ids, start=1):
+                peak_dto = query.get_component_dto(peak_id)
                 peak_item = PropertyItem(
-                    name=f"Peak {peak_index}",
+                    name=peak_dto.name or f"Peak {peak_index}",
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
                     component_id=peak_id,
                     component_kind="peak",
                     object_id=peak_id,
+                    stored_name=peak_dto.name,
                 )
                 region_item.append_child(peak_item)
-                peak_dto = query.get_component_dto(peak_id)
                 peak_item.append_child(
                     PropertyItem(
                         name="model",

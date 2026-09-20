@@ -76,6 +76,7 @@ def test_serialize_deserialize_simple_collection(simple_collection):
             restored_obj, (Peak, Background)
         ):
             assert original_obj.model.name == restored_obj.model.name
+            assert original_obj.name == restored_obj.name
             # Verify parameters match
             for param_name in original_obj.parameters:
                 orig_param = original_obj.parameters[param_name]
@@ -85,6 +86,25 @@ def test_serialize_deserialize_simple_collection(simple_collection):
                 assert orig_param.upper == rest_param.upper
                 assert orig_param.vary == rest_param.vary
                 assert orig_param.expr == rest_param.expr
+
+
+def test_serialize_deserialize_component_display_name(simple_collection):
+    """Optional component.name round-trips and is omitted when unset."""
+    peak = next(obj for obj in simple_collection.objects_index.values() if isinstance(obj, Peak))
+    peak.name = "C1s"
+
+    data = serialize(simple_collection)
+    peak_payload = next(o for o in data["objects"] if o["id"] == peak.id_)
+    assert peak_payload["name"] == "C1s"
+
+    unnamed = next(
+        o for o in data["objects"] if o["type"] in {"Peak", "Background"} and o["id"] != peak.id_
+    )
+    assert "name" not in unnamed
+
+    result = deserialize(data, mode="new")
+    restored = _collection_from_new_result(result)
+    assert restored.objects_index[peak.id_].name == "C1s"  # type: ignore[union-attr]
 
 
 def test_serialize_deserialize_with_metadata(simple_collection):

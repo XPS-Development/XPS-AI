@@ -8,6 +8,7 @@ from app.command.changes import (
     CreateRegion,
     CreateSpectrum,
     RemoveObject,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     SetMetadata,
@@ -22,6 +23,7 @@ from app.command.commands import (
     CreateRegionCommand,
     CreateSpectrumCommand,
     RemoveObjectCommand,
+    RenameComponentCommand,
     ReplaceBackgroundModelCommand,
     ReplacePeakModelCommand,
     SetMetadataCommand,
@@ -71,6 +73,57 @@ def test_update_parameter_command_undo_without_apply_raises(ctx, peak_id):
     )
     with pytest.raises(RuntimeError, match="Command was not applied"):
         cmd.undo(ctx)
+
+
+def test_rename_component_command_apply_undo(ctx, peak_id):
+    """RenameComponentCommand sets and restores the display name."""
+    assert ctx.component.get_name(peak_id) is None
+    cmd = RenameComponentCommand.from_change(
+        RenameComponent(component_id=peak_id, new_name="C1s"),
+        ctx,
+    )
+    cmd.apply(ctx)
+    assert ctx.component.get_name(peak_id) == "C1s"
+
+    cmd.undo(ctx)
+    assert ctx.component.get_name(peak_id) is None
+
+
+def test_rename_component_command_blank_clears(ctx, peak_id):
+    """Blank new_name clears the stored label."""
+    ctx.component.set_name(peak_id, "O1s")
+    cmd = RenameComponentCommand.from_change(
+        RenameComponent(component_id=peak_id, new_name="  "),
+        ctx,
+    )
+    cmd.apply(ctx)
+    assert ctx.component.get_name(peak_id) is None
+
+
+def test_create_peak_command_preserves_name(ctx, region_id):
+    """CreatePeakCommand stores the optional display name on the peak."""
+    change = CreatePeak(
+        region_id=region_id,
+        model_name="pseudo-voigt",
+        peak_id="p-named",
+        name="Si2p",
+    )
+    cmd = CreatePeakCommand.from_change(change, ctx)
+    cmd.apply(ctx)
+    assert ctx.component.get_name("p-named") == "Si2p"
+
+
+def test_replace_peak_model_preserves_name(ctx, peak_id):
+    """ReplacePeakModel keeps the previous display name on the new peak."""
+    ctx.component.set_name(peak_id, "C1s")
+    change = ReplacePeakModel(
+        peak_id=peak_id,
+        new_model_name="pseudo-voigt",
+        parameters={"cen": 2.0, "amp": 10.0},
+    )
+    cmd = ReplacePeakModelCommand.from_change(change, ctx)
+    cmd.apply(ctx)
+    assert ctx.component.get_name(peak_id) == "C1s"
 
 
 def test_update_region_slice_command_from_change_captures_old_slice(ctx, region_id):

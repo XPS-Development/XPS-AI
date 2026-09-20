@@ -462,6 +462,10 @@ class ControllerWrapper(QObject):
         """Rename a single spectrum and emit UI refresh signals."""
         self._mutate(self._orchestrator.rename_spectrum, spectrum_id, new_name)
 
+    def rename_component(self, component_id: str, new_name: str | None) -> None:
+        """Set a peak/background display name and emit UI refresh signals."""
+        self._mutate(self._orchestrator.rename_component, component_id, new_name)
+
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """Rename a group within a file and emit UI refresh signals."""
         self._mutate(
