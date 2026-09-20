@@ -222,21 +222,37 @@ class OptimizationPlanner:
         return groups
 
     @staticmethod
-    def _group_contexts(
+    def _context_dependency_graph(
         contexts: tuple[OptimizationContext, ...],
-        component_groups: list[set[str]],
-    ) -> list[tuple[OptimizationContext, ...]]:
-        grouped: list[list[OptimizationContext]] = [[] for _ in component_groups]
+        component_graph: dict[str, set[str]],
+    ) -> dict[str, set[str]]:
+        """
+        Lift component expression edges onto the contexts (regions) that own them.
 
+        A single region may hold peaks from more than one component-level clique.
+        Grouping contexts by the first intersecting component clique orphans
+        cross-clique expressions and makes lmfit raise ``NameError``. Context-level
+        edges keep every region that participates in a dependency chain together.
+        """
+        context_ids = [ctx.id_ for ctx in contexts]
+        graph: dict[str, set[str]] = {cid: set() for cid in context_ids}
+        owner_context: dict[str, str] = {}
         for ctx in contexts:
-            ctx_cmp_ids = {cmp.id_ for cmp in ctx.components}
+            for cmp in ctx.components:
+                owner_context[cmp.id_] = ctx.id_
 
-            for i, grp in enumerate(component_groups):
-                if ctx_cmp_ids & grp:
-                    grouped[i].append(ctx)
-                    break
+        for component_id, neighbors in component_graph.items():
+            ctx_a = owner_context.get(component_id)
+            if ctx_a is None:
+                continue
+            for other_id in neighbors:
+                ctx_b = owner_context.get(other_id)
+                if ctx_b is None or ctx_b == ctx_a:
+                    continue
+                graph[ctx_a].add(ctx_b)
+                graph[ctx_b].add(ctx_a)
 
-        return [tuple(g) for g in grouped if g]
+        return graph
 
     def get_groups(
         self,
@@ -247,6 +263,10 @@ class OptimizationPlanner:
         """
         Split contexts into independent optimization groups.
 
+        Groups are connected components of **contexts** linked by expression
+        dependencies between their components. Contexts with no cross-links
+        remain separate so independent regions can still fit in parallel.
+
         Parameters
         ----------
         contexts : tuple[OptimizationContext, ...]
@@ -255,12 +275,20 @@ class OptimizationPlanner:
             Pre-built expression analysis for ``contexts``. If ``None``, a plan
             is computed once from ``contexts`` (same graph as ``dependency_graph``).
         """
+        if not contexts:
+            return []
         if expression_plan is not None:
-            graph = expression_plan.dependency_graph
+            component_graph = expression_plan.dependency_graph
         else:
-            graph = _build_expression_plan(contexts).dependency_graph
-        component_groups = self._connected_components(graph)
-        return self._group_contexts(contexts, component_groups)
+            component_graph = _build_expression_plan(contexts).dependency_graph
+        context_graph = self._context_dependency_graph(contexts, component_graph)
+        groups: list[tuple[OptimizationContext, ...]] = []
+        for ctx_ids in self._connected_components(context_graph):
+            # Preserve input order within each group.
+            groups.append(tuple(ctx for ctx in contexts if ctx.id_ in ctx_ids))
+        # Keep deterministic order by first context appearance in the input tuple.
+        groups.sort(key=lambda group: contexts.index(group[0]))
+        return groups
 
 
 class LmfitOptimizer:
@@ -301,11 +329,13 @@ class LmfitOptimizer:
     ) -> Parameters:
         params = Parameters()
 
+        # Add every parameter without expr first so cross-component references
+        # resolve regardless of region/component iteration order.
+        pending_expr: list[tuple[str, str]] = []
         for cmp in components:
             for pname, param_obj in cmp.parameters.items():
                 full_name = f"{cmp.id_}_{pname}"
-
-                expr = None
+                expr: str | None = None
                 if param_obj.expr:
                     if expression_plan is not None:
                         expr = expression_plan.lmfit_expr_by_component_param.get((cmp.id_, pname))
@@ -322,8 +352,13 @@ class LmfitOptimizer:
                     min=param_obj.lower,
                     max=param_obj.upper,
                     vary=param_obj.vary if expr is None else False,
-                    expr=expr,
+                    expr=None,
                 )
+                if expr is not None:
+                    pending_expr.append((full_name, expr))
+
+        for full_name, expr in pending_expr:
+            params[full_name].set(expr=expr)
 
         return params
 
@@ -423,8 +458,14 @@ def optimize(
     ctx_tuple = tuple(contexts)
     plan = _build_expression_plan(ctx_tuple)
     result: list[OptimizedComponent] = []
+    groups = planner.get_groups(ctx_tuple, expression_plan=plan)
 
-    for ctx_group in planner.get_groups(ctx_tuple, expression_plan=plan):
-        result.extend(optimizer.optimize(ctx_group, expression_plan=plan, **kwargs))
+    for ctx_group in groups:
+        if len(groups) == 1 and len(ctx_group) == len(ctx_tuple):
+            group_plan = plan
+        else:
+            # Per-group plan so exprs never reference params outside this minimize.
+            group_plan = _build_expression_plan(ctx_group)
+        result.extend(optimizer.optimize(ctx_group, expression_plan=group_plan, **kwargs))
 
     return tuple(result)

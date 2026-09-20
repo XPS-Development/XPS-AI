@@ -4,6 +4,7 @@ from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from .controller import ControllerWrapper
+from .optimize_confirm import confirm_and_optimize
 from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
 
 
@@ -100,7 +101,8 @@ class SpectrumTreePanel(QWidget):
                 "Select one or more spectra before auto fit.",
             )
             return
-        self._controller.auto_fit(spectrum_ids)
+        self._controller.run_segmenter(spectrum_ids)
+        confirm_and_optimize(self, self._controller, spectrum_ids=spectrum_ids)
 
     def _on_optimize_clicked(self) -> None:
         """Optimize all regions under each selected spectrum."""
@@ -112,7 +114,7 @@ class SpectrumTreePanel(QWidget):
                 "Select one or more spectra before optimizing.",
             )
             return
-        self._controller.optimize_regions(spectrum_ids=spectrum_ids)
+        confirm_and_optimize(self, self._controller, spectrum_ids=spectrum_ids)
 
     def _apply_filter(self, text: str) -> None:
         """

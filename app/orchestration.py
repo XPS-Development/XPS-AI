@@ -46,6 +46,7 @@ from .usecases import (
     ExportUseCases,
     HierarchyUseCases,
 )
+from .usecases.analysis import FitScopePreview
 
 
 class AppOrchestrator:
@@ -330,6 +331,32 @@ class AppOrchestrator:
         self.run_segmenter(spectrum_ids)
         self.optimize_regions(spectrum_ids=spectrum_ids, **kwargs)
 
+    def preview_fit_scope(
+        self,
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> FitScopePreview:
+        """
+        Preview expression-closed regions for an upcoming optimize (read-only).
+
+        Parameters
+        ----------
+        region_ids : Sequence of str, optional
+            Regions the user selected.
+        spectrum_ids : Sequence of str, optional
+            Spectra whose regions form the selection.
+
+        Returns
+        -------
+        FitScopePreview
+            Selected vs expanded region sets for a confirmation dialog.
+        """
+        return self._analysis.preview_fit_scope(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+        )
+
     def optimize_regions(
         self,
         *,
@@ -340,7 +367,8 @@ class AppOrchestrator:
         """
         Run optimization and execute UpdateMultipleParameterValues changes.
 
-        Default optimization kwargs from AppParameters are merged with explicit
+        Expands to the expression-dependency closure before fitting. Default
+        optimization kwargs from AppParameters are merged with explicit
         kwargs; caller values override defaults on conflict.
 
         Parameters

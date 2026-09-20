@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.command.changes import ParameterField
     from app.command.commands import Command
     from app.query_service import QueryService
+    from app.usecases.analysis import FitScopePreview
     from core.metadata import Metadata
 
 _T = TypeVar("_T")
@@ -160,6 +161,32 @@ class ControllerWrapper(QObject):
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """Run the segmenter pipeline and emit signals."""
         self._mutate(self._orchestrator.run_segmenter, spectrum_ids)
+
+    def preview_fit_scope(
+        self,
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> FitScopePreview:
+        """
+        Preview expression-closed regions for an upcoming optimize (read-only).
+
+        Parameters
+        ----------
+        region_ids
+            Regions the user selected.
+        spectrum_ids
+            Spectra whose regions form the selection.
+
+        Returns
+        -------
+        FitScopePreview
+            Selected vs expanded region sets for a confirmation dialog.
+        """
+        return self._orchestrator.preview_fit_scope(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+        )
 
     def optimize_regions(
         self,

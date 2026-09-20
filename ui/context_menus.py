@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMenu, QWidget
 from .component_creation_dialog import ComponentCreationDialog
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
+from .optimize_confirm import confirm_and_optimize
 
 # TODO: refactor as a modular context menu factory
 
@@ -59,13 +60,22 @@ class SpectrumContextMenuActions:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.optimize_regions(spectrum_ids=[spectrum_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            spectrum_ids=[spectrum_id],
+        )
 
     def _on_auto_fit(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.auto_fit([spectrum_id])
+        self._controller.run_segmenter([spectrum_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            spectrum_ids=[spectrum_id],
+        )
 
     def _on_export_spectrum_csv(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
@@ -174,7 +184,11 @@ class RegionContextMenuActions:
         dialog.exec()
 
     def _on_optimize_region(self) -> None:
-        self._controller.optimize_regions(region_ids=[self._region_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            region_ids=[self._region_id],
+        )
 
     def _on_delete_region(self) -> None:
         if self._controller.selected_region_id == self._region_id:
