@@ -6,7 +6,15 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 import numpy as np
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, QRect, Qt
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QPersistentModelIndex,
+    QPoint,
+    QRect,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -516,11 +524,22 @@ class PropertiesModel(QAbstractItemModel):
                 return False
 
             coerced: str | bool | float | None
-            text = str(value)
+            text = str(value).strip().replace(",", ".")
             if field in {"value", "lower", "upper"}:
-                coerced = float(text)
+                if text in {"", "—", "-", "inf", "+inf", "-inf", "∞", "-∞"}:
+                    if field == "lower":
+                        coerced = float("-inf")
+                    elif field == "upper":
+                        coerced = float("inf")
+                    else:
+                        return False
+                else:
+                    try:
+                        coerced = float(text)
+                    except ValueError:
+                        return False
             elif field == "expr":
-                coerced = text.strip() if text.strip() else None
+                coerced = text if text else None
             else:
                 return False
             self._controller.update_parameter(
@@ -538,6 +557,29 @@ class PropertiesModel(QAbstractItemModel):
                 item.param_upper = coerced
             else:
                 item.param_expr = coerced
+            if field in {"lower", "upper", "value"} and item.parameter_name is not None:
+                x_min = x_max = y_max = None
+                if item.region_id is not None:
+                    x_min, x_max, y_max = self._region_soft_context(item.region_id)
+                elif item.component_id is not None:
+                    try:
+                        parent_id = self._controller.query.get_parent_id(item.component_id)
+                        x_min, x_max, y_max = self._region_soft_context(parent_id)
+                    except KeyError:
+                        pass
+                item.soft_lo, item.soft_hi = soft_parameter_range(
+                    item.parameter_name,
+                    float(item.value) if isinstance(item.value, (int, float)) else 0.0,
+                    float(item.param_lower)
+                    if isinstance(item.param_lower, (int, float))
+                    else float("-inf"),
+                    float(item.param_upper)
+                    if isinstance(item.param_upper, (int, float))
+                    else float("inf"),
+                    x_min=x_min,
+                    x_max=x_max,
+                    y_max=y_max,
+                )
             self.dataChanged.emit(
                 index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
             )
@@ -970,6 +1012,7 @@ class PropertiesView(QTreeView):
         self._narrow_section_widths: list[int] = []
         self._syncing_selection = False
         self._updating_from_view = False
+        self._refresh_scheduled = False
         self._last_spectrum_id: str | None = None
         self._applied_default_expand = False
         self._slider_editor_index: QPersistentModelIndex | None = None
@@ -989,7 +1032,7 @@ class PropertiesView(QTreeView):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
-        self.refresh()
+        self._refresh_now()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Keep flexible columns sized to the viewport with Name:Value = 1.5:1."""
@@ -1050,7 +1093,20 @@ class PropertiesView(QTreeView):
         return self._model
 
     def refresh(self) -> None:
+        """
+        Schedule a tree rebuild after the current Qt event finishes.
+
+        Deferring avoids resetting the model while a cell editor (e.g. lower /
+        upper) is still leaving the edit stack, which can segfault in Qt.
+        """
+        if self._refresh_scheduled:
+            return
+        self._refresh_scheduled = True
+        QTimer.singleShot(0, self._refresh_now)
+
+    def _refresh_now(self) -> None:
         """Refresh tree contents and keep the full hierarchy expanded."""
+        self._refresh_scheduled = False
         self._close_parameter_slider_editor()
         self._model.refresh()
         self.expandAll()

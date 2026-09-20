@@ -29,6 +29,16 @@ def test_amp_is_non_negative() -> None:
     assert hi >= 20.0
 
 
+def test_sig_uses_fixed_soft_window() -> None:
+    """sig soft slider stays within 0.1 .. 30 when hard bounds are open."""
+    assert soft_parameter_range("sig", 1.5, -math.inf, math.inf) == (0.1, 30.0)
+
+
+def test_sig_respects_tighter_hard_bounds() -> None:
+    """Finite hard bounds clip the default sig soft window."""
+    assert soft_parameter_range("sig", 2.0, 0.5, 10.0) == (0.5, 10.0)
+
+
 def test_region_bound_value_mode_uses_x_extent() -> None:
     """Value-mode region sliders follow the spectrum x window."""
     assert soft_region_bound_range(mode="value", x_min=10.0, x_max=50.0) == (10.0, 50.0)

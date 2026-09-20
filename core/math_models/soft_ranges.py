@@ -56,11 +56,21 @@ def soft_parameter_range(
         span = max(abs(v) * 0.1, 5.0)
         return (v - span, v + span)
 
-    if key in {"amp", "sig"}:
+    if key == "sig":
+        lo, hi = 0.1, 30.0
+        if math.isfinite(lower):
+            lo = max(lo, float(lower))
+        if math.isfinite(upper):
+            hi = min(hi, float(upper))
+        if hi <= lo:
+            hi = lo + 1.0
+        return (lo, hi)
+
+    if key == "amp":
         lo = 0.0 if (not math.isfinite(lower) or lower < 0) else float(lower)
         hi_candidates = [abs(v) * 2.0, abs(v) + 1.0, 1.0]
         if y_max is not None and math.isfinite(y_max):
-            hi_candidates.append(abs(float(y_max)) * (2.0 if key == "amp" else 0.5))
+            hi_candidates.append(abs(float(y_max)) * 2.0)
         hi = max(hi_candidates)
         if math.isfinite(upper):
             hi = min(hi, float(upper))
