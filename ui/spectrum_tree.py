@@ -20,6 +20,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from .tree_style import apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -308,9 +309,10 @@ class SpectrumTreeWidget(QTreeView):
         self._applied_default_expand = False
         self._model = SpectrumTreeModel(controller, self)
         self.setModel(self._model)
-        self.setItemDelegate(NameWithIdDelegate(self))
+        self.setItemDelegate(NameWithIdDelegate(self, swatch_size=6))
         self.setHeaderHidden(True)
         self.setSelectionMode(QTreeView.SelectionMode.ExtendedSelection)
+        apply_editor_tree_style(self, row_separators=False)
 
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_context_menu_requested)
@@ -333,6 +335,22 @@ class SpectrumTreeWidget(QTreeView):
         elif not self._applied_default_expand:
             self.expandAll()
             self._applied_default_expand = True
+
+    def refresh_structure_status(self) -> None:
+        """
+        Re-query structural status dots without rebuilding the hierarchy.
+
+        Call after auto-fit / optimize so file/group/spectrum markers update
+        immediately even though those commands do not emit hierarchy refresh.
+        """
+        self._emit_structure_status_changed(QModelIndex())
+
+    def _emit_structure_status_changed(self, parent: QModelIndex) -> None:
+        """Emit dataChanged for ComponentColorRole under ``parent``."""
+        for row in range(self._model.rowCount(parent)):
+            idx = self._model.index(row, 0, parent)
+            self._model.dataChanged.emit(idx, idx, [ComponentColorRole])
+            self._emit_structure_status_changed(idx)
 
     @staticmethod
     def _stable_key_for_item(item: SpectrumTreeItem) -> tuple[Any, ...]:

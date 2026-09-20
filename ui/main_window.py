@@ -206,6 +206,10 @@ class MainWindow(QMainWindow):
 
         if self._spectrum_tree_panel is not None:
             self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
+            # Structure dots depend on regions/peaks created by auto-fit / optimize.
+            self._controller.propertiesNeedsRefresh.connect(
+                self._spectrum_tree_panel.tree.refresh_structure_status
+            )
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
