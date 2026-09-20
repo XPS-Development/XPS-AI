@@ -199,6 +199,42 @@ class ControllerWrapper(QObject):
             normalized=normalized,
         )
 
+    def preview_parameter_value(
+        self,
+        component_id: str,
+        name: str,
+        value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """Live-preview a parameter value without recording undo."""
+        self._mutate(
+            self._orchestrator.preview_parameter_value,
+            component_id,
+            name,
+            value,
+            normalized=normalized,
+        )
+
+    def commit_parameter_preview(
+        self,
+        component_id: str,
+        name: str,
+        old_value: float,
+        new_value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """Record undo for a value already applied via :meth:`preview_parameter_value`."""
+        self._mutate(
+            self._orchestrator.commit_parameter_preview,
+            component_id,
+            name,
+            old_value,
+            new_value,
+            normalized=normalized,
+        )
+
     def update_parameters(
         self,
         component_id: str,

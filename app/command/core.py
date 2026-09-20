@@ -280,6 +280,20 @@ class CommandExecutor:
         self.stack.push(cmd)
         return cmd
 
+    def record(self, cmd: Command) -> None:
+        """
+        Push an already-applied command onto the undo stack.
+
+        Used when the domain mutation was applied outside :meth:`execute`
+        (e.g. live slider preview) and only the undo record remains to be stored.
+
+        Parameters
+        ----------
+        cmd : Command
+            Command whose apply side-effect is already reflected in ``ctx``.
+        """
+        self.stack.push(cmd)
+
     def undo(self) -> None:
         """Pop the last command, undo it, and push to the redo stack."""
         if not self.stack.can_undo:

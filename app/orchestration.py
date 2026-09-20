@@ -27,7 +27,7 @@ from .command.changes import (
     UpdateMultipleParameterValues,
     UpdateParameter,
 )
-from .command.commands import Command
+from .command.commands import Command, UpdateParameterCommand
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from .command.refresh import UiRefresh
 from .csv_export import CSVExportService
@@ -380,6 +380,76 @@ class AppOrchestrator:
                 normalized=normalized,
             )
         )
+
+    def preview_parameter_value(
+        self,
+        component_id: str,
+        name: str,
+        value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """
+        Apply a parameter value without recording undo (live preview).
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        name : str
+            Parameter name.
+        value : float
+            Preview value.
+        normalized : bool, optional
+            Whether ``value`` is normalized.
+        """
+        self.__ctx.component.set_parameter(
+            component_id,
+            name,
+            normalized=normalized,
+            value=value,
+        )
+        self._pending_ui_refresh |= UiRefresh.PLOT
+
+    def commit_parameter_preview(
+        self,
+        component_id: str,
+        name: str,
+        old_value: float,
+        new_value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """
+        Record undo for a value already applied via :meth:`preview_parameter_value`.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        name : str
+            Parameter name.
+        old_value : float
+            Value before the preview drag started.
+        new_value : float
+            Final value already present on the component.
+        normalized : bool, optional
+            Whether values are normalized.
+        """
+        if float(old_value) == float(new_value):
+            return
+        cmd = UpdateParameterCommand(
+            component_id=component_id,
+            name=name,
+            parameter_field="value",
+            new_value=new_value,
+            old_value=old_value,
+            normalized=normalized,
+        )
+        self._executor.record(cmd)
+        # Value is already applied and visible; skip PROPERTIES rebuild so the
+        # open slider editor is not destroyed mid-commit.
+        self._pending_ui_refresh |= UiRefresh.PLOT | UiRefresh.DOCUMENT
 
     def update_parameters(
         self,
