@@ -46,6 +46,8 @@ class FitScopePreview:
         Distinct parent spectra of those extra regions.
     expression_problems : tuple of ExpressionProblem
         Invalid exprs on components in the expanded region set.
+    selected_expression_problems : tuple of ExpressionProblem
+        Invalid exprs on components in the selected region set only.
     """
 
     selected_region_ids: tuple[str, ...]
@@ -53,6 +55,7 @@ class FitScopePreview:
     extra_region_count: int
     extra_spectrum_count: int
     expression_problems: tuple[ExpressionProblem, ...] = ()
+    selected_expression_problems: tuple[ExpressionProblem, ...] = ()
 
     @property
     def needs_confirmation(self) -> bool:
@@ -63,6 +66,11 @@ class FitScopePreview:
     def has_expression_errors(self) -> bool:
         """Return True when the expanded scope has unresolved parameter expressions."""
         return bool(self.expression_problems)
+
+    @property
+    def has_selected_expression_errors(self) -> bool:
+        """Return True when the selection alone has unresolved parameter expressions."""
+        return bool(self.selected_expression_problems)
 
 
 class AnalysisUseCases:
@@ -208,13 +216,15 @@ class AnalysisUseCases:
             for rid in extra_regions
             if self._query.check_object_exists(rid)
         }
-        problems = collect_expression_problems(components, region_ids=expanded)
         return FitScopePreview(
             selected_region_ids=selected,
             expanded_region_ids=expanded,
             extra_region_count=len(extra_regions),
             extra_spectrum_count=len(extra_spectra),
-            expression_problems=problems,
+            expression_problems=collect_expression_problems(components, region_ids=expanded),
+            selected_expression_problems=collect_expression_problems(
+                components, region_ids=selected
+            ),
         )
 
     def optimize_regions(
@@ -222,13 +232,15 @@ class AnalysisUseCases:
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
+        expand_linked: bool = True,
         **kwargs,
     ) -> CompositeChange:
         """
         Run optimization and return parameter-update changes.
 
-        Expands the requested regions to the expression-dependency closure so
-        linked components outside the selection are included. Default
+        When ``expand_linked`` is True (default), expands the requested regions to
+        the expression-dependency closure. When False, fits only the resolved
+        selection; cross-scope exprs become inactive for that run. Default
         optimization kwargs from AppParameters are merged with explicit kwargs;
         caller values override defaults on conflict.
 
@@ -238,6 +250,8 @@ class AnalysisUseCases:
             Identifiers of the regions to optimize.
         spectrum_ids
             Identifiers of the spectra whose regions to optimize.
+        expand_linked
+            If True, include expression-linked regions outside the selection.
         **kwargs
             Passed to lmfit.minimize; overrides AppParameters.optimization_kwargs.
 
@@ -250,15 +264,21 @@ class AnalysisUseCases:
         ------
         ValueError
             If neither ``region_ids`` nor ``spectrum_ids`` is provided, or if any
-            parameter expression in the expanded scope fails to resolve.
+            parameter expression in the effective scope fails to resolve.
         """
         merged = {**self._params.optimization_kwargs, **kwargs}
         preview = self.preview_fit_scope(region_ids=region_ids, spectrum_ids=spectrum_ids)
-        if preview.expression_problems:
-            raise ValueError(format_expression_problems(preview.expression_problems))
+        if expand_linked:
+            target_ids = preview.expanded_region_ids
+            problems = preview.expression_problems
+        else:
+            target_ids = preview.selected_region_ids
+            problems = preview.selected_expression_problems
+        if problems:
+            raise ValueError(format_expression_problems(problems))
 
         region_reprs: list[tuple[RegionDTO, tuple[ComponentDTO, ...]]] = []
-        for region_id in preview.expanded_region_ids:
+        for region_id in target_ids:
             region_reprs.append(self._query.get_region_dto_repr(region_id, normalized=True))
 
         return CompositeChange(

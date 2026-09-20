@@ -193,6 +193,7 @@ class ControllerWrapper(QObject):
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
+        expand_linked: bool = True,
         **kwargs: Any,
     ) -> None:
         """Run optimization for regions and emit signals."""
@@ -200,6 +201,7 @@ class ControllerWrapper(QObject):
             self._orchestrator.optimize_regions,
             region_ids=region_ids,
             spectrum_ids=spectrum_ids,
+            expand_linked=expand_linked,
             **kwargs,
         )
 

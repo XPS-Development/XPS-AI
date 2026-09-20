@@ -362,14 +362,16 @@ class AppOrchestrator:
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
+        expand_linked: bool = True,
         **kwargs,
     ) -> None:
         """
         Run optimization and execute UpdateMultipleParameterValues changes.
 
-        Expands to the expression-dependency closure before fitting. Default
-        optimization kwargs from AppParameters are merged with explicit
-        kwargs; caller values override defaults on conflict.
+        When ``expand_linked`` is True, expands to the expression-dependency
+        closure before fitting. Default optimization kwargs from AppParameters
+        are merged with explicit kwargs; caller values override defaults on
+        conflict.
 
         Parameters
         ----------
@@ -377,6 +379,8 @@ class AppOrchestrator:
             Identifiers of the regions to optimize.
         spectrum_ids : Sequence of str
             Identifiers of the spectra to optimize.
+        expand_linked : bool, default True
+            If True, include expression-linked regions outside the selection.
         **kwargs
             Passed to lmfit.minimize; overrides AppParameters.optimization_kwargs.
         """
@@ -384,6 +388,7 @@ class AppOrchestrator:
             self._analysis.optimize_regions(
                 region_ids=region_ids,
                 spectrum_ids=spectrum_ids,
+                expand_linked=expand_linked,
                 **kwargs,
             )
         )
