@@ -2,7 +2,7 @@
 
 import math
 
-from core.math_models.soft_ranges import soft_parameter_range
+from core.math_models.soft_ranges import soft_parameter_range, soft_region_bound_range
 
 
 def test_frac_uses_unit_interval() -> None:
@@ -27,3 +27,13 @@ def test_amp_is_non_negative() -> None:
     lo, hi = soft_parameter_range("amp", 10.0, -math.inf, math.inf, y_max=20.0)
     assert lo == 0.0
     assert hi >= 20.0
+
+
+def test_region_bound_value_mode_uses_x_extent() -> None:
+    """Value-mode region sliders follow the spectrum x window."""
+    assert soft_region_bound_range(mode="value", x_min=10.0, x_max=50.0) == (10.0, 50.0)
+
+
+def test_region_bound_index_mode_uses_sample_count() -> None:
+    """Index-mode region sliders span ``[0, n-1]``."""
+    assert soft_region_bound_range(mode="index", index_count=100) == (0.0, 99.0)
