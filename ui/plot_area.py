@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.mouseEvents import HoverEvent, MouseClickEvent, MouseDragEvent
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
@@ -563,6 +563,9 @@ class PlotAreaWidget(QWidget):
         """
         Update selection when the user clicks an ROI.
 
+        Deferred so a plot refresh does not destroy the ROI while its click
+        handler is still running.
+
         Parameters
         ----------
         region_id : str
@@ -571,7 +574,11 @@ class PlotAreaWidget(QWidget):
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.set_selection(spectrum_id, region_id)
+
+        def _apply() -> None:
+            self._controller.set_selection(spectrum_id, region_id)
+
+        QTimer.singleShot(0, _apply)
 
     def _iter_rois(self) -> Iterable[InteractiveRegion]:
         """
@@ -646,6 +653,10 @@ class PlotAreaWidget(QWidget):
         """
         Select the component whose curve was clicked.
 
+        Selection is deferred so :meth:`refresh` (triggered by
+        ``selectionChanged``) does not destroy the clicked ``PlotDataItem``
+        while ``sigClicked`` is still on the stack.
+
         Parameters
         ----------
         component_id : str
@@ -659,7 +670,11 @@ class PlotAreaWidget(QWidget):
         except KeyError:
             return
         region_id = dto.parent_id
-        self._controller.set_selection(spectrum_id, region_id, component_id)
+
+        def _apply() -> None:
+            self._controller.set_selection(spectrum_id, region_id, component_id)
+
+        QTimer.singleShot(0, _apply)
 
     def _pen_for_curve(self, curve: PlotCurve) -> Any:
         """Map a plot curve kind to a pyqtgraph pen, with selection highlighting."""
