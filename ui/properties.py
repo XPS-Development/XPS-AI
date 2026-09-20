@@ -1,18 +1,21 @@
 """Properties tree for region slices, models, and component parameters."""
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional
 
 import numpy as np
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
-from PySide6.QtGui import QFontMetrics, QResizeEvent
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QHeaderView,
     QMenu,
+    QStyle,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTreeView,
     QWidget,
 )
@@ -29,9 +32,18 @@ from .name_id_delegate import (
     ObjectIdRole,
 )
 from .parameter_value_editor import ParameterValueEditor
+from .tree_style import apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
+
+
+def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
+    """Return a plain ``QModelIndex`` (PySide stubs omit persistent conversion)."""
+    model = index.model()
+    if model is None:
+        return QModelIndex()
+    return model.index(index.row(), index.column(), index.parent())
 
 
 class ItemKind(Enum):
@@ -49,14 +61,18 @@ def _format_value(val: Any) -> str:
     r"""
     Format a value for display in the properties tree.
 
-    None -> \"\", bool as-is, numbers with 2 decimal places, else str(val).
+    None -> \"\", bool as-is, non-finite floats as \"—\", numbers with 2
+    decimal places, else str(val).
     """
     if val is None:
         return ""
     if isinstance(val, bool):
         return str(val)
     if isinstance(val, (int, float)):
-        return f"{float(val):.2f}"
+        number = float(val)
+        if not math.isfinite(number):
+            return "—"
+        return f"{number:.2f}"
     return str(val)
 
 
@@ -247,6 +263,12 @@ class PropertiesModel(QAbstractItemModel):
             and item.kind == ItemKind.PARAMETER_ROW
         ):
             return Qt.CheckState.Checked if item.param_vary else Qt.CheckState.Unchecked
+
+        if role == Qt.ItemDataRole.ForegroundRole and col in (2, 3):
+            if item.kind == ItemKind.PARAMETER_ROW:
+                raw = item.param_lower if col == 2 else item.param_upper
+                if isinstance(raw, (int, float)) and not math.isfinite(float(raw)):
+                    return QColor("#b0b0b0")
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
@@ -614,11 +636,46 @@ class PropertiesModel(QAbstractItemModel):
 
 
 class PropertiesDelegate(QStyledItemDelegate):
-    """Delegate for model combo boxes and parameter value slider editors."""
+    """Delegate for model combo boxes and selected-row parameter slider editors."""
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """
+        Paint cells; suppress DisplayRole text under an open parameter editor.
+
+        Persistent editors otherwise sit on top of the model text and look like
+        doubled / overlapping values.
+        """
+        item = index.internalPointer() if index.isValid() else None
+        view = self.parent()
+        has_editor = (
+            isinstance(view, QTreeView)
+            and index.isValid()
+            and view.indexWidget(_as_model_index(index)) is not None
+        )
+        if (
+            has_editor
+            and isinstance(item, PropertyItem)
+            and item.kind == ItemKind.PARAMETER_ROW
+            and index.column() == 1
+        ):
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""
+            widget = opt.widget
+            style = widget.style() if widget is not None else None
+            if style is not None:
+                style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+                return
+        super().paint(painter, option, index)
 
     def createEditor(
         self,
@@ -657,11 +714,10 @@ class PropertiesDelegate(QStyledItemDelegate):
                 parent=parent,
             )
 
-            def _commit_and_close() -> None:
+            def _commit() -> None:
                 self.commitData.emit(editor)
-                self.closeEditor.emit(editor, QStyledItemDelegate.EndEditHint.NoHint)
 
-            editor.editingFinished.connect(_commit_and_close)
+            editor.editingFinished.connect(_commit)
             return editor
 
         return super().createEditor(parent, option, index)
@@ -721,6 +777,24 @@ class PropertiesDelegate(QStyledItemDelegate):
 
         super().setModelData(editor, model, index)
 
+    def sizeHint(
+        self,
+        option: Any,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> Any:
+        """Use a taller row only while the parameter slider editor is open."""
+        hint = super().sizeHint(option, index)
+        view = self.parent()
+        if (
+            isinstance(view, QTreeView)
+            and index.isValid()
+            and index.column() == 1
+            and view.indexWidget(_as_model_index(index)) is not None
+        ):
+            hint.setHeight(max(hint.height(), 52))
+            hint.setWidth(max(hint.width(), 100))
+        return hint
+
     def destroyEditor(
         self,
         editor: QWidget,
@@ -755,6 +829,7 @@ class PropertiesView(QTreeView):
         self._syncing_selection = False
         self._last_spectrum_id: str | None = None
         self._applied_default_expand = False
+        self._slider_editor_index: QPersistentModelIndex | None = None
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
@@ -764,8 +839,9 @@ class PropertiesView(QTreeView):
         hdr = self.header()
         hdr.setStretchLastSection(False)
         self._apply_column_widths()
-        self.setUniformRowHeights(True)
-        self.setAlternatingRowColors(True)
+        self.setUniformRowHeights(False)
+        self.setAlternatingRowColors(False)
+        apply_editor_tree_style(self, with_header=True)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
@@ -830,33 +906,55 @@ class PropertiesView(QTreeView):
         return self._model
 
     def refresh(self) -> None:
-        """Refresh tree contents from the controller while preserving expand/collapse state."""
-        expanded = self._collect_expanded_stable_keys()
+        """Refresh tree contents and keep the full hierarchy expanded."""
+        self._close_parameter_slider_editor()
         self._model.refresh()
-        if expanded:
-            self._restore_expanded_stable_keys(expanded)
-            self._applied_default_expand = True
-        elif not self._applied_default_expand:
-            self._expand_default_levels()
-            self._applied_default_expand = True
+        self.expandAll()
+        self._applied_default_expand = True
         self._last_spectrum_id = self._controller.selected_spectrum_id
         self.sync_selection_from_controller()
+        self._sync_parameter_slider_editor()
 
-    def _expand_default_levels(self) -> None:
-        """Expand regions and components; leave parameter rows collapsed."""
+    def _close_parameter_slider_editor(self) -> None:
+        """Close the open parameter slider editor, if any."""
+        if self._slider_editor_index is None:
+            return
+        idx = _as_model_index(self._slider_editor_index)
+        if idx.isValid():
+            widget = self.indexWidget(idx)
+            if isinstance(widget, ParameterValueEditor):
+                widget.commit_if_needed()
+            self.closePersistentEditor(idx)
+        self._slider_editor_index = None
 
-        def walk(parent: QModelIndex) -> None:
-            for row in range(self._model.rowCount(parent)):
-                idx = self._model.index(row, 0, parent)
-                raw = idx.internalPointer()
-                if isinstance(raw, PropertyItem) and raw.kind in {
-                    ItemKind.REGION,
-                    ItemKind.COMPONENT,
-                }:
-                    self.setExpanded(idx, True)
-                walk(idx)
+    def _sync_parameter_slider_editor(self) -> None:
+        """Show the soft-range slider only on the selected parameter value cell."""
+        current = self.selectionModel().currentIndex()
+        param_index = QModelIndex()
+        cursor = current
+        while cursor.isValid():
+            ptr = cursor.internalPointer()
+            if isinstance(ptr, PropertyItem) and ptr.kind == ItemKind.PARAMETER_ROW:
+                param_index = cursor
+                break
+            cursor = cursor.parent()
 
-        walk(QModelIndex())
+        if not param_index.isValid():
+            self._close_parameter_slider_editor()
+            self.doItemsLayout()
+            return
+
+        value_index = self._model.index(param_index.row(), 1, param_index.parent())
+        if (
+            self._slider_editor_index is not None
+            and _as_model_index(self._slider_editor_index) == value_index
+        ):
+            return
+
+        self._close_parameter_slider_editor()
+        self.openPersistentEditor(value_index)
+        self._slider_editor_index = QPersistentModelIndex(value_index)
+        self.doItemsLayout()
 
     def on_controller_selection_changed(
         self,
@@ -891,6 +989,7 @@ class PropertiesView(QTreeView):
             sel = self.selectionModel()
             if target is None or not target.isValid():
                 sel.clearSelection()
+                self._sync_parameter_slider_editor()
                 return
             parent = target.parent()
             while parent.isValid():
@@ -904,6 +1003,7 @@ class PropertiesView(QTreeView):
             self.scrollTo(target)
         finally:
             self._syncing_selection = False
+        self._sync_parameter_slider_editor()
 
     def _find_index_for_selection(
         self,
@@ -1004,6 +1104,7 @@ class PropertiesView(QTreeView):
         indexes = selected.indexes()
         if not indexes:
             # Model resets clear the view selection; do not wipe controller state.
+            self._sync_parameter_slider_editor()
             return
 
         index = indexes[0]
@@ -1031,6 +1132,7 @@ class PropertiesView(QTreeView):
             region_id,
             component_id,
         )
+        self._sync_parameter_slider_editor()
 
     def _selected_component_id(self) -> str | None:
         """Return the component id for the current selection, if any."""

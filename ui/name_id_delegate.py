@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
 from .component_colors import ID_SUFFIX_HEX
 
@@ -15,7 +15,7 @@ ObjectIdRole = Qt.ItemDataRole.UserRole
 ObjectIdPrefixRole = Qt.ItemDataRole.UserRole + 1
 ComponentColorRole = Qt.ItemDataRole.UserRole + 2
 
-_SWATCH_SIZE = 10
+_DEFAULT_SWATCH_SIZE = 10
 _SWATCH_GAP = 6
 
 
@@ -27,13 +27,32 @@ class NameWithIdDelegate(QStyledItemDelegate):
     ``ObjectIdPrefixRole``.
     """
 
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        swatch_size: int = _DEFAULT_SWATCH_SIZE,
+    ) -> None:
+        """
+        Initialize the delegate.
+
+        Parameters
+        ----------
+        parent : QWidget or None, optional
+            Parent object.
+        swatch_size : int, optional
+            Diameter of the circular color/status swatch in pixels.
+        """
+        super().__init__(parent)
+        self._swatch_size = max(1, int(swatch_size))
+
     def paint(
         self,
         painter: QPainter,
         option: QStyleOptionViewItem,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        """Draw the standard item chrome, then swatch + name + gray id suffix."""
+        """Draw the standard item chrome, then circular swatch + name + gray id."""
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
 
@@ -58,6 +77,7 @@ class NameWithIdDelegate(QStyledItemDelegate):
 
         painter.save()
         painter.setClipRect(opt.rect)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         text_rect = style.subElementRect(
             QStyle.SubElement.SE_ItemViewItemText,
@@ -67,11 +87,14 @@ class NameWithIdDelegate(QStyledItemDelegate):
         if not text_rect.isValid():
             text_rect = opt.rect
 
+        swatch = self._swatch_size
         x = text_rect.x()
         if swatch_color.isValid():
-            y = text_rect.y() + max(0, (text_rect.height() - _SWATCH_SIZE) // 2)
-            painter.fillRect(x, y, _SWATCH_SIZE, _SWATCH_SIZE, swatch_color)
-            x += _SWATCH_SIZE + _SWATCH_GAP
+            y = text_rect.y() + max(0, (text_rect.height() - swatch) // 2)
+            path = QPainterPath()
+            path.addEllipse(x, y, swatch, swatch)
+            painter.fillPath(path, swatch_color)
+            x += swatch + _SWATCH_GAP
 
         font = opt.font
         painter.setFont(font)
@@ -119,7 +142,7 @@ class NameWithIdDelegate(QStyledItemDelegate):
         hint = super().sizeHint(option, index)
         extra = 0
         if isinstance(index.data(ComponentColorRole), str):
-            extra += _SWATCH_SIZE + _SWATCH_GAP
+            extra += self._swatch_size + _SWATCH_GAP
         id_prefix = index.data(ObjectIdPrefixRole)
         if isinstance(id_prefix, str) and id_prefix:
             metrics = option.fontMetrics

@@ -1,21 +1,51 @@
-"""Inline spinbox + slider editor for parameter values."""
+"""Inline value + soft-range slider editor for parameter rows."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QSlider, QWidget
+from PySide6.QtWidgets import QDoubleSpinBox, QSlider, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
     from .controller import ControllerWrapper
 
 _SLIDER_STEPS = 1000
 
+# Minimal editor-style slider: thin track, solid gray thumb.
+_SLIDER_STYLE = """
+QSlider::groove:horizontal {
+    height: 2px;
+    background: #d0d0d0;
+    border: none;
+    border-radius: 1px;
+    margin: 0 4px;
+}
+QSlider::sub-page:horizontal,
+QSlider::add-page:horizontal {
+    background: #d0d0d0;
+    border: none;
+    border-radius: 1px;
+}
+QSlider::handle:horizontal {
+    width: 10px;
+    height: 10px;
+    margin: -4px 0;
+    border: none;
+    border-radius: 5px;
+    background: #6e6e6e;
+}
+QSlider::handle:horizontal:hover {
+    background: #555555;
+}
+QSlider::handle:horizontal:pressed {
+    background: #444444;
+}
+"""
 
 class ParameterValueEditor(QWidget):
     """
-    Compact value editor with a numeric spin box and a linked soft-range slider.
+    Parameter editor with a spin box and a soft-range slider beneath it.
 
     While dragging, values are previewed via the controller without undo.
     Committing records a single undo step from the drag-start value.
@@ -67,20 +97,34 @@ class ParameterValueEditor(QWidget):
         self._spin.setRange(self._soft_lo, self._soft_hi)
         self._spin.setSingleStep(max((self._soft_hi - self._soft_lo) / 100.0, 1e-4))
         self._spin.setKeyboardTracking(False)
+        self._spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self._spin.setFrame(False)
+        self._spin.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._spin.setFixedHeight(20)
 
         self._slider = QSlider(Qt.Orientation.Horizontal, self)
         self._slider.setRange(0, _SLIDER_STEPS)
         self._slider.setSingleStep(1)
         self._slider.setPageStep(max(_SLIDER_STEPS // 20, 1))
+        self._slider.setFixedHeight(18)
+        self._slider.setStyleSheet(_SLIDER_STYLE)
+        self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        layout.addWidget(self._spin, stretch=0)
-        layout.addWidget(self._slider, stretch=1)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 1, 4, 2)
+        layout.setSpacing(2)
+        layout.addWidget(self._spin)
+        layout.addWidget(self._slider)
+        self.setMinimumHeight(44)
+        self.setMinimumWidth(90)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
+        self.setStyleSheet("ParameterValueEditor { background: transparent; }")
+        self._spin.setStyleSheet("QDoubleSpinBox { background: transparent; border: none; }")
 
         self._spin.valueChanged.connect(self._on_spin_changed)
         self._slider.valueChanged.connect(self._on_slider_changed)
+        self._slider.sliderPressed.connect(self._on_slider_pressed)
         self._slider.sliderReleased.connect(self._on_slider_released)
         self._spin.editingFinished.connect(self._on_spin_editing_finished)
 
@@ -154,9 +198,17 @@ class ParameterValueEditor(QWidget):
             normalized=False,
         )
 
+    def _on_slider_pressed(self) -> None:
+        # Start a new undo baseline at the value when the drag begins.
+        self._start_value = self.value()
+        self._committed = False
+
     def _on_spin_changed(self, value: float) -> None:
         if self._updating:
             return
+        if self._start_value is None:
+            self._start_value = float(value)
+            self._committed = False
         self._updating = True
         try:
             self._slider.setValue(self._value_to_slider(float(value)))
