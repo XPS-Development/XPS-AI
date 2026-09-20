@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 import numpy as np
 from PySide6.QtCore import (
     QAbstractItemModel,
+    QItemSelectionModel,
     QModelIndex,
     QPersistentModelIndex,
     QPoint,
@@ -15,10 +16,11 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QResizeEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
+    QLineEdit,
     QMenu,
     QStyle,
     QStyledItemDelegate,
@@ -44,6 +46,7 @@ from .tree_style import apply_editor_menu_style, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
+_FIELD_EDIT_STYLE = "QLineEdit { background: transparent; border: none; padding: 1px 2px; }"
 
 
 def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
@@ -63,6 +66,7 @@ class ItemKind(Enum):
     COMPONENT = "component"
     COMPONENT_MODEL = "component_model"
     PARAMETER_ROW = "parameter_row"
+    PARAMETER_FIELD = "parameter_field"
 
 
 def _format_value(val: Any) -> str:
@@ -90,8 +94,8 @@ class PropertyItem:
     Node used by :class:`PropertiesModel`.
 
     Each item represents either a logical group (region, background, peak), a
-    slice bound, a model selector row, or one parameter row (value/lower/upper
-    /vary/expr across columns 1-5).
+    slice bound, a model selector row, a parameter summary row, or a nested
+    constraint field (lower / upper / expr) under a parameter.
 
     Parameters
     ----------
@@ -103,7 +107,10 @@ class PropertyItem:
     parent : PropertyItem or None, optional
         Parent item in the tree.
     param_lower, param_upper, param_vary, param_expr : optional
-        Used when ``kind`` is ``PARAMETER_ROW`` (columns 2-5).
+        Used when ``kind`` is ``PARAMETER_ROW``; mirrored on nested
+        ``PARAMETER_FIELD`` children (lower / upper / vary / expr).
+    parameter_field : {"lower", "upper", "expr", "vary"} or None, optional
+        Which constraint a ``PARAMETER_FIELD`` row edits.
     object_id : str or None, optional
         Full region/component id for gray suffix / clipboard when shown.
     stored_name : str or None, optional
@@ -128,6 +135,7 @@ class PropertyItem:
     param_upper: Any = None
     param_vary: bool = False
     param_expr: Any = None
+    parameter_field: Literal["lower", "upper", "expr", "vary"] | None = None
 
     def child(self, row: int) -> Optional["PropertyItem"]:
         """Return the child at the given row index."""
@@ -151,16 +159,23 @@ class PropertyItem:
         self.children.append(item)
 
 
+def _parameter_constraint_marks(item: PropertyItem) -> str:
+    """Return a compact indicator glyph when an expression constraint is set."""
+    if item.param_expr:
+        return "ƒ"
+    return ""
+
+
 class PropertiesModel(QAbstractItemModel):
     """
-    Tree-table model for the Properties panel (six columns).
+    Tree-table model for the Properties panel (two columns).
 
     Presents regions of the selected spectrum with slice bounds, components,
-    model selection, and one row per fit parameter (value, lower, upper, vary,
-    expr). Slice, model, and parameter cells are editable where applicable.
+    model selection, and one row per fit parameter (value). Lower, upper, vary,
+    and expr live as nested child rows under each parameter.
     """
 
-    _HEADER_LABELS = ("Name", "Value", "Lower", "Upper", "Vary", "Expr")
+    _HEADER_LABELS = ("Name", "Value")
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -271,16 +286,18 @@ class PropertiesModel(QAbstractItemModel):
 
         if (
             role == Qt.ItemDataRole.CheckStateRole
-            and col == 4
-            and item.kind == ItemKind.PARAMETER_ROW
+            and col == 1
+            and item.kind == ItemKind.PARAMETER_FIELD
+            and item.parameter_field == "vary"
         ):
-            return Qt.CheckState.Checked if item.param_vary else Qt.CheckState.Unchecked
+            return Qt.CheckState.Checked if bool(item.value) else Qt.CheckState.Unchecked
 
-        if role == Qt.ItemDataRole.ForegroundRole and col in (2, 3):
-            if item.kind == ItemKind.PARAMETER_ROW:
-                raw = item.param_lower if col == 2 else item.param_upper
-                if isinstance(raw, (int, float)) and not math.isfinite(float(raw)):
-                    return QColor("#b0b0b0")
+        if (
+            role == Qt.ItemDataRole.ForegroundRole
+            and col == 0
+            and item.kind == ItemKind.PARAMETER_FIELD
+        ):
+            return QColor("#888888")
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
@@ -288,18 +305,18 @@ class PropertiesModel(QAbstractItemModel):
                 # like "Peak 1" are not written back on a no-op edit.
                 if role == Qt.ItemDataRole.EditRole and item.kind == ItemKind.COMPONENT:
                     return item.stored_name or ""
+                if item.kind == ItemKind.PARAMETER_ROW and role == Qt.ItemDataRole.DisplayRole:
+                    marks = _parameter_constraint_marks(item)
+                    return f"{item.name}  {marks}" if marks else item.name
                 return item.name
-            if item.kind == ItemKind.PARAMETER_ROW:
-                if col == 1:
-                    return _format_value(item.value)
-                if col == 2:
-                    return _format_value(item.param_lower)
-                if col == 3:
-                    return _format_value(item.param_upper)
-                if col == 4:
+            if item.kind == ItemKind.PARAMETER_ROW and col == 1:
+                return _format_value(item.value)
+            if item.kind == ItemKind.PARAMETER_FIELD and col == 1:
+                if item.parameter_field == "vary":
                     return ""
-                if col == 5:
-                    return "" if item.param_expr is None else str(item.param_expr)
+                if item.parameter_field == "expr":
+                    return "" if item.value is None else str(item.value)
+                return _format_value(item.value)
             if item.kind == ItemKind.REGION_SLICE and col == 1:
                 return _format_value(item.value)
             if item.kind == ItemKind.COMPONENT_MODEL and col == 1:
@@ -317,11 +334,14 @@ class PropertiesModel(QAbstractItemModel):
         col = index.column()
 
         if item.kind == ItemKind.PARAMETER_ROW:
-            if col == 4:
-                return base_flags | Qt.ItemFlag.ItemIsUserCheckable
-            if col in (1, 2, 3, 5):
+            if col == 1:
                 return base_flags | Qt.ItemFlag.ItemIsEditable
             return base_flags
+
+        if item.kind == ItemKind.PARAMETER_FIELD and col == 1:
+            if item.parameter_field == "vary":
+                return base_flags | Qt.ItemFlag.ItemIsUserCheckable
+            return base_flags | Qt.ItemFlag.ItemIsEditable
 
         if col == 0 and item.kind == ItemKind.COMPONENT and item.component_id is not None:
             return base_flags | Qt.ItemFlag.ItemIsEditable
@@ -401,7 +421,7 @@ class PropertiesModel(QAbstractItemModel):
         x_max: float | None = None,
         y_max: float | None = None,
     ) -> None:
-        """Add one flat row per parameter (value, lower, upper, vary, expr)."""
+        """Add one parameter row with nested lower / upper / vary / expr children."""
         model = ModelRegistry.get(model_name)
         for param_name, param_dto in parameters_dto.items():
             soft_lo, soft_hi = model.soft_parameter_range(
@@ -413,22 +433,38 @@ class PropertiesModel(QAbstractItemModel):
                 x_max=x_max,
                 y_max=y_max,
             )
-            parent_item.append_child(
-                PropertyItem(
-                    name=str(param_name),
-                    value=param_dto.value,
-                    parent=parent_item,
-                    kind=ItemKind.PARAMETER_ROW,
-                    component_id=component_id,
-                    parameter_name=str(param_name),
-                    soft_lo=soft_lo,
-                    soft_hi=soft_hi,
-                    param_lower=param_dto.lower,
-                    param_upper=param_dto.upper,
-                    param_vary=bool(param_dto.vary),
-                    param_expr=param_dto.expr,
-                )
+            param_item = PropertyItem(
+                name=str(param_name),
+                value=param_dto.value,
+                parent=parent_item,
+                kind=ItemKind.PARAMETER_ROW,
+                component_id=component_id,
+                parameter_name=str(param_name),
+                soft_lo=soft_lo,
+                soft_hi=soft_hi,
+                param_lower=param_dto.lower,
+                param_upper=param_dto.upper,
+                param_vary=bool(param_dto.vary),
+                param_expr=param_dto.expr,
             )
+            parent_item.append_child(param_item)
+            for field_name, field_value in (
+                ("lower", param_dto.lower),
+                ("upper", param_dto.upper),
+                ("vary", bool(param_dto.vary)),
+                ("expr", param_dto.expr),
+            ):
+                param_item.append_child(
+                    PropertyItem(
+                        name=field_name,
+                        value=field_value,
+                        parent=param_item,
+                        kind=ItemKind.PARAMETER_FIELD,
+                        component_id=component_id,
+                        parameter_name=str(param_name),
+                        parameter_field=field_name,  # type: ignore[arg-type]
+                    )
+                )
 
     def _region_soft_context(
         self,
@@ -463,8 +499,9 @@ class PropertiesModel(QAbstractItemModel):
 
         if role == Qt.ItemDataRole.CheckStateRole:
             if (
-                item.kind == ItemKind.PARAMETER_ROW
-                and col == 4
+                item.kind == ItemKind.PARAMETER_FIELD
+                and col == 1
+                and item.parameter_field == "vary"
                 and item.component_id is not None
                 and item.parameter_name is not None
             ):
@@ -476,7 +513,10 @@ class PropertiesModel(QAbstractItemModel):
                     coerced,
                     normalized=False,
                 )
-                item.param_vary = coerced
+                item.value = coerced
+                parent_param = item.parent
+                if parent_param is not None and parent_param.kind == ItemKind.PARAMETER_ROW:
+                    parent_param.param_vary = coerced
                 self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
                 return True
             return False
@@ -539,84 +579,172 @@ class PropertiesModel(QAbstractItemModel):
             item.kind == ItemKind.PARAMETER_ROW
             and item.component_id is not None
             and item.parameter_name is not None
+            and col == 1
         ):
-            field_by_col = {1: "value", 2: "lower", 3: "upper", 5: "expr"}
-            field = field_by_col.get(col)
-            if field is None:
-                return False
-
-            coerced: str | bool | float | None
             text = str(value).strip().replace(",", ".")
-            if field in {"value", "lower", "upper"}:
-                if text in {"", "—", "-", "inf", "+inf", "-inf", "∞", "-∞"}:
-                    if field == "lower":
-                        coerced = float("-inf")
-                    elif field == "upper":
-                        coerced = float("inf")
-                    else:
-                        return False
-                else:
-                    try:
-                        coerced = float(text)
-                    except ValueError:
-                        return False
-            elif field == "expr":
-                coerced = text or None
-            else:
+            try:
+                coerced: str | float | None = float(text)
+            except ValueError:
                 return False
             self._controller.update_parameter(
                 item.component_id,
                 item.parameter_name,
-                field,  # type: ignore[arg-type]
+                "value",
                 coerced,
                 normalized=False,
             )
-            if field == "value":
-                item.value = coerced
-            elif field == "lower":
-                item.param_lower = coerced
-            elif field == "upper":
-                item.param_upper = coerced
-            else:
-                item.param_expr = coerced
-            if field in {"lower", "upper", "value"} and item.parameter_name is not None:
-                x_min = x_max = y_max = None
-                region_id = item.region_id
-                if region_id is None and item.component_id is not None:
-                    try:
-                        region_id = self._controller.query.get_parent_id(item.component_id)
-                    except KeyError:
-                        region_id = None
-                if region_id is not None:
-                    x_min, x_max, y_max = self._region_soft_context(region_id)
-                model_name: str | None = None
-                if item.component_id is not None:
-                    try:
-                        model_name = self._controller.query.get_component_dto(
-                            item.component_id
-                        ).model.name
-                    except KeyError:
-                        model_name = None
-                if model_name is not None:
-                    item.soft_lo, item.soft_hi = ModelRegistry.get(model_name).soft_parameter_range(
-                        item.parameter_name,
-                        float(item.value) if isinstance(item.value, (int, float)) else 0.0,
-                        float(item.param_lower)
-                        if isinstance(item.param_lower, (int, float))
-                        else float("-inf"),
-                        float(item.param_upper)
-                        if isinstance(item.param_upper, (int, float))
-                        else float("inf"),
-                        x_min=x_min,
-                        x_max=x_max,
-                        y_max=y_max,
-                    )
+            item.value = coerced
+            self._recompute_soft_range(item)
             self.dataChanged.emit(
                 index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
             )
             return True
 
+        if (
+            item.kind == ItemKind.PARAMETER_FIELD
+            and col == 1
+            and item.component_id is not None
+            and item.parameter_name is not None
+            and item.parameter_field is not None
+        ):
+            field = item.parameter_field
+            text = str(value).strip().replace(",", ".")
+            coerced_field: str | float | None
+            if field == "expr":
+                coerced_field = text or None
+            elif field in {"lower", "upper"}:
+                if text in {"", "—", "-", "inf", "+inf", "-inf", "∞", "-∞"}:
+                    coerced_field = float("-inf") if field == "lower" else float("inf")
+                else:
+                    try:
+                        coerced_field = float(text)
+                    except ValueError:
+                        return False
+            else:
+                return False
+            self._controller.update_parameter(
+                item.component_id,
+                item.parameter_name,
+                field,
+                coerced_field,
+                normalized=False,
+            )
+            item.value = coerced_field
+            parent_param = item.parent
+            if parent_param is not None and parent_param.kind == ItemKind.PARAMETER_ROW:
+                if field == "lower":
+                    parent_param.param_lower = coerced_field
+                elif field == "upper":
+                    parent_param.param_upper = coerced_field
+                else:
+                    parent_param.param_expr = coerced_field
+                if field in {"lower", "upper"}:
+                    self._recompute_soft_range(parent_param)
+                self._emit_parameter_row_changed(parent_param)
+            else:
+                self.dataChanged.emit(
+                    index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
+                )
+            return True
+
         return False
+
+    def _emit_parameter_row_changed(self, item: PropertyItem) -> None:
+        """Emit dataChanged for a parameter row and its nested field children."""
+        parent = item.parent
+        if parent is None:
+            return
+        row = item.row()
+        if row < 0:
+            return
+        parent_index = (
+            QModelIndex()
+            if parent is self._root_item
+            else self.createIndex(parent.row(), 0, parent)
+        )
+        param_index = self.index(row, 0, parent_index)
+        right = self.index(row, self.columnCount() - 1, parent_index)
+        self.dataChanged.emit(
+            param_index,
+            right,
+            [
+                Qt.ItemDataRole.DisplayRole,
+                Qt.ItemDataRole.EditRole,
+                Qt.ItemDataRole.CheckStateRole,
+            ],
+        )
+        for child_row, child in enumerate(item.children):
+            if child.kind != ItemKind.PARAMETER_FIELD:
+                continue
+            if child.parameter_field == "lower":
+                child.value = item.param_lower
+            elif child.parameter_field == "upper":
+                child.value = item.param_upper
+            elif child.parameter_field == "expr":
+                child.value = item.param_expr
+            elif child.parameter_field == "vary":
+                child.value = item.param_vary
+            cleft = self.index(child_row, 0, param_index)
+            cright = self.index(child_row, self.columnCount() - 1, param_index)
+            roles = [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
+            if child.parameter_field == "vary":
+                roles.append(Qt.ItemDataRole.CheckStateRole)
+            self.dataChanged.emit(cleft, cright, roles)
+
+    def sync_parameter_item_from_controller(self, item: PropertyItem) -> None:
+        """
+        Refresh a parameter row's cached fields from the live component DTO.
+
+        Used after slider commits so soft ranges and nested field rows stay current
+        without a full tree rebuild.
+        """
+        if (
+            item.kind != ItemKind.PARAMETER_ROW
+            or item.component_id is None
+            or item.parameter_name is None
+        ):
+            return
+        try:
+            dto = self._controller.query.get_component_dto(item.component_id)
+            param = dto.parameters[item.parameter_name]
+        except KeyError:
+            return
+        item.value = param.value
+        item.param_lower = param.lower
+        item.param_upper = param.upper
+        item.param_vary = bool(param.vary)
+        item.param_expr = param.expr
+        self._recompute_soft_range(item)
+        self._emit_parameter_row_changed(item)
+
+    def _recompute_soft_range(self, item: PropertyItem) -> None:
+        """Update ``soft_lo`` / ``soft_hi`` for a parameter row from model soft ranges."""
+        if item.parameter_name is None or item.component_id is None:
+            return
+        x_min = x_max = y_max = None
+        region_id = item.region_id
+        if region_id is None:
+            try:
+                region_id = self._controller.query.get_parent_id(item.component_id)
+            except KeyError:
+                region_id = None
+        if region_id is not None:
+            x_min, x_max, y_max = self._region_soft_context(region_id)
+        try:
+            model_name = self._controller.query.get_component_dto(item.component_id).model.name
+        except KeyError:
+            return
+        item.soft_lo, item.soft_hi = ModelRegistry.get(model_name).soft_parameter_range(
+            item.parameter_name,
+            float(item.value) if isinstance(item.value, (int, float)) else 0.0,
+            float(item.param_lower)
+            if isinstance(item.param_lower, (int, float))
+            else float("-inf"),
+            float(item.param_upper) if isinstance(item.param_upper, (int, float)) else float("inf"),
+            x_min=x_min,
+            x_max=x_max,
+            y_max=y_max,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -774,7 +902,8 @@ class PropertiesDelegate(QStyledItemDelegate):
         if (
             has_editor
             and isinstance(item, PropertyItem)
-            and item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE}
+            and item.kind
+            in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE, ItemKind.PARAMETER_FIELD}
             and index.column() == 1
         ):
             opt = QStyleOptionViewItem(option)
@@ -948,6 +1077,16 @@ class PropertiesDelegate(QStyledItemDelegate):
             editor.editingFinished.connect(_commit_slice)
             return editor
 
+        if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field in {
+            "lower",
+            "upper",
+            "expr",
+        }:
+            editor = QLineEdit(parent)
+            editor.setFrame(False)
+            editor.setStyleSheet(_FIELD_EDIT_STYLE)
+            return editor
+
         return super().createEditor(parent, option, index)
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
@@ -964,6 +1103,20 @@ class PropertiesDelegate(QStyledItemDelegate):
             editor, ParameterValueEditor
         ):
             editor.set_value(float(item.value))
+            return
+
+        if (
+            item.kind == ItemKind.PARAMETER_FIELD
+            and isinstance(editor, QLineEdit)
+            and item.parameter_field in {"lower", "upper", "expr"}
+        ):
+            if item.parameter_field == "expr":
+                editor.setText("" if item.value is None else str(item.value))
+            else:
+                editor.setText(_format_value(item.value) if item.value is not None else "")
+                # Show empty for ±inf so the cell matches collapsed display.
+                if isinstance(item.value, (int, float)) and not math.isfinite(float(item.value)):
+                    editor.setText("")
             return
 
         super().setEditorData(editor, index)
@@ -1034,23 +1187,20 @@ class PropertiesView(QTreeView):
     signals.
     """
 
-    # Character counts for fixed-width columns (Lower, Upper, Vary); see _apply_column_widths.
-    _NARROW_COLUMN_CHAR_WIDTHS = (4, 4, 3)
-    # Flexible columns 0,1,5 (Name, Value, Expr): Name is 1.5x Value; Expr matches Value.
+    # Flexible columns 0,1 (Name, Value): Name is 1.5x Value.
     _FLEX_WEIGHT_NAME = 3
     _FLEX_WEIGHT_VALUE = 2
-    _FLEX_WEIGHT_EXPR = 2
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
-        self._narrow_section_widths: list[int] = []
         self._syncing_selection = False
         self._updating_from_view = False
         self._refresh_scheduled = False
         self._last_spectrum_id: str | None = None
         self._applied_default_expand = False
         self._slider_editor_index: QPersistentModelIndex | None = None
+        self._expanded_param_index: QPersistentModelIndex | None = None
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
@@ -1074,47 +1224,39 @@ class PropertiesView(QTreeView):
         super().resizeEvent(event)
         self._update_flexible_column_widths()
 
-    def _apply_column_widths(self) -> None:
-        """
-        Lay out columns so the table uses the full view width.
+    def drawBranches(
+        self,
+        painter: QPainter,
+        rect: QRect,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Omit expand/collapse chevrons on parameter rows (auto-expanded on select)."""
+        item = index.internalPointer() if index.isValid() else None
+        if isinstance(item, PropertyItem) and item.kind in {
+            ItemKind.PARAMETER_ROW,
+            ItemKind.PARAMETER_FIELD,
+        }:
+            return
+        super().drawBranches(painter, rect, index)
 
-        Name, Value, and Expr are sized in proportion (Name 1.5x Value, Expr same
-        as Value); Lower, Upper, and Vary stay fixed from font metrics.
-        """
-        fm = QFontMetrics(self.font())
+    def _apply_column_widths(self) -> None:
+        """Lay out Name and Value across the full view width (Name 1.5x Value)."""
         hdr = self.header()
-        padding = 14
-        narrow_cols = (2, 3, 4)
-        ref_char = "0"
-        self._narrow_section_widths: list[int] = []
-        for col, n in zip(narrow_cols, self._NARROW_COLUMN_CHAR_WIDTHS, strict=True):
-            w = fm.horizontalAdvance(ref_char * n) + padding
-            self._narrow_section_widths.append(w)
-            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
-            hdr.resizeSection(col, w)
-        for col in (0, 1, 5):
+        for col in (0, 1):
             hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Fixed)
         self._update_flexible_column_widths()
 
     def _update_flexible_column_widths(self) -> None:
-        """Divide remaining width across Name, Value, Expr using configured weights."""
-        if len(self._narrow_section_widths) != len(self._NARROW_COLUMN_CHAR_WIDTHS):
-            return
+        """Divide viewport width across Name and Value using configured weights."""
         vp_w = int(self.viewport().width())
         if vp_w <= 0:
             return
-        narrow_total = sum(self._narrow_section_widths)
-        available = vp_w - narrow_total
-        if available <= 0:
-            return
-        w_sum = self._FLEX_WEIGHT_NAME + self._FLEX_WEIGHT_VALUE + self._FLEX_WEIGHT_EXPR
-        w_name = (self._FLEX_WEIGHT_NAME * available) // w_sum
-        w_value = (self._FLEX_WEIGHT_VALUE * available) // w_sum
-        w_expr = available - w_name - w_value
+        w_sum = self._FLEX_WEIGHT_NAME + self._FLEX_WEIGHT_VALUE
+        w_name = (self._FLEX_WEIGHT_NAME * vp_w) // w_sum
+        w_value = vp_w - w_name
         hdr = self.header()
         hdr.resizeSection(0, w_name)
         hdr.resizeSection(1, w_value)
-        hdr.resizeSection(5, w_expr)
 
     def model(self) -> PropertiesModel:  # type: ignore[override]
         """
@@ -1140,15 +1282,44 @@ class PropertiesView(QTreeView):
         QTimer.singleShot(0, self._refresh_now)
 
     def _refresh_now(self) -> None:
-        """Refresh tree contents and keep the full hierarchy expanded."""
+        """Refresh tree contents; restore focused parameter/field when possible."""
         self._refresh_scheduled = False
+        focus_key = self._stable_key_for_current_item()
+        focus_column = 0
+        current = self.selectionModel().currentIndex()
+        if current.isValid():
+            focus_column = current.column()
         self._close_parameter_slider_editor()
+        self._expanded_param_index = None
         self._model.refresh()
-        self.expandAll()
+        self._expand_hierarchy_except_param_details()
         self._applied_default_expand = True
         self._last_spectrum_id = self._controller.selected_spectrum_id
-        self.sync_selection_from_controller()
-        self._sync_parameter_slider_editor()
+        if focus_key is not None and self._select_by_stable_key(focus_key, focus_column):
+            pass
+        else:
+            self.sync_selection_from_controller()
+        self._sync_parameter_detail_and_slider()
+
+    def _expand_hierarchy_except_param_details(self) -> None:
+        """Expand region/component nodes; leave parameter constraint children collapsed."""
+        self.expandAll()
+        root = QModelIndex()
+        for r in range(self._model.rowCount(root)):
+            region_index = self._model.index(r, 0, root)
+            self._collapse_parameter_details_under(region_index)
+
+    def _collapse_parameter_details_under(self, parent: QModelIndex) -> None:
+        """Recursively collapse ``PARAMETER_ROW`` nodes (hide lower/upper/expr)."""
+        for row in range(self._model.rowCount(parent)):
+            child = self._model.index(row, 0, parent)
+            item = child.internalPointer()
+            if not isinstance(item, PropertyItem):
+                continue
+            if item.kind == ItemKind.PARAMETER_ROW:
+                self.collapse(child)
+            else:
+                self._collapse_parameter_details_under(child)
 
     def _close_parameter_slider_editor(self) -> None:
         """Close the open parameter slider editor, if any."""
@@ -1162,8 +1333,8 @@ class PropertiesView(QTreeView):
             self.closePersistentEditor(idx)
         self._slider_editor_index = None
 
-    def _sync_parameter_slider_editor(self) -> None:
-        """Show the soft-range slider on the selected parameter or region-slice cell."""
+    def _sync_parameter_detail_and_slider(self) -> None:
+        """Expand selected parameter's constraints and open the soft-range slider."""
         current = self.selectionModel().currentIndex()
         target_index = QModelIndex()
         cursor = current
@@ -1177,10 +1348,29 @@ class PropertiesView(QTreeView):
                 break
             cursor = cursor.parent()
 
+        prev_param = (
+            _as_model_index(self._expanded_param_index)
+            if self._expanded_param_index is not None
+            else QModelIndex()
+        )
+
+        target_item = target_index.internalPointer() if target_index.isValid() else None
+        is_param = (
+            isinstance(target_item, PropertyItem) and target_item.kind == ItemKind.PARAMETER_ROW
+        )
+
+        if prev_param.isValid() and (not is_param or prev_param != target_index):
+            self.collapse(prev_param)
+            self._expanded_param_index = None
+
         if not target_index.isValid():
             self._close_parameter_slider_editor()
             self.doItemsLayout()
             return
+
+        if is_param:
+            self.expand(target_index)
+            self._expanded_param_index = QPersistentModelIndex(target_index)
 
         value_index = self._model.index(target_index.row(), 1, target_index.parent())
         if (
@@ -1193,6 +1383,10 @@ class PropertiesView(QTreeView):
         self.openPersistentEditor(value_index)
         self._slider_editor_index = QPersistentModelIndex(value_index)
         self.doItemsLayout()
+
+    def _sync_parameter_slider_editor(self) -> None:
+        """Compatibility wrapper: sync detail expand + slider together."""
+        self._sync_parameter_detail_and_slider()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         """Open the model picker when the model value chip is clicked."""
@@ -1308,7 +1502,80 @@ class PropertiesView(QTreeView):
             return ("slice", item.region_id, item.name)
         if item.kind == ItemKind.PARAMETER_ROW:
             return ("param", item.component_id, item.parameter_name)
+        if item.kind == ItemKind.PARAMETER_FIELD:
+            return (
+                "param_field",
+                item.component_id,
+                item.parameter_name,
+                item.parameter_field,
+            )
         return ("other", item.kind, item.name)
+
+    def _stable_key_for_current_item(self) -> tuple[Any, ...] | None:
+        """Return a stable key for the current selection, if any."""
+        current = self.selectionModel().currentIndex()
+        if not current.isValid():
+            return None
+        item = current.internalPointer()
+        if not isinstance(item, PropertyItem):
+            return None
+        if item.kind in {
+            ItemKind.PARAMETER_ROW,
+            ItemKind.PARAMETER_FIELD,
+            ItemKind.REGION_SLICE,
+            ItemKind.COMPONENT,
+            ItemKind.COMPONENT_MODEL,
+            ItemKind.REGION,
+        }:
+            return self._stable_key_for_item(item)
+        return None
+
+    def _select_by_stable_key(self, key: tuple[Any, ...], column: int = 0) -> bool:
+        """
+        Select the row matching ``key`` and expand ancestors.
+
+        Returns
+        -------
+        bool
+            True when a matching row was found and selected.
+        """
+        found = self._find_index_by_stable_key(key)
+        if found is None:
+            return False
+        # Expand ancestors so nested parameter fields are visible.
+        parent = found.parent()
+        while parent.isValid():
+            self.expand(parent)
+            parent = parent.parent()
+        col = max(0, min(column, self._model.columnCount() - 1))
+        target = self._model.index(found.row(), col, found.parent())
+        self._syncing_selection = True
+        try:
+            self.setCurrentIndex(target)
+            self.selectionModel().select(
+                target,
+                QItemSelectionModel.SelectionFlag.ClearAndSelect
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
+        finally:
+            self._syncing_selection = False
+        return True
+
+    def _find_index_by_stable_key(self, key: tuple[Any, ...]) -> QModelIndex | None:
+        """Return column-0 index for the item with the given stable key."""
+
+        def walk(parent: QModelIndex) -> QModelIndex | None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                raw = idx.internalPointer()
+                if isinstance(raw, PropertyItem) and self._stable_key_for_item(raw) == key:
+                    return idx
+                nested = walk(idx)
+                if nested is not None:
+                    return nested
+            return None
+
+        return walk(QModelIndex())
 
     def _collect_expanded_stable_keys(self) -> set[tuple[Any, ...]]:
         """Return stable keys for all expanded property rows."""
@@ -1360,8 +1627,8 @@ class PropertiesView(QTreeView):
 
         indexes = selected.indexes()
         if not indexes:
-            # Model resets clear the view selection; do not wipe controller state.
-            self._sync_parameter_slider_editor()
+            # Intermediate clears (cell editor handoff / model reset) must not
+            # collapse the open parameter detail.
             return
 
         index = indexes[0]
@@ -1378,6 +1645,7 @@ class PropertiesView(QTreeView):
                     ItemKind.COMPONENT,
                     ItemKind.COMPONENT_MODEL,
                     ItemKind.PARAMETER_ROW,
+                    ItemKind.PARAMETER_FIELD,
                 }:
                     component_id = cursor.component_id
             if region_id is None and cursor.region_id is not None:

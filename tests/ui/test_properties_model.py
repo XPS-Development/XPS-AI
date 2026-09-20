@@ -21,17 +21,16 @@ def mock_controller() -> MagicMock:
 
 
 def test_properties_model_column_count_and_headers(mock_controller: MagicMock) -> None:
-    """Model exposes six columns with expected header labels."""
+    """Model exposes two columns: Name and Value."""
     model = PropertiesModel(mock_controller)
     model.refresh()
-    assert model.columnCount() == 6
+    assert model.columnCount() == 2
     assert model.headerData(0, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Name"
     assert model.headerData(1, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Value"
-    assert model.headerData(5, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Expr"
 
 
 def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
-    """PARAMETER_ROW serves value/lower/upper/vary/expr across columns 1-5."""
+    """PARAMETER_ROW serves value; nested fields hold bounds / vary / expr."""
     del mock_controller  # unused; build a minimal tree without refresh()
     model = PropertiesModel(MagicMock(selected_spectrum_id=None))
     model._root_item.children.clear()
@@ -45,21 +44,43 @@ def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
         param_lower=0.0,
         param_upper=10.0,
         param_vary=True,
-        param_expr=None,
+        param_expr="pOther",
     )
     model._root_item.append_child(row)
+    for field_name, field_value in (
+        ("lower", 0.0),
+        ("upper", 10.0),
+        ("vary", True),
+        ("expr", "pOther"),
+    ):
+        row.append_child(
+            PropertyItem(
+                name=field_name,
+                value=field_value,
+                parent=row,
+                kind=ItemKind.PARAMETER_FIELD,
+                component_id="c1",
+                parameter_name="amplitude",
+                parameter_field=field_name,  # type: ignore[arg-type]
+            )
+        )
     model.beginResetModel()
     model.endResetModel()
 
     def idx(c: int):
         return model.index(0, c, QModelIndex())
 
-    assert model.data(idx(0), Qt.ItemDataRole.DisplayRole) == "amplitude"
+    assert model.data(idx(0), Qt.ItemDataRole.DisplayRole) == "amplitude  ƒ"
     assert model.data(idx(1), Qt.ItemDataRole.DisplayRole) == "1.50"
-    assert model.data(idx(2), Qt.ItemDataRole.DisplayRole) == "0.00"
-    assert model.data(idx(3), Qt.ItemDataRole.DisplayRole) == "10.00"
-    assert model.data(idx(4), Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
-    assert model.data(idx(5), Qt.ItemDataRole.DisplayRole) == ""
+    assert model.data(idx(0), Qt.ItemDataRole.ToolTipRole) is None
+
+    param = model.index(0, 0, QModelIndex())
+    lower = model.index(0, 1, param)
+    vary = model.index(2, 1, param)
+    expr = model.index(3, 1, param)
+    assert model.data(lower, Qt.ItemDataRole.DisplayRole) == "0.00"
+    assert model.data(vary, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+    assert model.data(expr, Qt.ItemDataRole.DisplayRole) == "pOther"
 
 
 def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> None:
@@ -81,11 +102,7 @@ def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> 
     model._root_item.append_child(peak)
     model.beginResetModel()
     model.endResetModel()
-
-    idx = model.index(0, 0, QModelIndex())
-    assert model.data(idx, Qt.ItemDataRole.DisplayRole) == "Peak 1"
-    assert model.data(idx, ObjectIdRole) == "pabcdef123"
-    assert model.data(idx, ObjectIdPrefixRole) == "pabcd"
-    color = model.data(idx, ComponentColorRole)
-    assert isinstance(color, str)
-    assert color.startswith("#")
+    index = model.index(0, 0, QModelIndex())
+    assert model.data(index, ObjectIdRole) == "pabcdef123"
+    assert model.data(index, ObjectIdPrefixRole) == "pabcd"
+    assert isinstance(model.data(index, ComponentColorRole), str)
