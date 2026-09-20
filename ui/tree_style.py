@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 
 if TYPE_CHECKING:
-    from PySide6.QtWidgets import QComboBox, QTreeView
+    from PySide6.QtWidgets import QComboBox, QMenu, QTreeView
 
 # Side panels sit slightly off-white; the plot stays pure white.
 _PANEL_BG = "#f7f7f7"
@@ -58,9 +59,10 @@ _COMBO_STYLE = f"""
 QComboBox {{
     background: #ffffff;
     border: 1px solid #d0d0d0;
-    border-radius: 4px;
-    padding: 1px 6px;
+    border-radius: 6px;
+    padding: 2px 8px;
     color: #000000;
+    min-height: 20px;
 }}
 QComboBox:hover {{
     border: 1px solid #b8b8b8;
@@ -70,32 +72,43 @@ QComboBox::drop-down {{
     subcontrol-position: center right;
     width: 18px;
     border: none;
-    border-left: 1px solid #e0e0e0;
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
 }}
 QComboBox QAbstractItemView {{
     background: #ffffff;
-    border: 1px solid #d0d0d0;
-    border-radius: 4px;
-    padding: 2px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 4px;
     outline: none;
     selection-background-color: {_SELECTION_BG};
     selection-color: #000000;
 }}
-QComboBox QAbstractItemView::item {{
-    min-height: 22px;
-    padding: 2px 8px;
-    border-radius: 3px;
-    color: #000000;
+"""
+
+_MENU_STYLE = f"""
+QMenu {{
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 4px;
 }}
-QComboBox QAbstractItemView::item:selected {{
+QMenu::item {{
+    background: transparent;
+    color: #000000;
+    padding: 6px 28px 6px 12px;
+    border-radius: 6px;
+    margin: 1px 2px;
+}}
+QMenu::item:selected {{
     background: {_SELECTION_BG};
     color: #000000;
 }}
-QComboBox QAbstractItemView::item:hover {{
-    background: {_HOVER_BG};
-    color: #000000;
+QMenu::item:checked {{
+    font-weight: normal;
+}}
+QMenu::indicator {{
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
 }}
 """
 
@@ -155,3 +168,21 @@ def apply_editor_combo_style(combo: QComboBox) -> None:
         view_palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
         view_palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
         view.setPalette(view_palette)
+
+
+def apply_editor_menu_style(menu: QMenu) -> None:
+    """
+    Style a popup menu like a Cursor dropdown (rounded, gray selection).
+
+    Parameters
+    ----------
+    menu : QMenu
+        Menu to style.
+    """
+    menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+    palette = menu.palette()
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(_SELECTION_BG))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+    menu.setPalette(palette)
+    menu.setStyleSheet(_MENU_STYLE)

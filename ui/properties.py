@@ -6,11 +6,10 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 import numpy as np
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QResizeEvent
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, QRect, Qt
+from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QHeaderView,
     QMenu,
     QStyle,
@@ -32,7 +31,7 @@ from .name_id_delegate import (
     ObjectIdRole,
 )
 from .parameter_value_editor import ParameterValueEditor
-from .tree_style import apply_editor_combo_style, apply_editor_tree_style
+from .tree_style import apply_editor_menu_style, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -307,7 +306,7 @@ class PropertiesModel(QAbstractItemModel):
                 return base_flags | Qt.ItemFlag.ItemIsEditable
             return base_flags
 
-        if col == 1 and item.kind in {ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}:
+        if col == 1 and item.kind == ItemKind.REGION_SLICE:
             return base_flags | Qt.ItemFlag.ItemIsEditable
 
         return base_flags
@@ -670,7 +669,7 @@ class PropertiesModel(QAbstractItemModel):
 
 
 class PropertiesDelegate(QStyledItemDelegate):
-    """Delegate for model combo boxes and selected-row parameter slider editors."""
+    """Delegate for model chips and selected-row soft-range slider editors."""
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -685,9 +684,8 @@ class PropertiesDelegate(QStyledItemDelegate):
         """
         Paint cells; draw model chips and suppress text under open editors.
 
-        Persistent editors otherwise sit on top of the model text and look like
-        doubled / overlapping values. Model values always look like editable
-        Cursor-style controls when no editor is open.
+        Model values always look like compact Cursor-style controls. Persistent
+        slider editors otherwise sit on top of DisplayRole text.
         """
         item = index.internalPointer() if index.isValid() else None
         view = self.parent()
@@ -699,8 +697,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         if (
             has_editor
             and isinstance(item, PropertyItem)
-            and item.kind
-            in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}
+            and item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE}
             and index.column() == 1
         ):
             opt = QStyleOptionViewItem(option)
@@ -713,8 +710,7 @@ class PropertiesDelegate(QStyledItemDelegate):
                 return
 
         if (
-            not has_editor
-            and isinstance(item, PropertyItem)
+            isinstance(item, PropertyItem)
             and item.kind == ItemKind.COMPONENT_MODEL
             and index.column() == 1
         ):
@@ -730,7 +726,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         index: QModelIndex | QPersistentModelIndex,
         text: str,
     ) -> None:
-        """Draw a Cursor-style bordered value chip with a chevron affordance."""
+        """Draw a compact Cursor-style value chip that does not change row height."""
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
         opt.text = ""
@@ -741,14 +737,16 @@ class PropertiesDelegate(QStyledItemDelegate):
 
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        rect = opt.rect.adjusted(4, 3, -6, -3)
-        if rect.width() < 24 or rect.height() < 12:
+        chip_h = min(22, max(16, opt.rect.height() - 6))
+        y = opt.rect.y() + (opt.rect.height() - chip_h) // 2
+        rect = QRect(opt.rect.x() + 4, y, max(0, opt.rect.width() - 12), chip_h)
+        if rect.width() < 24:
             painter.restore()
             return
 
         painter.setPen(QColor("#d0d0d0"))
         painter.setBrush(QColor("#ffffff"))
-        painter.drawRoundedRect(rect, 4, 4)
+        painter.drawRoundedRect(rect, 6, 6)
 
         chevron = "▾"
         metrics = opt.fontMetrics
@@ -770,27 +768,62 @@ class PropertiesDelegate(QStyledItemDelegate):
         )
         painter.restore()
 
+    def show_model_menu(self, global_pos: QPoint, index: QModelIndex) -> None:
+        """
+        Show a Cursor-style model picker menu for a ``COMPONENT_MODEL`` cell.
+
+        Parameters
+        ----------
+        global_pos : QPoint
+            Global position for the popup.
+        index : QModelIndex
+            Model value cell index.
+        """
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+            return
+        view = self.parent()
+        if not isinstance(view, QWidget):
+            return
+
+        if item.component_kind == "peak":
+            names = self._controller.query.get_peak_model_names()
+        else:
+            names = self._controller.query.get_background_model_names()
+        current = str(item.value or "")
+
+        menu = QMenu(view)
+        apply_editor_menu_style(menu)
+        for name in names:
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(name == current)
+            action.setData(name)
+
+        menu.move(global_pos)
+        exec_menu: Any = menu.exec
+        chosen = exec_menu()
+        if chosen is None:
+            return
+        new_name = str(chosen.data())
+        if not new_name or new_name == current:
+            return
+        model = index.model()
+        if model is not None:
+            model.setData(index, new_name, Qt.ItemDataRole.EditRole)
+
     def createEditor(
         self,
         parent: QWidget,
         option: Any,
         index: QModelIndex | QPersistentModelIndex,
     ) -> QWidget:
-        """Create a combo box or slider value editor for column 1."""
+        """Create a soft-range slider editor for parameter/slice value cells."""
         if index.column() != 1:
             return super().createEditor(parent, option, index)
         item = index.internalPointer() if index.isValid() else None
         if not isinstance(item, PropertyItem):
             return super().createEditor(parent, option, index)
-
-        if item.kind == ItemKind.COMPONENT_MODEL:
-            combo = QComboBox(parent)
-            apply_editor_combo_style(combo)
-            if item.component_kind == "peak":
-                combo.addItems(self._controller.query.get_peak_model_names())
-            else:
-                combo.addItems(self._controller.query.get_background_model_names())
-            return combo
 
         if (
             item.kind == ItemKind.PARAMETER_ROW
@@ -841,7 +874,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         return super().createEditor(parent, option, index)
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
-        """Populate the editor with the current model or parameter value."""
+        """Populate the editor with the current parameter or slice value."""
         if index.column() != 1:
             super().setEditorData(editor, index)
             return
@@ -850,18 +883,9 @@ class PropertiesDelegate(QStyledItemDelegate):
             super().setEditorData(editor, index)
             return
 
-        if item.kind == ItemKind.COMPONENT_MODEL and isinstance(editor, QComboBox):
-            display = _format_value(item.value)
-            idx = editor.findText(display)
-            if idx >= 0:
-                editor.setCurrentIndex(idx)
-            return
-
-        if item.kind == ItemKind.PARAMETER_ROW and isinstance(editor, ParameterValueEditor):
-            editor.set_value(float(item.value))
-            return
-
-        if item.kind == ItemKind.REGION_SLICE and isinstance(editor, ParameterValueEditor):
+        if item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE} and isinstance(
+            editor, ParameterValueEditor
+        ):
             editor.set_value(float(item.value))
             return
 
@@ -873,7 +897,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         model: QAbstractItemModel,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        """Commit the selected model name or parameter value."""
+        """Commit a parameter or region-slice value from the slider editor."""
         if index.column() != 1:
             super().setModelData(editor, model, index)
             return
@@ -882,22 +906,9 @@ class PropertiesDelegate(QStyledItemDelegate):
             super().setModelData(editor, model, index)
             return
 
-        if item.kind == ItemKind.COMPONENT_MODEL and isinstance(editor, QComboBox):
-            model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
-            return
-
-        if item.kind == ItemKind.PARAMETER_ROW and isinstance(editor, ParameterValueEditor):
-            editor.commit_if_needed()
-            item.value = editor.value()
-            top_left = model.index(index.row(), index.column(), index.parent())
-            model.dataChanged.emit(
-                top_left,
-                top_left,
-                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole],
-            )
-            return
-
-        if item.kind == ItemKind.REGION_SLICE and isinstance(editor, ParameterValueEditor):
+        if item.kind in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE} and isinstance(
+            editor, ParameterValueEditor
+        ):
             editor.commit_if_needed()
             item.value = editor.value()
             top_left = model.index(index.row(), index.column(), index.parent())
@@ -923,9 +934,6 @@ class PropertiesDelegate(QStyledItemDelegate):
         widget = view.indexWidget(_as_model_index(index))
         if isinstance(widget, ParameterValueEditor):
             hint.setHeight(max(hint.height(), 52))
-            hint.setWidth(max(hint.width(), 100))
-        elif widget is not None:
-            hint.setHeight(max(hint.height(), 28))
             hint.setWidth(max(hint.width(), 100))
         return hint
 
@@ -968,7 +976,8 @@ class PropertiesView(QTreeView):
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
-        self.setItemDelegateForColumn(1, PropertiesDelegate(controller, self))
+        self._value_delegate = PropertiesDelegate(controller, self)
+        self.setItemDelegateForColumn(1, self._value_delegate)
         self.setIndentation(12)
         self.setHeaderHidden(False)
         hdr = self.header()
@@ -1063,7 +1072,7 @@ class PropertiesView(QTreeView):
         self._slider_editor_index = None
 
     def _sync_parameter_slider_editor(self) -> None:
-        """Show the value editor on the selected parameter, slice, or model cell."""
+        """Show the soft-range slider on the selected parameter or region-slice cell."""
         current = self.selectionModel().currentIndex()
         target_index = QModelIndex()
         cursor = current
@@ -1072,7 +1081,6 @@ class PropertiesView(QTreeView):
             if isinstance(ptr, PropertyItem) and ptr.kind in {
                 ItemKind.PARAMETER_ROW,
                 ItemKind.REGION_SLICE,
-                ItemKind.COMPONENT_MODEL,
             }:
                 target_index = cursor
                 break
@@ -1094,6 +1102,23 @@ class PropertiesView(QTreeView):
         self.openPersistentEditor(value_index)
         self._slider_editor_index = QPersistentModelIndex(value_index)
         self.doItemsLayout()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Open the model picker when the model value chip is clicked."""
+        super().mouseReleaseEvent(event)
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        index = self.indexAt(event.position().toPoint())
+        if not index.isValid() or index.column() != 1:
+            return
+        item = index.internalPointer()
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+            return
+        rect = self.visualRect(index)
+        self._value_delegate.show_model_menu(
+            self.viewport().mapToGlobal(rect.bottomLeft()),
+            index,
+        )
 
     def on_controller_selection_changed(
         self,
