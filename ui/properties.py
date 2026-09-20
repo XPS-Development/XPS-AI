@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.math_models.soft_ranges import soft_parameter_range
+from core.math_models.soft_ranges import soft_parameter_range, soft_region_bound_range
 
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
@@ -318,8 +318,11 @@ class PropertiesModel(QAbstractItemModel):
         region_id: str,
         start_val: int | float,
         stop_val: int | float,
+        *,
+        slice_mode: Literal["value", "index"],
     ) -> None:
         """Add start and stop rows under parent for the given region slice."""
+        soft_lo, soft_hi = self._slice_soft_range(region_id, slice_mode)
         parent_item.append_child(
             PropertyItem(
                 name="start",
@@ -327,6 +330,8 @@ class PropertiesModel(QAbstractItemModel):
                 parent=parent_item,
                 kind=ItemKind.REGION_SLICE,
                 region_id=region_id,
+                soft_lo=soft_lo,
+                soft_hi=soft_hi,
             )
         )
         parent_item.append_child(
@@ -336,7 +341,34 @@ class PropertiesModel(QAbstractItemModel):
                 parent=parent_item,
                 kind=ItemKind.REGION_SLICE,
                 region_id=region_id,
+                soft_lo=soft_lo,
+                soft_hi=soft_hi,
             )
+        )
+
+    def _slice_soft_range(
+        self,
+        region_id: str,
+        slice_mode: Literal["value", "index"],
+    ) -> tuple[float, float]:
+        """Return soft slider bounds for region start/stop rows."""
+        x_min: float | None = None
+        x_max: float | None = None
+        index_count: int | None = None
+        try:
+            spectrum_id = self._controller.query.get_parent_id(region_id)
+            spectrum = self._controller.query.get_spectrum_dto(spectrum_id, normalized=False)
+            if spectrum.x.size:
+                x_min = float(np.min(spectrum.x))
+                x_max = float(np.max(spectrum.x))
+                index_count = int(spectrum.x.size)
+        except KeyError:
+            pass
+        return soft_region_bound_range(
+            mode=slice_mode,
+            x_min=x_min,
+            x_max=x_max,
+            index_count=index_count,
         )
 
     def _add_parameters(
@@ -562,7 +594,9 @@ class PropertiesModel(QAbstractItemModel):
                 start_val if start_val is not None else (0 if slice_mode == "index" else 0.0)
             )
             stop_val = stop_val if stop_val is not None else (0 if slice_mode == "index" else 0.0)
-            self._add_region_slice(region_item, region_id, start_val, stop_val)
+            self._add_region_slice(
+                region_item, region_id, start_val, stop_val, slice_mode=slice_mode
+            )
 
             background_id = query.get_background_id(region_id)
             peaks_ids = list(query.get_peaks_ids(region_id))
@@ -649,10 +683,11 @@ class PropertiesDelegate(QStyledItemDelegate):
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
         """
-        Paint cells; suppress DisplayRole text under an open parameter editor.
+        Paint cells; draw model chips and suppress text under open editors.
 
         Persistent editors otherwise sit on top of the model text and look like
-        doubled / overlapping values.
+        doubled / overlapping values. Model values always look like editable
+        Cursor-style controls when no editor is open.
         """
         item = index.internalPointer() if index.isValid() else None
         view = self.parent()
@@ -664,7 +699,8 @@ class PropertiesDelegate(QStyledItemDelegate):
         if (
             has_editor
             and isinstance(item, PropertyItem)
-            and item.kind == ItemKind.PARAMETER_ROW
+            and item.kind
+            in {ItemKind.PARAMETER_ROW, ItemKind.REGION_SLICE, ItemKind.COMPONENT_MODEL}
             and index.column() == 1
         ):
             opt = QStyleOptionViewItem(option)
@@ -675,7 +711,64 @@ class PropertiesDelegate(QStyledItemDelegate):
             if style is not None:
                 style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
                 return
+
+        if (
+            not has_editor
+            and isinstance(item, PropertyItem)
+            and item.kind == ItemKind.COMPONENT_MODEL
+            and index.column() == 1
+        ):
+            self._paint_model_chip(painter, option, index, str(item.value or ""))
+            return
+
         super().paint(painter, option, index)
+
+    def _paint_model_chip(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+        text: str,
+    ) -> None:
+        """Draw a Cursor-style bordered value chip with a chevron affordance."""
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = opt.rect.adjusted(4, 3, -6, -3)
+        if rect.width() < 24 or rect.height() < 12:
+            painter.restore()
+            return
+
+        painter.setPen(QColor("#d0d0d0"))
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawRoundedRect(rect, 4, 4)
+
+        chevron = "▾"
+        metrics = opt.fontMetrics
+        chevron_w = metrics.horizontalAdvance(chevron) + 8
+        text_rect = rect.adjusted(8, 0, -chevron_w, 0)
+        painter.setPen(QColor("#000000"))
+        painter.setFont(opt.font)
+        elided = metrics.elidedText(text, Qt.TextElideMode.ElideRight, text_rect.width())
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            elided,
+        )
+        painter.setPen(QColor("#666666"))
+        painter.drawText(
+            rect.adjusted(0, 0, -6, 0),
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            chevron,
+        )
+        painter.restore()
 
     def createEditor(
         self,
@@ -715,10 +808,34 @@ class PropertiesDelegate(QStyledItemDelegate):
                 parent=parent,
             )
 
-            def _commit() -> None:
+            def _commit_param() -> None:
                 self.commitData.emit(editor)
 
-            editor.editingFinished.connect(_commit)
+            editor.editingFinished.connect(_commit_param)
+            return editor
+
+        if (
+            item.kind == ItemKind.REGION_SLICE
+            and item.region_id is not None
+            and item.name in {"start", "stop"}
+            and item.soft_lo is not None
+            and item.soft_hi is not None
+        ):
+            slice_mode = self._controller.get_app_parameters().region_slice_display_mode
+            editor = ParameterValueEditor(
+                self._controller,
+                region_id=item.region_id,
+                slice_bound=item.name,  # type: ignore[arg-type]
+                slice_mode=slice_mode,
+                soft_lo=item.soft_lo,
+                soft_hi=item.soft_hi,
+                parent=parent,
+            )
+
+            def _commit_slice() -> None:
+                self.commitData.emit(editor)
+
+            editor.editingFinished.connect(_commit_slice)
             return editor
 
         return super().createEditor(parent, option, index)
@@ -741,6 +858,10 @@ class PropertiesDelegate(QStyledItemDelegate):
             return
 
         if item.kind == ItemKind.PARAMETER_ROW and isinstance(editor, ParameterValueEditor):
+            editor.set_value(float(item.value))
+            return
+
+        if item.kind == ItemKind.REGION_SLICE and isinstance(editor, ParameterValueEditor):
             editor.set_value(float(item.value))
             return
 
@@ -776,6 +897,17 @@ class PropertiesDelegate(QStyledItemDelegate):
             )
             return
 
+        if item.kind == ItemKind.REGION_SLICE and isinstance(editor, ParameterValueEditor):
+            editor.commit_if_needed()
+            item.value = editor.value()
+            top_left = model.index(index.row(), index.column(), index.parent())
+            model.dataChanged.emit(
+                top_left,
+                top_left,
+                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole],
+            )
+            return
+
         super().setModelData(editor, model, index)
 
     def sizeHint(
@@ -783,16 +915,17 @@ class PropertiesDelegate(QStyledItemDelegate):
         option: Any,
         index: QModelIndex | QPersistentModelIndex,
     ) -> Any:
-        """Use a taller row only while the parameter slider editor is open."""
+        """Use a taller row only while the soft-range slider editor is open."""
         hint = super().sizeHint(option, index)
         view = self.parent()
-        if (
-            isinstance(view, QTreeView)
-            and index.isValid()
-            and index.column() == 1
-            and view.indexWidget(_as_model_index(index)) is not None
-        ):
+        if not (isinstance(view, QTreeView) and index.isValid() and index.column() == 1):
+            return hint
+        widget = view.indexWidget(_as_model_index(index))
+        if isinstance(widget, ParameterValueEditor):
             hint.setHeight(max(hint.height(), 52))
+            hint.setWidth(max(hint.width(), 100))
+        elif widget is not None:
+            hint.setHeight(max(hint.height(), 28))
             hint.setWidth(max(hint.width(), 100))
         return hint
 
@@ -828,6 +961,7 @@ class PropertiesView(QTreeView):
         self._controller = controller
         self._narrow_section_widths: list[int] = []
         self._syncing_selection = False
+        self._updating_from_view = False
         self._last_spectrum_id: str | None = None
         self._applied_default_expand = False
         self._slider_editor_index: QPersistentModelIndex | None = None
@@ -929,23 +1063,27 @@ class PropertiesView(QTreeView):
         self._slider_editor_index = None
 
     def _sync_parameter_slider_editor(self) -> None:
-        """Show the soft-range slider only on the selected parameter value cell."""
+        """Show the value editor on the selected parameter, slice, or model cell."""
         current = self.selectionModel().currentIndex()
-        param_index = QModelIndex()
+        target_index = QModelIndex()
         cursor = current
         while cursor.isValid():
             ptr = cursor.internalPointer()
-            if isinstance(ptr, PropertyItem) and ptr.kind == ItemKind.PARAMETER_ROW:
-                param_index = cursor
+            if isinstance(ptr, PropertyItem) and ptr.kind in {
+                ItemKind.PARAMETER_ROW,
+                ItemKind.REGION_SLICE,
+                ItemKind.COMPONENT_MODEL,
+            }:
+                target_index = cursor
                 break
             cursor = cursor.parent()
 
-        if not param_index.isValid():
+        if not target_index.isValid():
             self._close_parameter_slider_editor()
             self.doItemsLayout()
             return
 
-        value_index = self._model.index(param_index.row(), 1, param_index.parent())
+        value_index = self._model.index(target_index.row(), 1, target_index.parent())
         if (
             self._slider_editor_index is not None
             and _as_model_index(self._slider_editor_index) == value_index
@@ -977,6 +1115,8 @@ class PropertiesView(QTreeView):
         """
         if spectrum_id != self._last_spectrum_id:
             self.refresh()
+            return
+        if self._updating_from_view:
             return
         self.sync_selection_from_controller()
 
@@ -1128,11 +1268,15 @@ class PropertiesView(QTreeView):
                 region_id = cursor.region_id
             cursor = cursor.parent
 
-        self._controller.set_selection(
-            self._controller.selected_spectrum_id,
-            region_id,
-            component_id,
-        )
+        self._updating_from_view = True
+        try:
+            self._controller.set_selection(
+                self._controller.selected_spectrum_id,
+                region_id,
+                component_id,
+            )
+        finally:
+            self._updating_from_view = False
         self._sync_parameter_slider_editor()
 
     def _selected_component_id(self) -> str | None:

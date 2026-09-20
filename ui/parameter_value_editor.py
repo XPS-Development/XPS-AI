@@ -1,8 +1,8 @@
-"""Inline value + soft-range slider editor for parameter rows."""
+"""Inline value + soft-range slider editor for parameter and region rows."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QDoubleSpinBox, QSlider, QVBoxLayout, QWidget
@@ -46,10 +46,11 @@ QSlider::handle:horizontal:pressed {
 
 class ParameterValueEditor(QWidget):
     """
-    Parameter editor with a spin box and a soft-range slider beneath it.
+    Value editor with a spin box and a soft-range slider beneath it.
 
-    While dragging, values are previewed via the controller without undo.
-    Committing records a single undo step from the drag-start value.
+    Supports component parameters and region start/stop bounds. While dragging,
+    values are previewed via the controller without undo. Committing records a
+    single undo step from the drag-start value.
     """
 
     editingFinished = Signal()
@@ -58,10 +59,13 @@ class ParameterValueEditor(QWidget):
         self,
         controller: ControllerWrapper,
         *,
-        component_id: str,
-        parameter_name: str,
         soft_lo: float,
         soft_hi: float,
+        component_id: str | None = None,
+        parameter_name: str | None = None,
+        region_id: str | None = None,
+        slice_bound: Literal["start", "stop"] | None = None,
+        slice_mode: Literal["value", "index"] = "value",
         parent: QWidget | None = None,
     ) -> None:
         """
@@ -71,12 +75,16 @@ class ParameterValueEditor(QWidget):
         ----------
         controller : ControllerWrapper
             Application controller for preview/commit.
-        component_id : str
-            Component owning the parameter.
-        parameter_name : str
-            Parameter name.
         soft_lo, soft_hi : float
             Soft slider bounds.
+        component_id, parameter_name : str or None, optional
+            Component parameter binding (mutually exclusive with region mode).
+        region_id : str or None, optional
+            Region binding for start/stop editing.
+        slice_bound : {"start", "stop"} or None, optional
+            Which region bound this editor controls.
+        slice_mode : {"value", "index"}, optional
+            Region slice display mode.
         parent : QWidget or None, optional
             Parent widget.
         """
@@ -84,6 +92,13 @@ class ParameterValueEditor(QWidget):
         self._controller = controller
         self._component_id = component_id
         self._parameter_name = parameter_name
+        self._region_id = region_id
+        self._slice_bound = slice_bound
+        self._slice_mode: Literal["value", "index"] = slice_mode
+        self._companion_value: float | None = None
+        self._old_start_index: int | None = None
+        self._old_stop_index: int | None = None
+
         self._soft_lo = float(soft_lo)
         self._soft_hi = float(soft_hi)
         if self._soft_hi <= self._soft_lo:
@@ -93,10 +108,12 @@ class ParameterValueEditor(QWidget):
         self._committed = False
         self._updating = False
 
+        decimals = 0 if self._slice_mode == "index" and self._region_id is not None else 4
         self._spin = QDoubleSpinBox(self)
-        self._spin.setDecimals(4)
+        self._spin.setDecimals(decimals)
         self._spin.setRange(self._soft_lo, self._soft_hi)
-        self._spin.setSingleStep(max((self._soft_hi - self._soft_lo) / 100.0, 1e-4))
+        step = 1.0 if decimals == 0 else max((self._soft_hi - self._soft_lo) / 100.0, 1e-4)
+        self._spin.setSingleStep(step)
         self._spin.setKeyboardTracking(False)
         self._spin.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self._spin.setFrame(False)
@@ -138,6 +155,7 @@ class ParameterValueEditor(QWidget):
         """Initialize the displayed value and remember it as the drag-start baseline."""
         self._start_value = float(value)
         self._committed = False
+        self._capture_region_baseline()
         self._updating = True
         try:
             clamped = min(max(float(value), self._soft_lo), self._soft_hi)
@@ -159,13 +177,25 @@ class ParameterValueEditor(QWidget):
         if new_value == old_value:
             self._committed = True
             return
-        self._controller.commit_parameter_preview(
-            self._component_id,
-            self._parameter_name,
-            old_value,
-            new_value,
-            normalized=False,
-        )
+        if self._region_id is not None and self._slice_bound is not None:
+            if self._old_start_index is None or self._old_stop_index is None:
+                return
+            self._controller.commit_region_slice_preview(
+                self._region_id,
+                self._old_start_index,
+                self._old_stop_index,
+            )
+            self._capture_region_baseline()
+        elif self._component_id is not None and self._parameter_name is not None:
+            self._controller.commit_parameter_preview(
+                self._component_id,
+                self._parameter_name,
+                old_value,
+                new_value,
+                normalized=False,
+            )
+        else:
+            return
         self._committed = True
         self._start_value = new_value
 
@@ -173,12 +203,43 @@ class ParameterValueEditor(QWidget):
         """Restore the drag-start value when the editor is dismissed without commit."""
         if self._committed or self._start_value is None:
             return
-        self._controller.preview_parameter_value(
-            self._component_id,
-            self._parameter_name,
-            float(self._start_value),
-            normalized=False,
+        if self._region_id is not None and self._slice_bound is not None:
+            if self._old_start_index is None or self._old_stop_index is None:
+                return
+            self._controller.preview_region_slice(
+                self._region_id,
+                self._old_start_index,
+                self._old_stop_index,
+                mode="index",
+            )
+            return
+        if self._component_id is not None and self._parameter_name is not None:
+            self._controller.preview_parameter_value(
+                self._component_id,
+                self._parameter_name,
+                float(self._start_value),
+                normalized=False,
+            )
+
+    def _capture_region_baseline(self) -> None:
+        if self._region_id is None or self._slice_bound is None:
+            return
+        start_idx, stop_idx = self._controller.query.get_region_slice(self._region_id, mode="index")
+        self._old_start_index = int(start_idx) if start_idx is not None else None
+        self._old_stop_index = int(stop_idx) if stop_idx is not None else None
+        start, stop = self._controller.query.get_region_slice(
+            self._region_id, mode=self._slice_mode
         )
+        if self._slice_bound == "start":
+            self._companion_value = float(stop) if stop is not None else None
+        else:
+            self._companion_value = float(start) if start is not None else None
+
+    def _bounds_for(self, value: float) -> tuple[float, float]:
+        companion = float(self._companion_value) if self._companion_value is not None else value
+        if self._slice_bound == "start":
+            return (float(value), companion)
+        return (companion, float(value))
 
     def _value_to_slider(self, value: float) -> int:
         span = self._soft_hi - self._soft_lo
@@ -189,20 +250,33 @@ class ParameterValueEditor(QWidget):
 
     def _slider_to_value(self, pos: int) -> float:
         t = pos / float(_SLIDER_STEPS)
-        return self._soft_lo + t * (self._soft_hi - self._soft_lo)
+        value = self._soft_lo + t * (self._soft_hi - self._soft_lo)
+        if self._slice_mode == "index" and self._region_id is not None:
+            return float(round(value))
+        return value
 
     def _preview(self, value: float) -> None:
-        self._controller.preview_parameter_value(
-            self._component_id,
-            self._parameter_name,
-            value,
-            normalized=False,
-        )
+        if self._region_id is not None and self._slice_bound is not None:
+            start, stop = self._bounds_for(value)
+            self._controller.preview_region_slice(
+                self._region_id,
+                start,
+                stop,
+                mode=self._slice_mode,
+            )
+            return
+        if self._component_id is not None and self._parameter_name is not None:
+            self._controller.preview_parameter_value(
+                self._component_id,
+                self._parameter_name,
+                value,
+                normalized=False,
+            )
 
     def _on_slider_pressed(self) -> None:
-        # Start a new undo baseline at the value when the drag begins.
         self._start_value = self.value()
         self._committed = False
+        self._capture_region_baseline()
 
     def _on_spin_changed(self, value: float) -> None:
         if self._updating:
@@ -210,6 +284,7 @@ class ParameterValueEditor(QWidget):
         if self._start_value is None:
             self._start_value = float(value)
             self._committed = False
+            self._capture_region_baseline()
         self._updating = True
         try:
             self._slider.setValue(self._value_to_slider(float(value)))

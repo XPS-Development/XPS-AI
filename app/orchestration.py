@@ -26,8 +26,9 @@ from .command.changes import (
     SetMetadata,
     UpdateMultipleParameterValues,
     UpdateParameter,
+    UpdateRegionSlice,
 )
-from .command.commands import Command, UpdateParameterCommand
+from .command.commands import Command, UpdateParameterCommand, UpdateRegionSliceCommand
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
 from .command.refresh import UiRefresh
 from .csv_export import CSVExportService
@@ -449,6 +450,60 @@ class AppOrchestrator:
         self._executor.record(cmd)
         # Value is already applied and visible; skip PROPERTIES rebuild so the
         # open slider editor is not destroyed mid-commit.
+        self._pending_ui_refresh |= UiRefresh.PLOT | UiRefresh.DOCUMENT
+
+    def preview_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        *,
+        mode: Literal["value", "index"] = "value",
+    ) -> None:
+        """
+        Apply a region slice without recording undo (live preview).
+
+        Parameters
+        ----------
+        region_id : str
+            Region identifier.
+        start, stop : int or float
+            Preview bounds in ``mode`` units.
+        mode : {"value", "index"}, optional
+            Whether bounds are axis values or sample indices.
+        """
+        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
+        cmd = UpdateRegionSliceCommand.from_change(change, self.__ctx)
+        cmd.apply(self.__ctx)
+        self._pending_ui_refresh |= UiRefresh.PLOT
+
+    def commit_region_slice_preview(
+        self,
+        region_id: str,
+        old_start_index: int,
+        old_stop_index: int,
+    ) -> None:
+        """
+        Record undo for a slice already applied via :meth:`preview_region_slice`.
+
+        Parameters
+        ----------
+        region_id : str
+            Region identifier.
+        old_start_index, old_stop_index : int
+            Index bounds before the preview drag started.
+        """
+        new_start, new_stop = self.__ctx.region.get_slice(region_id, mode="index")
+        if int(old_start_index) == int(new_start) and int(old_stop_index) == int(new_stop):
+            return
+        cmd = UpdateRegionSliceCommand(
+            region_id=region_id,
+            new_start=int(new_start),
+            new_stop=int(new_stop),
+            old_start=int(old_start_index),
+            old_stop=int(old_stop_index),
+        )
+        self._executor.record(cmd)
         self._pending_ui_refresh |= UiRefresh.PLOT | UiRefresh.DOCUMENT
 
     def update_parameters(

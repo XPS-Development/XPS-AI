@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 
 def soft_parameter_range(
@@ -89,3 +90,36 @@ def soft_parameter_range(
     if hi <= lo:
         hi = lo + 1.0
     return (lo, hi)
+
+
+def soft_region_bound_range(
+    *,
+    mode: Literal["value", "index"] = "value",
+    x_min: float | None = None,
+    x_max: float | None = None,
+    index_count: int | None = None,
+) -> tuple[float, float]:
+    """
+    Return a finite ``(lo, hi)`` range for region start/stop sliders.
+
+    Parameters
+    ----------
+    mode : {"value", "index"}, optional
+        Whether bounds are axis values or sample indices.
+    x_min, x_max : float or None, optional
+        Spectrum x extent (value mode).
+    index_count : int or None, optional
+        Number of spectrum samples (index mode).
+
+    Returns
+    -------
+    tuple[float, float]
+        Inclusive soft range with ``lo < hi``.
+    """
+    if mode == "index":
+        n = max(int(index_count or 2), 2)
+        return (0.0, float(n - 1))
+    if x_min is not None and x_max is not None and x_max != x_min:
+        lo, hi = (float(x_min), float(x_max)) if x_min < x_max else (float(x_max), float(x_min))
+        return (lo, hi)
+    return (0.0, 1.0)

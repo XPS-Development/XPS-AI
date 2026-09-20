@@ -235,6 +235,37 @@ class ControllerWrapper(QObject):
             normalized=normalized,
         )
 
+    def preview_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        *,
+        mode: Literal["value", "index"] = "value",
+    ) -> None:
+        """Live-preview a region slice without recording undo."""
+        self._mutate(
+            self._orchestrator.preview_region_slice,
+            region_id,
+            start,
+            stop,
+            mode=mode,
+        )
+
+    def commit_region_slice_preview(
+        self,
+        region_id: str,
+        old_start_index: int,
+        old_stop_index: int,
+    ) -> None:
+        """Record undo for a slice already applied via :meth:`preview_region_slice`."""
+        self._mutate(
+            self._orchestrator.commit_region_slice_preview,
+            region_id,
+            old_start_index,
+            old_stop_index,
+        )
+
     def update_parameters(
         self,
         component_id: str,
