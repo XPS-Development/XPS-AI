@@ -12,14 +12,14 @@ if TYPE_CHECKING:
 
 _SLIDER_STEPS = 1000
 
-# Minimal editor-style slider: thin track, solid gray thumb.
+# Minimal editor-style slider: thin track, solid gray thumb (fully inside cell).
 _SLIDER_STYLE = """
 QSlider::groove:horizontal {
     height: 2px;
     background: #d0d0d0;
     border: none;
     border-radius: 1px;
-    margin: 0 4px;
+    margin: 0 6px;
 }
 QSlider::sub-page:horizontal,
 QSlider::add-page:horizontal {
@@ -28,11 +28,11 @@ QSlider::add-page:horizontal {
     border-radius: 1px;
 }
 QSlider::handle:horizontal {
-    width: 10px;
-    height: 10px;
-    margin: -4px 0;
+    width: 8px;
+    height: 8px;
+    margin: -3px 0;
     border: none;
-    border-radius: 5px;
+    border-radius: 4px;
     background: #6e6e6e;
 }
 QSlider::handle:horizontal:hover {
@@ -42,6 +42,7 @@ QSlider::handle:horizontal:pressed {
     background: #444444;
 }
 """
+
 
 class ParameterValueEditor(QWidget):
     """
@@ -106,16 +107,16 @@ class ParameterValueEditor(QWidget):
         self._slider.setRange(0, _SLIDER_STEPS)
         self._slider.setSingleStep(1)
         self._slider.setPageStep(max(_SLIDER_STEPS // 20, 1))
-        self._slider.setFixedHeight(18)
+        self._slider.setFixedHeight(14)
         self._slider.setStyleSheet(_SLIDER_STYLE)
         self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 1, 4, 2)
-        layout.setSpacing(2)
+        layout.setContentsMargins(2, 2, 4, 4)
+        layout.setSpacing(1)
         layout.addWidget(self._spin)
         layout.addWidget(self._slider)
-        self.setMinimumHeight(44)
+        self.setMinimumHeight(42)
         self.setMinimumWidth(90)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)

@@ -32,7 +32,7 @@ from .name_id_delegate import (
     ObjectIdRole,
 )
 from .parameter_value_editor import ParameterValueEditor
-from .tree_style import apply_editor_tree_style
+from .tree_style import apply_editor_combo_style, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -692,6 +692,7 @@ class PropertiesDelegate(QStyledItemDelegate):
 
         if item.kind == ItemKind.COMPONENT_MODEL:
             combo = QComboBox(parent)
+            apply_editor_combo_style(combo)
             if item.component_kind == "peak":
                 combo.addItems(self._controller.query.get_peak_model_names())
             else:

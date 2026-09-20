@@ -168,6 +168,21 @@ class MainWindow(QMainWindow):
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setObjectName("MainSplitter")
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet(
+            """
+            QSplitter#MainSplitter::handle:horizontal {
+                background: #c8c8c8;
+                width: 1px;
+                margin: 0;
+                padding: 0;
+            }
+            QSplitter#MainSplitter::handle:horizontal:hover {
+                background: #a8a8a8;
+            }
+            """
+        )
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
@@ -195,6 +210,15 @@ class MainWindow(QMainWindow):
     def _create_status_bar(self) -> None:
         """Create and attach the status bar."""
         status_bar = QStatusBar(self)
+        status_bar.setStyleSheet(
+            """
+            QStatusBar {
+                background: #fafafa;
+                border-top: 1px solid #e5e5e5;
+                color: #666666;
+            }
+            """
+        )
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
 
