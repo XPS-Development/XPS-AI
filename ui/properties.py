@@ -27,7 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.math_models.soft_ranges import soft_parameter_range, soft_region_bound_range
+from core.math_models import ModelRegistry
+from core.math_models.soft_ranges import soft_region_bound_range
 
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
@@ -384,13 +385,15 @@ class PropertiesModel(QAbstractItemModel):
         component_id: str,
         parameters_dto: dict[str, Any],
         *,
+        model_name: str,
         x_min: float | None = None,
         x_max: float | None = None,
         y_max: float | None = None,
     ) -> None:
         """Add one flat row per parameter (value, lower, upper, vary, expr)."""
+        model = ModelRegistry.get(model_name)
         for param_name, param_dto in parameters_dto.items():
-            soft_lo, soft_hi = soft_parameter_range(
+            soft_lo, soft_hi = model.soft_parameter_range(
                 str(param_name),
                 float(param_dto.value),
                 float(param_dto.lower),
@@ -559,27 +562,36 @@ class PropertiesModel(QAbstractItemModel):
                 item.param_expr = coerced
             if field in {"lower", "upper", "value"} and item.parameter_name is not None:
                 x_min = x_max = y_max = None
-                if item.region_id is not None:
-                    x_min, x_max, y_max = self._region_soft_context(item.region_id)
-                elif item.component_id is not None:
+                region_id = item.region_id
+                if region_id is None and item.component_id is not None:
                     try:
-                        parent_id = self._controller.query.get_parent_id(item.component_id)
-                        x_min, x_max, y_max = self._region_soft_context(parent_id)
+                        region_id = self._controller.query.get_parent_id(item.component_id)
                     except KeyError:
-                        pass
-                item.soft_lo, item.soft_hi = soft_parameter_range(
-                    item.parameter_name,
-                    float(item.value) if isinstance(item.value, (int, float)) else 0.0,
-                    float(item.param_lower)
-                    if isinstance(item.param_lower, (int, float))
-                    else float("-inf"),
-                    float(item.param_upper)
-                    if isinstance(item.param_upper, (int, float))
-                    else float("inf"),
-                    x_min=x_min,
-                    x_max=x_max,
-                    y_max=y_max,
-                )
+                        region_id = None
+                if region_id is not None:
+                    x_min, x_max, y_max = self._region_soft_context(region_id)
+                model_name: str | None = None
+                if item.component_id is not None:
+                    try:
+                        model_name = self._controller.query.get_component_dto(
+                            item.component_id
+                        ).model.name
+                    except KeyError:
+                        model_name = None
+                if model_name is not None:
+                    item.soft_lo, item.soft_hi = ModelRegistry.get(model_name).soft_parameter_range(
+                        item.parameter_name,
+                        float(item.value) if isinstance(item.value, (int, float)) else 0.0,
+                        float(item.param_lower)
+                        if isinstance(item.param_lower, (int, float))
+                        else float("-inf"),
+                        float(item.param_upper)
+                        if isinstance(item.param_upper, (int, float))
+                        else float("inf"),
+                        x_min=x_min,
+                        x_max=x_max,
+                        y_max=y_max,
+                    )
             self.dataChanged.emit(
                 index, index, [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole]
             )
@@ -670,6 +682,7 @@ class PropertiesModel(QAbstractItemModel):
                     background_item,
                     background_id,
                     background_dto.parameters,
+                    model_name=background_dto.model.name,
                     x_min=x_min,
                     x_max=x_max,
                     y_max=y_max,
@@ -702,6 +715,7 @@ class PropertiesModel(QAbstractItemModel):
                     peak_item,
                     peak_id,
                     peak_dto.parameters,
+                    model_name=peak_dto.model.name,
                     x_min=x_min,
                     x_max=x_max,
                     y_max=y_max,

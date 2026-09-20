@@ -1,105 +1,9 @@
-"""Soft UI ranges for interactive parameter controls (sliders)."""
+"""Helpers for soft UI slider ranges (region bounds and shared clipping)."""
 
 from __future__ import annotations
 
 import math
 from typing import Literal
-
-
-def soft_parameter_range(
-    name: str,
-    value: float,
-    lower: float,
-    upper: float,
-    *,
-    x_min: float | None = None,
-    x_max: float | None = None,
-    y_max: float | None = None,
-) -> tuple[float, float]:
-    """
-    Return a finite ``(lo, hi)`` range suitable for a UI slider.
-
-    Prefer schema bounds when both are finite. Otherwise derive a soft window
-    from the parameter name and optional spectrum context.
-
-    Parameters
-    ----------
-    name : str
-        Parameter name (e.g. ``amp``, ``cen``, ``sig``, ``frac``).
-    value : float
-        Current parameter value.
-    lower, upper : float
-        Hard fit bounds (may be ``±inf``).
-    x_min, x_max : float or None, optional
-        Spectrum / region x extent (used for ``cen``).
-    y_max : float or None, optional
-        Peak intensity scale hint (used for amplitudes / intensities).
-
-    Returns
-    -------
-    tuple[float, float]
-        Inclusive soft range with ``lo < hi``.
-    """
-    if math.isfinite(lower) and math.isfinite(upper) and upper > lower:
-        return (float(lower), float(upper))
-
-    key = name.lower()
-    v = float(value) if math.isfinite(value) else 0.0
-
-    if key == "frac":
-        return (0.0, 1.0)
-
-    if key == "cen":
-        if x_min is not None and x_max is not None and x_max != x_min:
-            lo, hi = (float(x_min), float(x_max)) if x_min < x_max else (float(x_max), float(x_min))
-            return (lo, hi)
-        span = max(abs(v) * 0.1, 5.0)
-        return (v - span, v + span)
-
-    if key == "sig":
-        lo, hi = 0.1, 30.0
-        if math.isfinite(lower):
-            lo = max(lo, float(lower))
-        if math.isfinite(upper):
-            hi = min(hi, float(upper))
-        if hi <= lo:
-            hi = lo + 1.0
-        return (lo, hi)
-
-    if key == "amp":
-        lo = 0.0 if (not math.isfinite(lower) or lower < 0) else float(lower)
-        hi_candidates = [abs(v) * 2.0, abs(v) + 1.0, 1.0]
-        if y_max is not None and math.isfinite(y_max):
-            hi_candidates.append(abs(float(y_max)) * 2.0)
-        hi = max(hi_candidates)
-        if math.isfinite(upper):
-            hi = min(hi, float(upper))
-        if hi <= lo:
-            hi = lo + 1.0
-        return (lo, hi)
-
-    if key in {"const", "i1", "i2"}:
-        span = max(abs(v) * 0.5, abs(y_max or 0.0) * 0.25, 1.0)
-        lo = v - span
-        hi = v + span
-        if math.isfinite(lower):
-            lo = max(lo, float(lower))
-        if math.isfinite(upper):
-            hi = min(hi, float(upper))
-        if hi <= lo:
-            hi = lo + 1.0
-        return (lo, hi)
-
-    # Generic fallback: window around the current value.
-    span = max(abs(v) * 0.5, 1.0)
-    lo, hi = v - span, v + span
-    if math.isfinite(lower):
-        lo = max(lo, float(lower))
-    if math.isfinite(upper):
-        hi = min(hi, float(upper))
-    if hi <= lo:
-        hi = lo + 1.0
-    return (lo, hi)
 
 
 def soft_region_bound_range(
@@ -133,3 +37,89 @@ def soft_region_bound_range(
         lo, hi = (float(x_min), float(x_max)) if x_min < x_max else (float(x_max), float(x_min))
         return (lo, hi)
     return (0.0, 1.0)
+
+
+def prefer_finite_hard_bounds(lower: float, upper: float) -> tuple[float, float] | None:
+    """Return ``(lower, upper)`` when both hard bounds are finite and ordered."""
+    if math.isfinite(lower) and math.isfinite(upper) and upper > lower:
+        return (float(lower), float(upper))
+    return None
+
+
+def clip_soft_range(
+    lo: float,
+    hi: float,
+    lower: float,
+    upper: float,
+) -> tuple[float, float]:
+    """
+    Clip a soft ``(lo, hi)`` window by hard bounds and ensure ``lo < hi``.
+
+    Parameters
+    ----------
+    lo, hi : float
+        Proposed soft slider bounds.
+    lower, upper : float
+        Hard fit bounds (may be ``±inf``).
+
+    Returns
+    -------
+    tuple[float, float]
+        Inclusive soft range with ``lo < hi``.
+    """
+    if math.isfinite(lower):
+        lo = max(lo, float(lower))
+    if math.isfinite(upper):
+        hi = min(hi, float(upper))
+    if hi <= lo:
+        hi = lo + 1.0
+    return (float(lo), float(hi))
+
+
+def soft_window_around(
+    value: float,
+    *,
+    span: float,
+    lower: float,
+    upper: float,
+) -> tuple[float, float]:
+    """Return a soft window centered on ``value`` with half-width ``span``."""
+    v = float(value) if math.isfinite(value) else 0.0
+    return clip_soft_range(v - span, v + span, lower, upper)
+
+
+def intensity_soft_range(
+    value: float,
+    lower: float,
+    upper: float,
+    *,
+    y_max: float | None = None,
+    non_negative: bool = False,
+) -> tuple[float, float]:
+    """
+    Soft slider range for intensity-like parameters (``amp``, ``const``, ``i1``/``i2``).
+
+    Parameters
+    ----------
+    value : float
+        Current parameter value.
+    lower, upper : float
+        Hard fit bounds.
+    y_max : float or None, optional
+        Peak intensity scale hint.
+    non_negative : bool, optional
+        When True, soft lower bound defaults to 0 if hard lower is open.
+    """
+    hard = prefer_finite_hard_bounds(lower, upper)
+    if hard is not None:
+        return hard
+    v = float(value) if math.isfinite(value) else 0.0
+    if non_negative:
+        lo = 0.0 if (not math.isfinite(lower) or lower < 0) else float(lower)
+        hi_candidates = [abs(v) * 2.0, abs(v) + 1.0, 1.0]
+        if y_max is not None and math.isfinite(y_max):
+            hi_candidates.append(abs(float(y_max)) * 2.0)
+        hi = max(hi_candidates)
+        return clip_soft_range(lo, hi, lower, upper)
+    span = max(abs(v) * 0.5, abs(y_max or 0.0) * 0.25, 1.0)
+    return soft_window_around(v, span=span, lower=lower, upper=upper)
