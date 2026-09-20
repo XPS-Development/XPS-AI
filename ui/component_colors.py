@@ -17,6 +17,11 @@ PEAK_COLORS: list[str] = [
 BACKGROUND_COLOR = "#444444"
 ID_SUFFIX_HEX = "#888888"
 
+# Structural status dots for the spectrum tree.
+STATUS_COLOR_EMPTY = "#c0c0c0"
+STATUS_COLOR_REGIONS = "#e6a817"
+STATUS_COLOR_PEAKS = "#2ca02c"
+
 
 def color_for_component(component_id: str, *, kind: str = "peak") -> str:
     r"""

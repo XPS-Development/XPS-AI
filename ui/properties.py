@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal, Optional
 
+import numpy as np
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
 from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.math_models.soft_ranges import soft_parameter_range
+
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
@@ -25,6 +28,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from .parameter_value_editor import ParameterValueEditor
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -90,6 +94,8 @@ class PropertyItem:
     parameter_name: str | None = None
     component_kind: Literal["peak", "background"] | None = None
     object_id: str | None = None
+    soft_lo: float | None = None
+    soft_hi: float | None = None
     param_lower: Any = None
     param_upper: Any = None
     param_vary: bool = False
@@ -316,9 +322,22 @@ class PropertiesModel(QAbstractItemModel):
         parent_item: PropertyItem,
         component_id: str,
         parameters_dto: dict[str, Any],
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
     ) -> None:
         """Add one flat row per parameter (value, lower, upper, vary, expr)."""
         for param_name, param_dto in parameters_dto.items():
+            soft_lo, soft_hi = soft_parameter_range(
+                str(param_name),
+                float(param_dto.value),
+                float(param_dto.lower),
+                float(param_dto.upper),
+                x_min=x_min,
+                x_max=x_max,
+                y_max=y_max,
+            )
             parent_item.append_child(
                 PropertyItem(
                     name=str(param_name),
@@ -327,12 +346,32 @@ class PropertiesModel(QAbstractItemModel):
                     kind=ItemKind.PARAMETER_ROW,
                     component_id=component_id,
                     parameter_name=str(param_name),
+                    soft_lo=soft_lo,
+                    soft_hi=soft_hi,
                     param_lower=param_dto.lower,
                     param_upper=param_dto.upper,
                     param_vary=bool(param_dto.vary),
                     param_expr=param_dto.expr,
                 )
             )
+
+    def _region_soft_context(
+        self,
+        region_id: str,
+    ) -> tuple[float | None, float | None, float | None]:
+        """Return ``(x_min, x_max, y_max)`` hints for soft slider ranges."""
+        try:
+            region_dto = self._controller.query.get_region_dto(region_id, normalized=False)
+        except KeyError:
+            return None, None, None
+        x = region_dto.x
+        y = region_dto.y
+        if x.size == 0:
+            return None, None, None
+        x_min = float(np.min(x))
+        x_max = float(np.max(x))
+        y_max = float(np.max(y)) if y.size else None
+        return x_min, x_max, y_max
 
     def setData(
         self,
@@ -505,6 +544,7 @@ class PropertiesModel(QAbstractItemModel):
 
             background_id = query.get_background_id(region_id)
             peaks_ids = list(query.get_peaks_ids(region_id))
+            x_min, x_max, y_max = self._region_soft_context(region_id)
 
             if background_id is not None:
                 background_item = PropertyItem(
@@ -529,7 +569,14 @@ class PropertiesModel(QAbstractItemModel):
                         component_kind="background",
                     )
                 )
-                self._add_parameters(background_item, background_id, background_dto.parameters)
+                self._add_parameters(
+                    background_item,
+                    background_id,
+                    background_dto.parameters,
+                    x_min=x_min,
+                    x_max=x_max,
+                    y_max=y_max,
+                )
 
             for peak_index, peak_id in enumerate(peaks_ids, start=1):
                 peak_item = PropertyItem(
@@ -554,13 +601,20 @@ class PropertiesModel(QAbstractItemModel):
                         component_kind="peak",
                     )
                 )
-                self._add_parameters(peak_item, peak_id, peak_dto.parameters)
+                self._add_parameters(
+                    peak_item,
+                    peak_id,
+                    peak_dto.parameters,
+                    x_min=x_min,
+                    x_max=x_max,
+                    y_max=y_max,
+                )
 
         self.endResetModel()
 
 
 class PropertiesDelegate(QStyledItemDelegate):
-    """Delegate that provides a combo box for the component model row in the value column."""
+    """Delegate for model combo boxes and parameter value slider editors."""
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -572,36 +626,68 @@ class PropertiesDelegate(QStyledItemDelegate):
         option: Any,
         index: QModelIndex | QPersistentModelIndex,
     ) -> QWidget:
-        """Create a combo box editor for the component model column."""
+        """Create a combo box or slider value editor for column 1."""
         if index.column() != 1:
             return super().createEditor(parent, option, index)
         item = index.internalPointer() if index.isValid() else None
         if not isinstance(item, PropertyItem):
             return super().createEditor(parent, option, index)
-        if item.kind != ItemKind.COMPONENT_MODEL:
-            return super().createEditor(parent, option, index)
-        combo = QComboBox(parent)
-        if item.component_kind == "peak":
-            combo.addItems(self._controller.query.get_peak_model_names())
-        else:
-            combo.addItems(self._controller.query.get_background_model_names())
-        return combo
+
+        if item.kind == ItemKind.COMPONENT_MODEL:
+            combo = QComboBox(parent)
+            if item.component_kind == "peak":
+                combo.addItems(self._controller.query.get_peak_model_names())
+            else:
+                combo.addItems(self._controller.query.get_background_model_names())
+            return combo
+
+        if (
+            item.kind == ItemKind.PARAMETER_ROW
+            and item.component_id is not None
+            and item.parameter_name is not None
+            and item.soft_lo is not None
+            and item.soft_hi is not None
+        ):
+            editor = ParameterValueEditor(
+                self._controller,
+                component_id=item.component_id,
+                parameter_name=item.parameter_name,
+                soft_lo=item.soft_lo,
+                soft_hi=item.soft_hi,
+                parent=parent,
+            )
+
+            def _commit_and_close() -> None:
+                self.commitData.emit(editor)
+                self.closeEditor.emit(editor, QStyledItemDelegate.EndEditHint.NoHint)
+
+            editor.editingFinished.connect(_commit_and_close)
+            return editor
+
+        return super().createEditor(parent, option, index)
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | QPersistentModelIndex) -> None:
-        """Populate the combo box with the current model name."""
+        """Populate the editor with the current model or parameter value."""
         if index.column() != 1:
             super().setEditorData(editor, index)
             return
         item = index.internalPointer() if index.isValid() else None
-        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+        if not isinstance(item, PropertyItem):
             super().setEditorData(editor, index)
             return
-        combo = editor
-        if isinstance(combo, QComboBox):
+
+        if item.kind == ItemKind.COMPONENT_MODEL and isinstance(editor, QComboBox):
             display = _format_value(item.value)
-            idx = combo.findText(display)
+            idx = editor.findText(display)
             if idx >= 0:
-                combo.setCurrentIndex(idx)
+                editor.setCurrentIndex(idx)
+            return
+
+        if item.kind == ItemKind.PARAMETER_ROW and isinstance(editor, ParameterValueEditor):
+            editor.set_value(float(item.value))
+            return
+
+        super().setEditorData(editor, index)
 
     def setModelData(
         self,
@@ -609,17 +695,41 @@ class PropertiesDelegate(QStyledItemDelegate):
         model: QAbstractItemModel,
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        """Commit the selected model name from the combo box."""
+        """Commit the selected model name or parameter value."""
         if index.column() != 1:
             super().setModelData(editor, model, index)
             return
         item = index.internalPointer() if index.isValid() else None
-        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+        if not isinstance(item, PropertyItem):
             super().setModelData(editor, model, index)
             return
-        combo = editor
-        if isinstance(combo, QComboBox):
-            model.setData(index, combo.currentText(), Qt.ItemDataRole.EditRole)
+
+        if item.kind == ItemKind.COMPONENT_MODEL and isinstance(editor, QComboBox):
+            model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
+            return
+
+        if item.kind == ItemKind.PARAMETER_ROW and isinstance(editor, ParameterValueEditor):
+            editor.commit_if_needed()
+            item.value = editor.value()
+            top_left = model.index(index.row(), index.column(), index.parent())
+            model.dataChanged.emit(
+                top_left,
+                top_left,
+                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole],
+            )
+            return
+
+        super().setModelData(editor, model, index)
+
+    def destroyEditor(
+        self,
+        editor: QWidget,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Restore previewed values when the editor is cancelled."""
+        if isinstance(editor, ParameterValueEditor) and not editor.committed:
+            editor.cancel_preview()
+        super().destroyEditor(editor, index)
 
 
 class PropertiesView(QTreeView):
@@ -644,6 +754,7 @@ class PropertiesView(QTreeView):
         self._narrow_section_widths: list[int] = []
         self._syncing_selection = False
         self._last_spectrum_id: str | None = None
+        self._applied_default_expand = False
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
@@ -722,9 +833,30 @@ class PropertiesView(QTreeView):
         """Refresh tree contents from the controller while preserving expand/collapse state."""
         expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
-        self._restore_expanded_stable_keys(expanded)
+        if expanded:
+            self._restore_expanded_stable_keys(expanded)
+            self._applied_default_expand = True
+        elif not self._applied_default_expand:
+            self._expand_default_levels()
+            self._applied_default_expand = True
         self._last_spectrum_id = self._controller.selected_spectrum_id
         self.sync_selection_from_controller()
+
+    def _expand_default_levels(self) -> None:
+        """Expand regions and components; leave parameter rows collapsed."""
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                idx = self._model.index(row, 0, parent)
+                raw = idx.internalPointer()
+                if isinstance(raw, PropertyItem) and raw.kind in {
+                    ItemKind.REGION,
+                    ItemKind.COMPONENT,
+                }:
+                    self.setExpanded(idx, True)
+                walk(idx)
+
+        walk(QModelIndex())
 
     def on_controller_selection_changed(
         self,

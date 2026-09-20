@@ -7,12 +7,29 @@ from typing import Any, Optional
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QTreeView, QWidget
 
+from .component_colors import (
+    STATUS_COLOR_EMPTY,
+    STATUS_COLOR_PEAKS,
+    STATUS_COLOR_REGIONS,
+)
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
-from .name_id_delegate import NameWithIdDelegate, ObjectIdPrefixRole, ObjectIdRole
+from .name_id_delegate import (
+    ComponentColorRole,
+    NameWithIdDelegate,
+    ObjectIdPrefixRole,
+    ObjectIdRole,
+)
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
+
+_STATUS_COLORS = {
+    "empty": STATUS_COLOR_EMPTY,
+    "regions": STATUS_COLOR_REGIONS,
+    "peaks": STATUS_COLOR_PEAKS,
+}
+_STATUS_RANK = {"empty": 0, "regions": 1, "peaks": 2}
 
 
 @dataclass
@@ -154,10 +171,48 @@ class SpectrumTreeModel(QAbstractItemModel):
                 return item.spectrum_id[:_ID_DISPLAY_CHARS]
             return None
 
+        if role == ComponentColorRole:
+            status = self._structure_status_for_item(item)
+            return _STATUS_COLORS.get(status)
+
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return item.label
 
         return None
+
+    def _structure_status_for_item(self, item: SpectrumTreeItem) -> str:
+        """Return aggregated structural status for spectrum/file/group nodes."""
+        if item.kind == "spectrum" and item.spectrum_id is not None:
+            return self._controller.query.get_spectrum_structure_status(item.spectrum_id)
+
+        if item.kind in {"file", "group"}:
+            best = "empty"
+            for spectrum_id in self._spectrum_ids_in_subtree(item):
+                status = self._controller.query.get_spectrum_structure_status(spectrum_id)
+                if _STATUS_RANK[status] > _STATUS_RANK[best]:
+                    best = status
+            return best
+
+        return "empty"
+
+    def _spectrum_ids_in_subtree(self, item: SpectrumTreeItem) -> list[str]:
+        """Collect spectrum ids under ``item`` in tree order."""
+        ids: list[str] = []
+        seen: set[str] = set()
+
+        def walk(node: SpectrumTreeItem) -> None:
+            if (
+                node.kind == "spectrum"
+                and node.spectrum_id is not None
+                and node.spectrum_id not in seen
+            ):
+                seen.add(node.spectrum_id)
+                ids.append(node.spectrum_id)
+            for child in node.children:
+                walk(child)
+
+        walk(item)
+        return ids
 
     def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         """Return enabled and selectable flags for valid indexes."""
@@ -250,6 +305,7 @@ class SpectrumTreeWidget(QTreeView):
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self._applied_default_expand = False
         self._model = SpectrumTreeModel(controller, self)
         self.setModel(self._model)
         self.setItemDelegate(NameWithIdDelegate(self))
@@ -271,7 +327,12 @@ class SpectrumTreeWidget(QTreeView):
         """Refresh tree contents from the controller while preserving expand/collapse state."""
         expanded = self._collect_expanded_stable_keys()
         self._model.refresh()
-        self._restore_expanded_stable_keys(expanded)
+        if expanded:
+            self._restore_expanded_stable_keys(expanded)
+            self._applied_default_expand = True
+        elif not self._applied_default_expand:
+            self.expandAll()
+            self._applied_default_expand = True
 
     @staticmethod
     def _stable_key_for_item(item: SpectrumTreeItem) -> tuple[Any, ...]:
