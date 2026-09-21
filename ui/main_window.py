@@ -4,7 +4,15 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSplitter,
+    QStatusBar,
+    QWidget,
+)
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
@@ -12,6 +20,7 @@ from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
+from .tree_style import apply_editor_menu_style
 
 
 class MainWindow(QMainWindow):
@@ -164,6 +173,11 @@ class MainWindow(QMainWindow):
             options_menu.addAction(self._action_load_nn_model)
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
+
+        for action in menu_bar.actions():
+            menu = action.menu()
+            if isinstance(menu, QMenu):
+                apply_editor_menu_style(menu)
 
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""

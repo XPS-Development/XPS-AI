@@ -45,7 +45,7 @@ from .name_id_delegate import (
 )
 from .optimize_confirm import confirm_and_optimize
 from .parameter_value_editor import ParameterValueEditor
-from .tree_style import apply_editor_menu_style, apply_editor_tree_style
+from .tree_style import EditorTreeView, apply_editor_menu_style, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -1693,7 +1693,7 @@ class PropertiesNameDelegate(NameWithIdDelegate):
         return super().editorEvent(event, model, option, index)
 
 
-class PropertiesView(QTreeView):
+class PropertiesView(EditorTreeView):
     """
     View used for the read-only Properties panel.
 
@@ -2384,4 +2384,5 @@ class PropertiesView(QTreeView):
         else:
             return
 
+        apply_editor_menu_style(menu)
         menu.popup(self.viewport().mapToGlobal(pos))
