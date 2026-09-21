@@ -28,7 +28,7 @@ from .controller import ControllerWrapper
 # Curve styling constants
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
 PEN_BACKGROUND_SELECTED = pg.mkPen(color="k", width=3, style=Qt.PenStyle.DashLine)
-PEN_MODEL = pg.mkPen(color="r", width=3.0)
+PEN_MODEL = pg.mkPen(color="r", width=1.5)
 PEN_RESIDUALS = pg.mkPen(color="#808080", width=2)
 
 REGION_BOUNDS_PEN = pg.mkPen(color="#000000", width=3)
