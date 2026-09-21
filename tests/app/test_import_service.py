@@ -102,10 +102,11 @@ def test_import_spectra_averaged_regions_creates_multiple_spectra(empty_collecti
         if obj.__class__.__name__ == "Spectrum"
     ]
     assert len(spectrum_ids) == 3
-    names = {
-        ctx.metadata.get_metadata(sid).name  # type: ignore[union-attr]
-        for sid in spectrum_ids
-    }
+    names: set[str] = set()
+    for sid in spectrum_ids:
+        metadata = ctx.metadata.get_metadata(sid)
+        assert isinstance(metadata, SpectrumMetadata)
+        names.add(metadata.name)
     assert names == {"C1s", "O1s", "Ti2p"}
 
     executor.undo()
