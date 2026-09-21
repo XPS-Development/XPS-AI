@@ -645,41 +645,6 @@ class AppOrchestrator:
             )
         )
 
-    def create_peak_and_return_id(
-        self,
-        region_id: str,
-        model_name: str,
-        parameters: dict[str, float] | None = None,
-        peak_id: str | None = None,
-    ) -> str:
-        """
-        Create a peak and return its identifier.
-
-        Parameters
-        ----------
-        region_id : str
-            Parent region identifier.
-        model_name : str
-            Registered peak model name.
-        parameters : dict[str, float] or None, optional
-            Explicit parameter values.
-        peak_id : str or None, optional
-            Optional explicit peak identifier.
-
-        Returns
-        -------
-        str
-            Identifier of the created peak.
-        """
-        change, resolved_id = self._editing.create_peak_and_return_id(
-            region_id,
-            model_name,
-            parameters=parameters,
-            peak_id=peak_id,
-        )
-        self.execute(change)
-        return resolved_id
-
     def create_background(
         self,
         region_id: str,
