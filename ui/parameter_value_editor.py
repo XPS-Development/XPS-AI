@@ -177,24 +177,30 @@ class ParameterValueEditor(QWidget):
         if new_value == old_value:
             self._committed = True
             return
-        if self._region_id is not None and self._slice_bound is not None:
-            if self._old_start_index is None or self._old_stop_index is None:
+        try:
+            if self._region_id is not None and self._slice_bound is not None:
+                if self._old_start_index is None or self._old_stop_index is None:
+                    return
+                self._controller.commit_region_slice_preview(
+                    self._region_id,
+                    self._old_start_index,
+                    self._old_stop_index,
+                )
+                self._capture_region_baseline()
+            elif self._component_id is not None and self._parameter_name is not None:
+                self._controller.commit_parameter_preview(
+                    self._component_id,
+                    self._parameter_name,
+                    old_value,
+                    new_value,
+                    normalized=False,
+                )
+            else:
                 return
-            self._controller.commit_region_slice_preview(
-                self._region_id,
-                self._old_start_index,
-                self._old_stop_index,
-            )
-            self._capture_region_baseline()
-        elif self._component_id is not None and self._parameter_name is not None:
-            self._controller.commit_parameter_preview(
-                self._component_id,
-                self._parameter_name,
-                old_value,
-                new_value,
-                normalized=False,
-            )
-        else:
+        except KeyError:
+            # Target was removed while the editor was still open.
+            self._committed = True
+            self._start_value = None
             return
         self._committed = True
         self._start_value = new_value
@@ -203,23 +209,37 @@ class ParameterValueEditor(QWidget):
         """Restore the drag-start value when the editor is dismissed without commit."""
         if self._committed or self._start_value is None:
             return
-        if self._region_id is not None and self._slice_bound is not None:
-            if self._old_start_index is None or self._old_stop_index is None:
+        try:
+            if self._region_id is not None and self._slice_bound is not None:
+                if self._old_start_index is None or self._old_stop_index is None:
+                    return
+                self._controller.preview_region_slice(
+                    self._region_id,
+                    self._old_start_index,
+                    self._old_stop_index,
+                    mode="index",
+                )
                 return
-            self._controller.preview_region_slice(
-                self._region_id,
-                self._old_start_index,
-                self._old_stop_index,
-                mode="index",
-            )
-            return
-        if self._component_id is not None and self._parameter_name is not None:
-            self._controller.preview_parameter_value(
-                self._component_id,
-                self._parameter_name,
-                float(self._start_value),
-                normalized=False,
-            )
+            if self._component_id is not None and self._parameter_name is not None:
+                self._controller.preview_parameter_value(
+                    self._component_id,
+                    self._parameter_name,
+                    float(self._start_value),
+                    normalized=False,
+                )
+        except KeyError:
+            pass
+        finally:
+            self._committed = True
+            self._start_value = None
+
+    def abandon(self) -> None:
+        """Drop pending preview state without touching the document."""
+        self._committed = True
+        self._start_value = None
+        self._old_start_index = None
+        self._old_stop_index = None
+        self._companion_value = None
 
     def _capture_region_baseline(self) -> None:
         if self._region_id is None or self._slice_bound is None:

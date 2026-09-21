@@ -83,6 +83,61 @@ def test_parameter_row_data_maps_columns(mock_controller: MagicMock) -> None:
     assert model.data(expr, Qt.ItemDataRole.DisplayRole) == "pOther"
 
 
+def test_refresh_adds_action_rows_for_empty_spectrum(mock_controller: MagicMock) -> None:
+    """Spectrum with no regions still shows a root Add region action row."""
+    mock_controller.selected_spectrum_id = "s1"
+    query = MagicMock()
+    query.get_regions_ids.return_value = []
+    mock_controller.query = query
+
+    model = PropertiesModel(mock_controller)
+    model.refresh()
+
+    assert model.rowCount(QModelIndex()) == 1
+    root_action = model.index(0, 0, QModelIndex())
+    item = root_action.internalPointer()
+    assert isinstance(item, PropertyItem)
+    assert item.kind == ItemKind.ACTION_ROW
+    assert item.action == "add_region"
+    assert model.data(root_action, Qt.ItemDataRole.DisplayRole) == "Add region"
+
+
+def test_refresh_region_actions_when_empty(mock_controller: MagicMock) -> None:
+    """Empty region shows Add background and Add peak; Add region stays at root."""
+    mock_controller.selected_spectrum_id = "s1"
+    query = MagicMock()
+    query.get_regions_ids.return_value = ["r1"]
+    query.get_region_slice.return_value = (0, 10)
+    query.get_background_id.return_value = None
+    query.get_peaks_ids.return_value = []
+    query.get_region_dto.return_value = MagicMock()
+    mock_controller.query = query
+    mock_controller._region_soft_context = MagicMock(return_value=(0.0, 10.0, 1.0))
+
+    model = PropertiesModel(mock_controller)
+    # Avoid soft-range lookup complexity: stub helper used by refresh.
+    model._region_soft_context = MagicMock(return_value=(0.0, 10.0, 1.0))  # type: ignore[method-assign]
+    model._slice_soft_range = MagicMock(return_value=(0.0, 10.0))  # type: ignore[method-assign]
+    model.refresh()
+
+    region = model.index(0, 0, QModelIndex())
+    add_region = model.index(1, 0, QModelIndex())
+    assert add_region.internalPointer().action == "add_region"  # type: ignore[union-attr]
+
+    kinds = []
+    actions = []
+    for row in range(model.rowCount(region)):
+        child = model.index(row, 0, region).internalPointer()
+        assert isinstance(child, PropertyItem)
+        kinds.append(child.kind)
+        actions.append(child.action)
+
+    assert ItemKind.ACTION_ROW in kinds
+    assert "add_background" in actions
+    assert "add_peak" in actions
+    assert actions.index("add_background") < actions.index("add_peak")
+
+
 def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> None:
     """COMPONENT rows expose truncated id and a stable color string."""
     from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole, ObjectIdRole

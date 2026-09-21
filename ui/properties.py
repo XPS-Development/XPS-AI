@@ -8,6 +8,7 @@ from typing import Any, Literal, Optional
 import numpy as np
 from PySide6.QtCore import (
     QAbstractItemModel,
+    QEvent,
     QItemSelectionModel,
     QModelIndex,
     QPersistentModelIndex,
@@ -16,7 +17,7 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QResizeEvent
+from PySide6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHeaderView,
@@ -32,6 +33,7 @@ from PySide6.QtWidgets import (
 from core.math_models import ModelRegistry
 from core.math_models.soft_ranges import soft_region_bound_range
 
+from .assets import icon_path
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
@@ -41,6 +43,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from .optimize_confirm import confirm_and_optimize
 from .parameter_value_editor import ParameterValueEditor
 from .tree_style import apply_editor_menu_style, apply_editor_tree_style
 
@@ -67,6 +70,10 @@ class ItemKind(Enum):
     COMPONENT_MODEL = "component_model"
     PARAMETER_ROW = "parameter_row"
     PARAMETER_FIELD = "parameter_field"
+    ACTION_ROW = "action_row"
+
+
+ActionKind = Literal["add_region", "add_background", "add_peak"]
 
 
 def _format_value(val: Any) -> str:
@@ -111,6 +118,8 @@ class PropertyItem:
         ``PARAMETER_FIELD`` children (lower / upper / vary / expr).
     parameter_field : {"lower", "upper", "expr", "vary"} or None, optional
         Which constraint a ``PARAMETER_FIELD`` row edits.
+    action : ActionKind or None, optional
+        Which mutation an ``ACTION_ROW`` triggers.
     object_id : str or None, optional
         Full region/component id for gray suffix / clipboard when shown.
     stored_name : str or None, optional
@@ -136,6 +145,7 @@ class PropertyItem:
     param_vary: bool = False
     param_expr: Any = None
     parameter_field: Literal["lower", "upper", "expr", "vary"] | None = None
+    action: ActionKind | None = None
 
     def child(self, row: int) -> Optional["PropertyItem"]:
         """Return the child at the given row index."""
@@ -299,6 +309,9 @@ class PropertiesModel(QAbstractItemModel):
         ):
             return QColor("#888888")
 
+        if role == Qt.ItemDataRole.ForegroundRole and col == 0 and item.kind == ItemKind.ACTION_ROW:
+            return QColor("#666666")
+
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
                 # EditRole uses the stored name (or empty) so positional fallbacks
@@ -309,6 +322,8 @@ class PropertiesModel(QAbstractItemModel):
                     marks = _parameter_constraint_marks(item)
                     return f"{item.name}  {marks}" if marks else item.name
                 return item.name
+            if item.kind == ItemKind.ACTION_ROW:
+                return None
             if item.kind == ItemKind.PARAMETER_ROW and col == 1:
                 return _format_value(item.value)
             if item.kind == ItemKind.PARAMETER_FIELD and col == 1:
@@ -329,6 +344,9 @@ class PropertiesModel(QAbstractItemModel):
         item = self._item(index)
         if not isinstance(item, PropertyItem):
             return Qt.ItemFlag.NoItemFlags
+
+        if item.kind == ItemKind.ACTION_ROW:
+            return Qt.ItemFlag.ItemIsEnabled
 
         base_flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         col = index.column()
@@ -774,11 +792,6 @@ class PropertiesModel(QAbstractItemModel):
         slice_mode = params.region_slice_display_mode
 
         region_ids = query.get_regions_ids(spectrum_id)
-        if not region_ids:
-            self._root_item.append_child(PropertyItem(name="No regions", parent=self._root_item))
-            self.endResetModel()
-            return
-
         for idx, region_id in enumerate(region_ids, start=1):
             region_item = PropertyItem(
                 name=f"Region {idx}",
@@ -835,6 +848,16 @@ class PropertiesModel(QAbstractItemModel):
                     x_max=x_max,
                     y_max=y_max,
                 )
+            else:
+                region_item.append_child(
+                    PropertyItem(
+                        name="Add background",
+                        parent=region_item,
+                        kind=ItemKind.ACTION_ROW,
+                        action="add_background",
+                        region_id=region_id,
+                    )
+                )
 
             for peak_index, peak_id in enumerate(peaks_ids, start=1):
                 peak_dto = query.get_component_dto(peak_id)
@@ -870,15 +893,121 @@ class PropertiesModel(QAbstractItemModel):
                     y_max=y_max,
                 )
 
+            region_item.append_child(
+                PropertyItem(
+                    name="Add peak",
+                    parent=region_item,
+                    kind=ItemKind.ACTION_ROW,
+                    action="add_peak",
+                    region_id=region_id,
+                )
+            )
+
+        self._root_item.append_child(
+            PropertyItem(
+                name="Add region",
+                parent=self._root_item,
+                kind=ItemKind.ACTION_ROW,
+                action="add_region",
+            )
+        )
+
         self.endResetModel()
 
 
 class PropertiesDelegate(QStyledItemDelegate):
-    """Delegate for model chips and selected-row soft-range slider editors."""
+    """Delegate for model chips, soft-range editors, and hover copy icons."""
+
+    _COPY_FEEDBACK_MS = 1200
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self._hovered_index = QPersistentModelIndex()
+        self._hovered_copy = False
+        self._copied_index = QPersistentModelIndex()
+        self._copy_feedback_token = 0
+
+    @staticmethod
+    def _shows_copy(index: QModelIndex | QPersistentModelIndex) -> bool:
+        item = index.internalPointer() if index.isValid() else None
+        return (
+            isinstance(item, PropertyItem) and index.column() == 1 and _is_copyable_value_item(item)
+        )
+
+    def _has_copy_feedback(self, index: QModelIndex | QPersistentModelIndex) -> bool:
+        return self._copied_index.isValid() and _as_model_index(
+            self._copied_index
+        ) == _as_model_index(index)
+
+    def flash_copy_success(self, index: QModelIndex) -> None:
+        """Briefly show a check icon on ``index`` after a successful copy."""
+        if not index.isValid() or not self._shows_copy(index):
+            return
+        view = self.parent()
+        old = _as_model_index(self._copied_index)
+        self._copied_index = QPersistentModelIndex(index)
+        self._copy_feedback_token += 1
+        token = self._copy_feedback_token
+        if isinstance(view, QTreeView):
+            if old.isValid() and old != index:
+                view.update(old)
+            view.update(index)
+
+        def _clear() -> None:
+            if token != self._copy_feedback_token:
+                return
+            cleared = _as_model_index(self._copied_index)
+            self._copied_index = QPersistentModelIndex()
+            parent = self.parent()
+            if isinstance(parent, QTreeView) and cleared.isValid():
+                parent.update(cleared)
+
+        QTimer.singleShot(self._COPY_FEEDBACK_MS, _clear)
+
+    def set_hover(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        pos: QPoint | None = None,
+    ) -> None:
+        """Update hover target and whether the copy glyph is under the cursor."""
+        view = self.parent()
+        old = _as_model_index(self._hovered_index)
+        new = (
+            _as_model_index(index) if index.isValid() and self._shows_copy(index) else QModelIndex()
+        )
+        hovered_copy = False
+        if new.isValid() and pos is not None and isinstance(view, QTreeView):
+            option = QStyleOptionViewItem()
+            option.rect = view.visualRect(new)
+            hovered_copy = _action_icon_rect(option).contains(pos)
+        changed = old != new or hovered_copy != self._hovered_copy
+        self._hovered_index = (
+            QPersistentModelIndex(new) if new.isValid() else QPersistentModelIndex()
+        )
+        self._hovered_copy = hovered_copy
+        if changed and isinstance(view, QTreeView):
+            if old.isValid():
+                view.update(old)
+            if new.isValid():
+                view.update(new)
+
+    def clear_hover(self) -> None:
+        """Clear hover highlighting."""
+        self.set_hover(QModelIndex(), None)
+
+    def hit_copy(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        pos: QPoint,
+        visual_rect: QRect,
+    ) -> bool:
+        """Return True when ``pos`` is over the copy glyph of a copyable cell."""
+        if not self._shows_copy(index):
+            return False
+        option = QStyleOptionViewItem()
+        option.rect = visual_rect
+        return _action_icon_rect(option).contains(pos)
 
     def paint(
         self,
@@ -887,10 +1016,12 @@ class PropertiesDelegate(QStyledItemDelegate):
         index: QModelIndex | QPersistentModelIndex,
     ) -> None:
         """
-        Paint cells; draw model chips and suppress text under open editors.
+        Paint cells; draw model chips, suppress text under open editors, copy icon.
 
         Model values always look like compact Cursor-style controls. Persistent
-        slider editors otherwise sit on top of DisplayRole text.
+        slider editors otherwise sit on top of DisplayRole text. Copy appears on
+        hover for value / lower / upper / expr cells; briefly becomes a check
+        after a successful copy.
         """
         item = index.internalPointer() if index.isValid() else None
         view = self.parent()
@@ -899,6 +1030,14 @@ class PropertiesDelegate(QStyledItemDelegate):
             and index.isValid()
             and view.indexWidget(_as_model_index(index)) is not None
         )
+        hovered_row = self._hovered_index.isValid() and _as_model_index(
+            self._hovered_index
+        ) == _as_model_index(index)
+        feedback = self._has_copy_feedback(index)
+        show_copy = (
+            isinstance(item, PropertyItem) and self._shows_copy(index) and (hovered_row or feedback)
+        )
+
         if (
             has_editor
             and isinstance(item, PropertyItem)
@@ -913,7 +1052,9 @@ class PropertiesDelegate(QStyledItemDelegate):
             style = widget.style() if widget is not None else None
             if style is not None:
                 style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
-                return
+            if show_copy:
+                self._paint_copy_icon(painter, option, index)
+            return
 
         if (
             isinstance(item, PropertyItem)
@@ -923,7 +1064,61 @@ class PropertiesDelegate(QStyledItemDelegate):
             self._paint_model_chip(painter, option, index, str(item.value or ""))
             return
 
+        if show_copy:
+            reserve = _action_reserve_width()
+            text_option = QStyleOptionViewItem(option)
+            text_option.rect = option.rect.adjusted(0, 0, -reserve, 0)
+            super().paint(painter, text_option, index)
+            strip = QRect(
+                option.rect.right() - reserve + 1,
+                option.rect.y(),
+                reserve,
+                option.rect.height(),
+            )
+            widget = option.widget
+            style = widget.style() if widget is not None else None
+            if style is not None:
+                strip_option = QStyleOptionViewItem(option)
+                self.initStyleOption(strip_option, index)
+                strip_option.text = ""
+                painter.save()
+                painter.setClipRect(strip)
+                style.drawControl(
+                    QStyle.ControlElement.CE_ItemViewItem,
+                    strip_option,
+                    painter,
+                    widget,
+                )
+                painter.restore()
+            self._paint_copy_icon(painter, option, index)
+            return
+
         super().paint(painter, option, index)
+
+    def _paint_copy_icon(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Draw copy or brief check feedback on the trailing action slot."""
+        copy_rect = _action_icon_rect(option)
+        if self._has_copy_feedback(index):
+            _paint_action_icon(painter, _CHECK_ICON, copy_rect, active=True)
+        else:
+            _paint_action_icon(painter, _COPY_ICON, copy_rect, active=self._hovered_copy)
+
+    def updateEditorGeometry(
+        self,
+        editor: QWidget,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Leave room on the right for the hover copy icon on copyable cells."""
+        if self._shows_copy(index):
+            editor.setGeometry(option.rect.adjusted(0, 0, -_action_reserve_width(), 0))
+            return
+        super().updateEditorGeometry(editor, option, index)
 
     def _paint_model_chip(
         self,
@@ -1178,6 +1373,326 @@ class PropertiesDelegate(QStyledItemDelegate):
         super().destroyEditor(editor, index)
 
 
+_ACTION_BTN_SIZE = 14
+_ACTION_BTN_MARGIN = 4
+_ACTION_BTN_GAP = 4
+_ACTION_ICON_GAP = 6
+_PLUS_ICON = QIcon(str(icon_path("plus.svg")))
+_X_ICON = QIcon(str(icon_path("x.svg")))
+_COPY_ICON = QIcon(str(icon_path("copy.svg")))
+_CHECK_ICON = QIcon(str(icon_path("check.svg")))
+_OPTIMIZE_ICON = QIcon(str(icon_path("optimize.svg")))
+
+
+def _is_copyable_value_item(item: PropertyItem) -> bool:
+    """Return True for value / lower / upper / expr cells that support copy."""
+    if item.kind == ItemKind.PARAMETER_ROW:
+        return True
+    return item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field in {
+        "lower",
+        "upper",
+        "expr",
+    }
+
+
+def _clipboard_text_for_item(item: PropertyItem) -> str:
+    """Return the clipboard string for a copyable parameter value cell."""
+    if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "expr":
+        return "" if item.value is None else str(item.value)
+    if item.value is None:
+        return ""
+    if isinstance(item.value, bool):
+        return str(item.value)
+    if isinstance(item.value, (int, float)):
+        return _format_value(item.value)
+    return str(item.value)
+
+
+def _action_icon_rect_at(option: QStyleOptionViewItem, slot_from_right: int) -> QRect:
+    """
+    Return an action-icon rect for the given right-aligned slot.
+
+    Parameters
+    ----------
+    option : QStyleOptionViewItem
+        Cell style option providing the paint rect.
+    slot_from_right : int
+        0 = rightmost icon, 1 = one slot left of that, etc.
+    """
+    size = _ACTION_BTN_SIZE
+    y = option.rect.y() + max(0, (option.rect.height() - size) // 2)
+    x = (
+        option.rect.right()
+        - _ACTION_BTN_MARGIN
+        - size
+        + 1
+        - slot_from_right * (size + _ACTION_BTN_GAP)
+    )
+    return QRect(x, y, size, size)
+
+
+def _action_icon_rect(option: QStyleOptionViewItem) -> QRect:
+    """Return a trailing action-icon rect aligned to the right of the cell."""
+    return _action_icon_rect_at(option, 0)
+
+
+def _action_reserve_width(n_icons: int = 1) -> int:
+    """Return horizontal space reserved for ``n_icons`` trailing action icons."""
+    if n_icons <= 0:
+        return 0
+    return _ACTION_BTN_MARGIN + n_icons * _ACTION_BTN_SIZE + (n_icons - 1) * _ACTION_BTN_GAP + 2
+
+
+def _paint_action_icon(
+    painter: QPainter,
+    icon: QIcon,
+    rect: QRect,
+    *,
+    active: bool = False,
+) -> None:
+    """Paint an action icon without selection chrome (avoids framed Selected mode)."""
+    painter.save()
+    if active:
+        painter.setOpacity(1.0)
+    else:
+        painter.setOpacity(0.72)
+    icon.paint(painter, rect, Qt.AlignmentFlag.AlignCenter, QIcon.Mode.Normal)
+    painter.restore()
+
+
+class PropertiesNameDelegate(NameWithIdDelegate):
+    """
+    Name delegate for action rows (+ Add ...) and hover row actions.
+
+    ``ACTION_ROW`` paints a plus icon and label. ``REGION`` rows show optimize
+    + delete on hover; ``COMPONENT`` rows show delete only.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialize the delegate with empty hover state."""
+        super().__init__(parent)
+        self._hovered_index = QPersistentModelIndex()
+        self._hovered_action: Literal["optimize", "delete"] | None = None
+
+    @staticmethod
+    def _shows_delete(index: QModelIndex | QPersistentModelIndex) -> bool:
+        item = index.internalPointer() if index.isValid() else None
+        return isinstance(item, PropertyItem) and item.kind in {
+            ItemKind.REGION,
+            ItemKind.COMPONENT,
+        }
+
+    @staticmethod
+    def _shows_optimize(index: QModelIndex | QPersistentModelIndex) -> bool:
+        item = index.internalPointer() if index.isValid() else None
+        return isinstance(item, PropertyItem) and item.kind == ItemKind.REGION
+
+    @staticmethod
+    def _is_action_row(index: QModelIndex | QPersistentModelIndex) -> bool:
+        item = index.internalPointer() if index.isValid() else None
+        return isinstance(item, PropertyItem) and item.kind == ItemKind.ACTION_ROW
+
+    @staticmethod
+    def _action_icon_count(index: QModelIndex | QPersistentModelIndex) -> int:
+        item = index.internalPointer() if index.isValid() else None
+        if isinstance(item, PropertyItem) and item.kind == ItemKind.REGION:
+            return 2
+        if isinstance(item, PropertyItem) and item.kind == ItemKind.COMPONENT:
+            return 1
+        return 0
+
+    @classmethod
+    def _delete_rect(cls, option: QStyleOptionViewItem) -> QRect:
+        """Return the delete-icon rect (rightmost action)."""
+        return _action_icon_rect_at(option, 0)
+
+    @classmethod
+    def _optimize_rect(cls, option: QStyleOptionViewItem) -> QRect:
+        """Return the optimize-icon rect (left of delete on region rows)."""
+        return _action_icon_rect_at(option, 1)
+
+    def set_hover(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        pos: QPoint | None = None,
+    ) -> None:
+        """Update hover target and which action glyph is under the cursor."""
+        view = self.parent()
+        shows_actions = self._shows_delete(index) or self._shows_optimize(index)
+        old = _as_model_index(self._hovered_index)
+        new = _as_model_index(index) if index.isValid() and shows_actions else QModelIndex()
+        action: Literal["optimize", "delete"] | None = None
+        if new.isValid() and pos is not None and isinstance(view, QTreeView):
+            option = QStyleOptionViewItem()
+            option.rect = view.visualRect(new)
+            if self._shows_optimize(new) and self._optimize_rect(option).contains(pos):
+                action = "optimize"
+            elif self._shows_delete(new) and self._delete_rect(option).contains(pos):
+                action = "delete"
+        changed = old != new or action != self._hovered_action
+        self._hovered_index = (
+            QPersistentModelIndex(new) if new.isValid() else QPersistentModelIndex()
+        )
+        self._hovered_action = action
+        if changed and isinstance(view, QTreeView):
+            if old.isValid():
+                view.update(old)
+            if new.isValid():
+                view.update(new)
+
+    def clear_hover(self) -> None:
+        """Clear hover highlighting."""
+        self.set_hover(QModelIndex(), None)
+
+    def hit_delete(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        pos: QPoint,
+        visual_rect: QRect,
+    ) -> bool:
+        """Return True when ``pos`` is over the delete glyph of a deletable row."""
+        if not self._shows_delete(index):
+            return False
+        option = QStyleOptionViewItem()
+        option.rect = visual_rect
+        return self._delete_rect(option).contains(pos)
+
+    def hit_optimize(
+        self,
+        index: QModelIndex | QPersistentModelIndex,
+        pos: QPoint,
+        visual_rect: QRect,
+    ) -> bool:
+        """Return True when ``pos`` is over the optimize glyph of a region row."""
+        if not self._shows_optimize(index):
+            return False
+        option = QStyleOptionViewItem()
+        option.rect = visual_rect
+        return self._optimize_rect(option).contains(pos)
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Paint action-row plus+label, or name with hover row-action icons."""
+        if self._is_action_row(index):
+            self._paint_action_row(painter, option, index)
+            return
+
+        hovered_row = self._hovered_index.isValid() and _as_model_index(
+            self._hovered_index
+        ) == _as_model_index(index)
+        n_icons = self._action_icon_count(index)
+        if not (n_icons > 0 and hovered_row):
+            super().paint(painter, option, index)
+            return
+
+        reserve = _action_reserve_width(n_icons)
+        text_option = QStyleOptionViewItem(option)
+        text_option.rect = option.rect.adjusted(0, 0, -reserve, 0)
+        super().paint(painter, text_option, index)
+
+        # Extend the same row chrome into the icon strip so selection does not
+        # leave a lighter "frame" where text was clipped.
+        strip = QRect(
+            option.rect.right() - reserve + 1,
+            option.rect.y(),
+            reserve,
+            option.rect.height(),
+        )
+        widget = option.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            strip_option = QStyleOptionViewItem(option)
+            self.initStyleOption(strip_option, index)
+            strip_option.text = ""
+            strip_option.icon = QIcon()
+            strip_option.features &= ~QStyleOptionViewItem.ViewItemFeature.HasDecoration
+            painter.save()
+            painter.setClipRect(strip)
+            style.drawControl(
+                QStyle.ControlElement.CE_ItemViewItem,
+                strip_option,
+                painter,
+                widget,
+            )
+            painter.restore()
+
+        if self._shows_optimize(index):
+            _paint_action_icon(
+                painter,
+                _OPTIMIZE_ICON,
+                self._optimize_rect(option),
+                active=self._hovered_action == "optimize",
+            )
+        if self._shows_delete(index):
+            _paint_action_icon(
+                painter,
+                _X_ICON,
+                self._delete_rect(option),
+                active=self._hovered_action == "delete",
+            )
+
+    def _paint_action_row(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
+        """Draw selection chrome, plus icon, and muted action label."""
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        icon_size = _ACTION_BTN_SIZE
+        y = option.rect.y() + max(0, (option.rect.height() - icon_size) // 2)
+        icon_rect = QRect(option.rect.x() + 2, y, icon_size, icon_size)
+        _paint_action_icon(painter, _PLUS_ICON, icon_rect, active=False)
+
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        painter.save()
+        painter.setPen(QColor("#666666"))
+        text_rect = option.rect.adjusted(icon_size + _ACTION_ICON_GAP + 2, 0, 0, 0)
+        painter.drawText(
+            text_rect,
+            int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+            text,
+        )
+        painter.restore()
+
+    def editorEvent(
+        self,
+        event: QEvent,
+        model: QAbstractItemModel,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> bool:
+        """Block default press handling on row-action glyphs (view owns them)."""
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and isinstance(event, QMouseEvent)
+            and event.button() == Qt.MouseButton.LeftButton
+            and (
+                (
+                    self._shows_optimize(index)
+                    and self._optimize_rect(option).contains(event.position().toPoint())
+                )
+                or (
+                    self._shows_delete(index)
+                    and self._delete_rect(option).contains(event.position().toPoint())
+                )
+            )
+        ):
+            return True
+        return super().editorEvent(event, model, option, index)
+
+
 class PropertiesView(QTreeView):
     """
     View used for the read-only Properties panel.
@@ -1203,11 +1718,14 @@ class PropertiesView(QTreeView):
         self._expanded_param_index: QPersistentModelIndex | None = None
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
-        self.setItemDelegateForColumn(0, NameWithIdDelegate(self))
+        self._name_delegate = PropertiesNameDelegate(self)
+        self.setItemDelegateForColumn(0, self._name_delegate)
         self._value_delegate = PropertiesDelegate(controller, self)
         self.setItemDelegateForColumn(1, self._value_delegate)
         self.setIndentation(12)
         self.setHeaderHidden(False)
+        self.setMouseTracking(True)
+        self.viewport().setMouseTracking(True)
         hdr = self.header()
         hdr.setStretchLastSection(False)
         self._apply_column_widths()
@@ -1218,6 +1736,64 @@ class PropertiesView(QTreeView):
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
         self._refresh_now()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Run row actions/deletes/copy on press without changing the selection."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            index = self.indexAt(pos)
+            if index.isValid():
+                name_index = (
+                    index
+                    if index.column() == 0
+                    else self._model.index(index.row(), 0, index.parent())
+                )
+                value_index = (
+                    index
+                    if index.column() == 1
+                    else self._model.index(index.row(), 1, index.parent())
+                )
+                item = name_index.internalPointer()
+                if isinstance(item, PropertyItem) and item.kind == ItemKind.ACTION_ROW:
+                    self._on_action_row_requested(name_index)
+                    event.accept()
+                    return
+                if self._name_delegate.hit_optimize(name_index, pos, self.visualRect(name_index)):
+                    self._on_row_optimize_requested(name_index)
+                    event.accept()
+                    return
+                if self._name_delegate.hit_delete(name_index, pos, self.visualRect(name_index)):
+                    self._on_row_delete_requested(name_index)
+                    event.accept()
+                    return
+                if self._value_delegate.hit_copy(value_index, pos, self.visualRect(value_index)):
+                    self._copy_value_at(value_index)
+                    event.accept()
+                    return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Track hover for delete (name) and copy (value) glyphs."""
+        pos = event.position().toPoint()
+        index = self.indexAt(pos)
+        name_index = QModelIndex()
+        value_index = QModelIndex()
+        if index.isValid():
+            name_index = (
+                index if index.column() == 0 else self._model.index(index.row(), 0, index.parent())
+            )
+            value_index = (
+                index if index.column() == 1 else self._model.index(index.row(), 1, index.parent())
+            )
+        self._name_delegate.set_hover(name_index, pos)
+        self._value_delegate.set_hover(value_index, pos)
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        """Clear action-glyph hover when the pointer leaves the view."""
+        self._name_delegate.clear_hover()
+        self._value_delegate.clear_hover()
+        super().leaveEvent(event)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Keep flexible columns sized to the viewport with Name:Value = 1.5:1."""
@@ -1330,6 +1906,18 @@ class PropertiesView(QTreeView):
             widget = self.indexWidget(idx)
             if isinstance(widget, ParameterValueEditor):
                 widget.commit_if_needed()
+            self.closePersistentEditor(idx)
+        self._slider_editor_index = None
+
+    def _discard_parameter_slider_editor(self) -> None:
+        """Close the slider editor without committing or restoring a preview."""
+        if self._slider_editor_index is None:
+            return
+        idx = _as_model_index(self._slider_editor_index)
+        if idx.isValid():
+            widget = self.indexWidget(idx)
+            if isinstance(widget, ParameterValueEditor):
+                widget.abandon()
             self.closePersistentEditor(idx)
         self._slider_editor_index = None
 
@@ -1509,6 +2097,8 @@ class PropertiesView(QTreeView):
                 item.parameter_name,
                 item.parameter_field,
             )
+        if item.kind == ItemKind.ACTION_ROW:
+            return ("action", item.action, item.region_id)
         return ("other", item.kind, item.name)
 
     def _stable_key_for_current_item(self) -> tuple[Any, ...] | None:
@@ -1526,6 +2116,7 @@ class PropertiesView(QTreeView):
             ItemKind.COMPONENT,
             ItemKind.COMPONENT_MODEL,
             ItemKind.REGION,
+            ItemKind.ACTION_ROW,
         }:
             return self._stable_key_for_item(item)
         return None
@@ -1681,12 +2272,76 @@ class PropertiesView(QTreeView):
         if cid:
             QApplication.clipboard().setText(cid)
 
+    def _copy_value_at(self, index: QModelIndex) -> None:
+        """Copy the value / lower / upper / expr cell text to the clipboard."""
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem) or not _is_copyable_value_item(item):
+            return
+        QApplication.clipboard().setText(_clipboard_text_for_item(item))
+        self._value_delegate.flash_copy_success(index)
+
     def _delete_selected_component(self) -> None:
         """Remove the selected component and refresh."""
         cid = self._selected_component_id()
         if cid:
+            self._discard_parameter_slider_editor()
             self._controller.full_remove_object(cid)
             self.refresh()
+
+    def _on_action_row_requested(self, index: QModelIndex) -> None:
+        """Run the mutation associated with a clicked ``ACTION_ROW``."""
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.ACTION_ROW:
+            return
+        params = self._controller.get_app_parameters()
+        if item.action == "add_region":
+            spectrum_id = self._controller.selected_spectrum_id
+            if spectrum_id is None:
+                return
+            self._controller.create_region(spectrum_id)
+            return
+        if item.action == "add_peak":
+            if item.region_id is None:
+                return
+            self._controller.create_peak(item.region_id, params.default_peak_model, parameters=None)
+            return
+        if item.action == "add_background":
+            if item.region_id is None:
+                return
+            self._controller.create_background(
+                item.region_id, params.default_background_model, parameters=None
+            )
+
+    def _on_row_optimize_requested(self, index: QModelIndex) -> None:
+        """Optimize the single region for the clicked region row."""
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.REGION:
+            return
+        if item.region_id is None:
+            return
+        confirm_and_optimize(
+            self,
+            self._controller,
+            region_ids=[item.region_id],
+        )
+
+    def _on_row_delete_requested(self, index: QModelIndex) -> None:
+        """Delete the region or component for the clicked row."""
+        item = index.internalPointer() if index.isValid() else None
+        if not isinstance(item, PropertyItem):
+            return
+        # Drop any open slice/parameter preview first so refresh cannot commit
+        # against an object that is about to disappear.
+        self._discard_parameter_slider_editor()
+        if item.kind == ItemKind.REGION and item.region_id is not None:
+            region_id = item.region_id
+            spectrum_id = self._controller.selected_spectrum_id
+            if self._controller.selected_region_id == region_id:
+                self._controller.set_selection(spectrum_id, None)
+            self._controller.full_remove_object(region_id)
+            return
+        if item.kind == ItemKind.COMPONENT and item.component_id is not None:
+            self._controller.full_remove_object(item.component_id)
 
     def _on_custom_context_menu(self, pos: QPoint) -> None:
         """

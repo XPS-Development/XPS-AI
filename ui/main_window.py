@@ -10,7 +10,7 @@ from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
-from .properties import PropertiesView
+from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
 
 
@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
-        self._properties_view: PropertiesView | None = None
+        self._properties_panel: PropertiesPanel | None = None
 
         self._create_actions()
         self._create_menus()
@@ -190,12 +190,12 @@ class MainWindow(QMainWindow):
         self._plot_area = PlotAreaWidget(self._controller, splitter)
         self._plot_area.setObjectName("PlotArea")
 
-        self._properties_view = PropertiesView(self._controller, splitter)
-        self._properties_view.setObjectName("PropertiesView")
+        self._properties_panel = PropertiesPanel(self._controller, splitter)
+        self._properties_panel.setObjectName("PropertiesPanel")
 
         splitter.addWidget(self._spectrum_tree_panel)
         splitter.addWidget(self._plot_area)
-        splitter.addWidget(self._properties_view)
+        splitter.addWidget(self._properties_panel)
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -237,10 +237,10 @@ class MainWindow(QMainWindow):
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
-        if self._properties_view is not None:
-            self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
+        if self._properties_panel is not None:
+            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
             self._controller.selectionChanged.connect(
-                self._properties_view.on_controller_selection_changed
+                self._properties_panel.on_controller_selection_changed
             )
 
     # ------------------------------------------------------------------
