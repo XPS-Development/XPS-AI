@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from app.command.changes import CompositeChange, CreatePeak
+from app.command.changes import CompositeChange, CreatePeak, UpdateMultipleParameterValues
 from app.nn_service import NNService
 from app.optimization import OptimizationService
 from app.orchestration import AppParameters, QueryService
@@ -22,6 +22,14 @@ def _analysis(collection, nn: NNService | None = None) -> AnalysisUseCases:
         OptimizationService(),
         AppParameters(),
     )
+
+
+def _updated_component_ids(change: CompositeChange) -> set[str]:
+    """Collect component ids from nested ``UpdateMultipleParameterValues`` changes."""
+    assert len(change.changes) == 1
+    inner = change.changes[0]
+    assert isinstance(inner, CompositeChange)
+    return {c.component_id for c in inner.changes if isinstance(c, UpdateMultipleParameterValues)}
 
 
 def test_run_segmenter_skips_spectra_that_already_have_regions(
@@ -173,8 +181,7 @@ def test_optimize_regions_expands_linked_regions(empty_collection, simple_gauss_
 
     change = _analysis(collection).optimize_regions(region_ids=["r2"], method="least_squares")
     assert isinstance(change, CompositeChange)
-    updated_ids = {c.component_id for c in change.changes[0].changes}
-    assert updated_ids == {"peakAA", "peakBB"}
+    assert _updated_component_ids(change) == {"peakAA", "peakBB"}
 
 
 def test_optimize_regions_selection_only_skips_linked(
@@ -212,8 +219,8 @@ def test_optimize_regions_selection_only_skips_linked(
     change = _analysis(collection).optimize_regions(
         region_ids=["r2"], expand_linked=False, method="least_squares"
     )
-    updated_ids = {c.component_id for c in change.changes[0].changes}
-    assert updated_ids == {"peakBB"}
+    assert isinstance(change, CompositeChange)
+    assert _updated_component_ids(change) == {"peakBB"}
 
 
 def test_run_segmenter_returns_composite_for_empty_spectrum(

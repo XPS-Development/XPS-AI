@@ -104,7 +104,9 @@ def test_serialize_deserialize_component_display_name(simple_collection):
 
     result = deserialize(data, mode="new")
     restored = _collection_from_new_result(result)
-    assert restored.objects_index[peak.id_].name == "C1s"  # type: ignore[union-attr]
+    restored_peak = restored.objects_index[peak.id_]
+    assert isinstance(restored_peak, Peak)
+    assert restored_peak.name == "C1s"
 
 
 def test_serialize_deserialize_with_metadata(simple_collection):
