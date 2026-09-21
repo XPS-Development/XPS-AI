@@ -1,5 +1,6 @@
 """Main window: spectrum tree, plot area, properties, and menus."""
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .assets import load_app_icon
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
@@ -42,6 +44,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        if getattr(sys, "frozen", False):
+            self.setWindowIcon(load_app_icon())
         self._controller = controller
 
         self._action_new: QAction | None = None

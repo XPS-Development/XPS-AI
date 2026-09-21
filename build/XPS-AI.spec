@@ -5,7 +5,10 @@ a = Analysis(
     ['..\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('..\\model.onnx', '.')],
+    datas=[
+        ('..\\model.onnx', '.'),
+        ('..\\assets\\icons', 'assets/icons'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -32,6 +35,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='..\\assets\\icons\\app.ico',
     contents_directory='.',
 )
 coll = COLLECT(

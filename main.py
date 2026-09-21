@@ -11,6 +11,7 @@ from app.error_dump import (
     orchestrator_error_user_feedback_done,
     save_error_dump,
 )
+from ui.assets import load_app_icon
 from ui.controller import ControllerWrapper
 from ui.main_window import MainWindow
 
@@ -66,6 +67,8 @@ def main() -> int:
         Exit code from the Qt event loop.
     """
     app = _SafeNotifyApplication(sys.argv)
+    if getattr(sys, "frozen", False):
+        app.setWindowIcon(load_app_icon())
     enable_user_exception_ui()
 
     window: MainWindow | None = None
