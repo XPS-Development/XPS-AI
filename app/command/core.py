@@ -17,6 +17,7 @@ from .changes import (
     FullRemoveObject,
     RemoveMetadata,
     RemoveObject,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     SetMetadata,
@@ -34,6 +35,7 @@ from .commands import (
     FullRemoveObjectCommand,
     RemoveMetadataCommand,
     RemoveObjectCommand,
+    RenameComponentCommand,
     ReplaceBackgroundModelCommand,
     ReplacePeakModelCommand,
     SetMetadataCommand,
@@ -245,6 +247,7 @@ def create_default_registry() -> CommandRegistry:
     """
     registry = CommandRegistry()
     registry.register(UpdateParameter, UpdateParameterCommand)
+    registry.register(RenameComponent, RenameComponentCommand)
     registry.register(UpdateRegionSlice, UpdateRegionSliceCommand)
     registry.register(RemoveObject, RemoveObjectCommand)
     registry.register(RemoveMetadata, RemoveMetadataCommand)

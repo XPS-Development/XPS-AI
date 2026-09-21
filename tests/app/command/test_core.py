@@ -5,6 +5,7 @@ import pytest
 from app.command.changes import (
     CompositeChange,
     RemoveObject,
+    RenameComponent,
     SetMetadata,
     UpdateMultipleParameterValues,
     UpdateParameter,
@@ -227,6 +228,7 @@ def test_create_default_registry_has_all_mappings():
     """create_default_registry returns registry with all default mappings."""
     registry = create_default_registry()
     assert UpdateParameter in registry._registry
+    assert RenameComponent in registry._registry
     assert UpdateRegionSlice in registry._registry
     assert RemoveObject in registry._registry
     assert UpdateMultipleParameterValues in registry._registry

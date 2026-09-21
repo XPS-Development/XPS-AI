@@ -245,6 +245,9 @@ class Component:
         Prefix used for auto-generated component IDs.
         Concrete subclasses typically override this
         (e.g. ``"p"`` for peaks, ``"b"`` for backgrounds).
+    name : str or None, default=None
+        Optional user-visible label (not unique). ``None`` keeps positional
+        UI labels for documents that omit the field.
     **param_values : float
         Optional initial values for model parameters.
         Keys must match parameter names defined in the model's schema.
@@ -263,6 +266,8 @@ class Component:
         Parametric model instance defining parameter schema and evaluation logic.
     parent_id : str
         Identifier of the parent core object.
+    name : str or None
+        Optional display name; not used as an identity key.
     parameters : dict[str, RuntimeParameter]
         Mapping of parameter names to runtime parameter objects.
     """
@@ -274,6 +279,7 @@ class Component:
         parent_id: str,
         component_id: str | None = None,
         component_prefix: str = "c",
+        name: str | None = None,
         **param_values: float,
     ) -> None:
 
@@ -282,6 +288,7 @@ class Component:
         # `CoreObject.parent_id` is typed as `str | None` in the protocol.
         # Regions/spectra always have a parent, while spectra have `None`.
         self.parent_id: str | None = parent_id
+        self.name: str | None = name
 
         # Initialize parameters
         self.parameters: dict[str, RuntimeParameter] = {}
@@ -291,10 +298,10 @@ class Component:
         if unknown:
             raise ValueError(f"Unknown parameters for model '{model.name}': {unknown}")
 
-        for name, spec in schema.items():
-            value = param_values.get(name, spec.default)
-            self.parameters[name] = RuntimeParameter(
-                name=name,
+        for pname, spec in schema.items():
+            value = param_values.get(pname, spec.default)
+            self.parameters[pname] = RuntimeParameter(
+                name=pname,
                 value=value,
                 lower=spec.lower,
                 upper=spec.upper,
@@ -376,6 +383,8 @@ class Peak(Component):
         Identifier of the parent region.
     component_id : str, optional
         Explicit peak ID. If omitted, a new ID is generated.
+    name : str or None, optional
+        Optional display label.
     **param_values : float
         Initial parameter values overriding model defaults.
     """
@@ -386,6 +395,7 @@ class Peak(Component):
         model: BasePeakModel,
         region_id: str,
         component_id: str | None = None,
+        name: str | None = None,
         **param_values: float,
     ) -> None:
         super().__init__(
@@ -393,6 +403,7 @@ class Peak(Component):
             parent_id=region_id,
             component_id=component_id,
             component_prefix="p",
+            name=name,
             **param_values,
         )
 
@@ -419,6 +430,8 @@ class Background(Component):
         Identifier of the parent region.
     component_id : str, optional
         Explicit background ID. If omitted, a new ID is generated.
+    name : str or None, optional
+        Optional display label.
     **param_values : float
         Initial parameter values overriding model defaults.
     """
@@ -429,6 +442,7 @@ class Background(Component):
         model: BaseBackgroundModel,
         region_id: str,
         component_id: str | None = None,
+        name: str | None = None,
         **param_values: float,
     ) -> None:
         super().__init__(
@@ -436,6 +450,7 @@ class Background(Component):
             parent_id=region_id,
             component_id=component_id,
             component_prefix="b",
+            name=name,
             **param_values,
         )
 

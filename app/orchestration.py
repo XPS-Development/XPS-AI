@@ -46,6 +46,7 @@ from .usecases import (
     ExportUseCases,
     HierarchyUseCases,
 )
+from .usecases.analysis import FitScopePreview
 
 
 class AppOrchestrator:
@@ -330,18 +331,47 @@ class AppOrchestrator:
         self.run_segmenter(spectrum_ids)
         self.optimize_regions(spectrum_ids=spectrum_ids, **kwargs)
 
+    def preview_fit_scope(
+        self,
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> FitScopePreview:
+        """
+        Preview expression-closed regions for an upcoming optimize (read-only).
+
+        Parameters
+        ----------
+        region_ids : Sequence of str, optional
+            Regions the user selected.
+        spectrum_ids : Sequence of str, optional
+            Spectra whose regions form the selection.
+
+        Returns
+        -------
+        FitScopePreview
+            Selected vs expanded region sets for a confirmation dialog.
+        """
+        return self._analysis.preview_fit_scope(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+        )
+
     def optimize_regions(
         self,
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
+        expand_linked: bool = True,
         **kwargs,
     ) -> None:
         """
         Run optimization and execute UpdateMultipleParameterValues changes.
 
-        Default optimization kwargs from AppParameters are merged with explicit
-        kwargs; caller values override defaults on conflict.
+        When ``expand_linked`` is True, expands to the expression-dependency
+        closure before fitting. Default optimization kwargs from AppParameters
+        are merged with explicit kwargs; caller values override defaults on
+        conflict.
 
         Parameters
         ----------
@@ -349,6 +379,8 @@ class AppOrchestrator:
             Identifiers of the regions to optimize.
         spectrum_ids : Sequence of str
             Identifiers of the spectra to optimize.
+        expand_linked : bool, default True
+            If True, include expression-linked regions outside the selection.
         **kwargs
             Passed to lmfit.minimize; overrides AppParameters.optimization_kwargs.
         """
@@ -356,6 +388,7 @@ class AppOrchestrator:
             self._analysis.optimize_regions(
                 region_ids=region_ids,
                 spectrum_ids=spectrum_ids,
+                expand_linked=expand_linked,
                 **kwargs,
             )
         )
@@ -612,41 +645,6 @@ class AppOrchestrator:
             )
         )
 
-    def create_peak_and_return_id(
-        self,
-        region_id: str,
-        model_name: str,
-        parameters: dict[str, float] | None = None,
-        peak_id: str | None = None,
-    ) -> str:
-        """
-        Create a peak and return its identifier.
-
-        Parameters
-        ----------
-        region_id : str
-            Parent region identifier.
-        model_name : str
-            Registered peak model name.
-        parameters : dict[str, float] or None, optional
-            Explicit parameter values.
-        peak_id : str or None, optional
-            Optional explicit peak identifier.
-
-        Returns
-        -------
-        str
-            Identifier of the created peak.
-        """
-        change, resolved_id = self._editing.create_peak_and_return_id(
-            region_id,
-            model_name,
-            parameters=parameters,
-            peak_id=peak_id,
-        )
-        self.execute(change)
-        return resolved_id
-
     def create_background(
         self,
         region_id: str,
@@ -682,6 +680,19 @@ class AppOrchestrator:
             New display name for the spectrum.
         """
         self.execute(self._hierarchy.rename_spectrum(spectrum_id, new_name))
+
+    def rename_component(self, component_id: str, new_name: str | None) -> None:
+        """
+        Set the optional display name of a peak or background.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        new_name : str or None
+            New label, or ``None``/blank to clear.
+        """
+        self.execute(self._editing.rename_component(component_id, new_name))
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """

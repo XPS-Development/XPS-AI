@@ -51,6 +51,7 @@ class ComponentDTO(BaseDTO):
     parameters: dict[str, ParameterDTO]
     model: ParametricModelLike
     kind: Literal["peak", "background"]
+    name: str | None = None
 
 
 @dataclass(frozen=True)

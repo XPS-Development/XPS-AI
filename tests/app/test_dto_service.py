@@ -19,6 +19,7 @@ def test_get_component_returns_component_dto(srv, region_id, peak_id, background
     assert dto.parent_id == region_id
     assert dto.normalized is False
     assert dto.kind == "peak"
+    assert dto.name is None
 
     dto = srv.get_component(background_id)
     assert isinstance(dto, ComponentDTO)
@@ -124,3 +125,12 @@ def test_get_spectrum_repr_structure(srv, spectrum_id):
     for reg_dto, comps in regions:
         assert isinstance(reg_dto, RegionDTO)
         assert isinstance(comps, tuple)
+
+
+def test_get_component_includes_display_name(srv, peak_id, simple_collection):
+    """ComponentDTO.name mirrors ComponentService.get_name."""
+    from core.services import ComponentService
+
+    ComponentService(simple_collection).set_name(peak_id, "C1s")
+    dto = srv.get_component(peak_id)
+    assert dto.name == "C1s"

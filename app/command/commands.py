@@ -24,6 +24,7 @@ from .changes import (
     ParameterField,
     RemoveMetadata,
     RemoveObject,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     SetMetadata,
@@ -150,6 +151,76 @@ class UpdateParameterCommand(Command):
             normalized=self.normalized,
             **{self.parameter_field: self._old_value},
         )
+
+
+class RenameComponentCommand(Command):
+    """Command that sets a component display name; supports undo."""
+
+    ui_refresh = UiRefresh.FIT
+
+    def __init__(
+        self,
+        component_id: str,
+        new_name: str | None,
+        old_name: str | None = None,
+    ) -> None:
+        """
+        Initialize a rename-component command.
+
+        Parameters
+        ----------
+        component_id : str
+            Peak or background id.
+        new_name : str or None
+            Name to apply (``None`` clears the label).
+        old_name : str or None, optional
+            Previous name for undo (set by ``from_change``).
+        """
+        self.component_id = component_id
+        self.new_name = new_name
+        self._old_name = old_name
+        self._applied = False
+
+    @classmethod
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "RenameComponentCommand":
+        """
+        Create a RenameComponentCommand from a change.
+
+        Parameters
+        ----------
+        change : RenameComponent
+            The change to convert.
+        ctx : CoreContext
+            Application context.
+
+        Returns
+        -------
+        RenameComponentCommand
+            Command with undo state initialized.
+        """
+        if not isinstance(change, RenameComponent):
+            raise TypeError(f"Expected RenameComponent change, got {type(change).__name__}")
+        old_name = ctx.component.get_name(change.component_id)
+        new_name = change.new_name
+        if new_name is not None:
+            stripped = new_name.strip()
+            new_name = stripped if stripped else None
+        return cls(
+            component_id=change.component_id,
+            new_name=new_name,
+            old_name=old_name,
+        )
+
+    def apply(self, ctx: CoreContext) -> None:
+        """Set the component display name."""
+        ctx.component.set_name(self.component_id, self.new_name)
+        self._applied = True
+
+    def undo(self, ctx: CoreContext) -> None:
+        """Restore the previous display name."""
+        if not self._applied:
+            raise RuntimeError("Command was not applied")
+        ctx.component.set_name(self.component_id, self._old_name)
 
 
 class UpdateRegionSliceCommand(Command):
@@ -716,6 +787,7 @@ class ReplacePeakModelCommand(CompositeCommand):
             model_name=change.new_model_name,
             parameters=change.parameters,
             peak_id=change.peak_id,
+            name=ctx.component.get_name(change.peak_id),
         )
         return rm_ch, create_ch
 
@@ -753,13 +825,15 @@ class ReplaceBackgroundModelCommand(CompositeCommand):
         change: ReplaceBackgroundModel, ctx: CoreContext
     ) -> tuple[RemoveObject | None, CreateBackground]:
         """Adapter for ReplaceBackgroundModel change to RemoveObject and CreateBackground."""
+        bg_id = ctx.query.get_background(change.region_id)
+        name_source_id = change.background_id or bg_id
         create_ch = CreateBackground(
             region_id=change.region_id,
             model_name=change.new_model_name,
             parameters=change.parameters,
             background_id=change.background_id,
+            name=ctx.component.get_name(name_source_id) if name_source_id else None,
         )
-        bg_id = ctx.query.get_background(change.region_id)
         rm_ch = RemoveObject(bg_id) if bg_id else None
         return rm_ch, create_ch
 

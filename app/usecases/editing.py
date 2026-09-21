@@ -8,13 +8,13 @@ Parameter guessing uses model ``guess_initial`` in core. Does not execute comman
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
-from uuid import uuid4
 
 from app.command.changes import (
     BaseChange,
     CompositeChange,
     CreateBackground,
     CreatePeak,
+    RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     UpdateMultipleParameterValues,
@@ -92,43 +92,6 @@ class EditingUseCases:
             parameters=parameters,
             peak_id=peak_id,
         )
-
-    def create_peak_and_return_id(
-        self,
-        region_id: str,
-        model_name: str,
-        parameters: dict[str, float] | None = None,
-        peak_id: str | None = None,
-    ) -> tuple[BaseChange, str]:
-        """
-        Build a peak-creation change with a known component identifier.
-
-        Parameters
-        ----------
-        region_id
-            Parent region identifier.
-        model_name
-            Registered peak model name.
-        parameters
-            Explicit parameter values. If None and automatic methods are on,
-            parameters are guessed from residuals via the model.
-        peak_id
-            Optional explicit peak identifier. When omitted, a new id is
-            generated and embedded in the returned change.
-
-        Returns
-        -------
-        tuple[BaseChange, str]
-            Change to execute and the peak identifier that will be created.
-        """
-        resolved_id = peak_id or f"p{uuid4().hex}"
-        change = self.create_peak(
-            region_id,
-            model_name,
-            parameters=parameters,
-            peak_id=resolved_id,
-        )
-        return change, resolved_id
 
     def create_background(
         self,
@@ -365,6 +328,24 @@ class EditingUseCases:
             mode=slice_mode,
             avg_on=avg_on,
         )
+
+    def rename_component(self, component_id: str, new_name: str | None) -> RenameComponent:
+        """
+        Build a change that sets a component display name.
+
+        Parameters
+        ----------
+        component_id
+            Peak or background identifier.
+        new_name
+            New label, or ``None``/blank to clear.
+
+        Returns
+        -------
+        RenameComponent
+            Undoable rename change.
+        """
+        return RenameComponent(component_id=component_id, new_name=new_name)
 
     @staticmethod
     def _same_name_parameters(

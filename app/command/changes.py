@@ -35,6 +35,18 @@ class UpdateParameter:
 
 
 @dataclass(frozen=True)
+class RenameComponent:
+    """
+    Change to set the optional display name of a peak or background.
+
+    ``new_name`` of ``None`` or blank clears the label (positional UI fallback).
+    """
+
+    component_id: str
+    new_name: str | None
+
+
+@dataclass(frozen=True)
 class UpdateRegionSlice:
     """Change to update the index slice of an existing region."""
 
@@ -128,6 +140,7 @@ class CreatePeak:
     model_name: str
     parameters: dict[str, float] | None = None
     peak_id: str | None = None
+    name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +156,7 @@ class CreateBackground:
     model_name: str
     parameters: dict[str, float] | None = None
     background_id: str | None = None
+    name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -200,6 +214,7 @@ class CompositeChange:
 # Union type for typed dispatch in CommandRegistry and CommandExecutor.
 BaseChange = (
     UpdateParameter
+    | RenameComponent
     | UpdateRegionSlice
     | RemoveObject
     | RemoveMetadata

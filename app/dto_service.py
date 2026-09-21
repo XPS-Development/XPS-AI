@@ -74,6 +74,7 @@ class DTOService:
             parameters=params,
             model=model,
             kind="background" if isinstance(model, BaseBackgroundModel) else "peak",
+            name=self.comp_srv.get_name(component_id),
         )
 
     def get_region(self, region_id: str, *, normalized: bool = False) -> RegionDTO:

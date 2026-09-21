@@ -164,6 +164,8 @@ def _serialize_component(component: Component, metadata: Metadata | None = None)
         "model_name": component.model.name,
         "parameters": parameters,
     }
+    if component.name is not None:
+        result["name"] = component.name
 
     # Add metadata if available
     if metadata is not None:
@@ -453,6 +455,7 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
 
     # Determine component type and create
     obj_type = obj_data["type"]
+    display_name = obj_data.get("name")
     if obj_type == "Peak":
         if not isinstance(model, BasePeakModel):
             raise TypeError(f"Model {model_name!r} is not a Peak model")
@@ -460,6 +463,7 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
             model=model,
             region_id=obj_data["parent_id"],
             component_id=obj_data["id"],
+            name=display_name,
             **param_values,
         )
     elif obj_type == "Background":
@@ -469,6 +473,7 @@ def _deserialize_component(obj_data: dict[str, Any]) -> Peak | Background:
             model=model,
             region_id=obj_data["parent_id"],
             component_id=obj_data["id"],
+            name=display_name,
             **param_values,
         )
     else:

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.command.changes import ParameterField
     from app.command.commands import Command
     from app.query_service import QueryService
+    from app.usecases.analysis import FitScopePreview
     from core.metadata import Metadata
 
 _T = TypeVar("_T")
@@ -161,11 +162,38 @@ class ControllerWrapper(QObject):
         """Run the segmenter pipeline and emit signals."""
         self._mutate(self._orchestrator.run_segmenter, spectrum_ids)
 
+    def preview_fit_scope(
+        self,
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> FitScopePreview:
+        """
+        Preview expression-closed regions for an upcoming optimize (read-only).
+
+        Parameters
+        ----------
+        region_ids
+            Regions the user selected.
+        spectrum_ids
+            Spectra whose regions form the selection.
+
+        Returns
+        -------
+        FitScopePreview
+            Selected vs expanded region sets for a confirmation dialog.
+        """
+        return self._orchestrator.preview_fit_scope(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+        )
+
     def optimize_regions(
         self,
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
+        expand_linked: bool = True,
         **kwargs: Any,
     ) -> None:
         """Run optimization for regions and emit signals."""
@@ -173,6 +201,7 @@ class ControllerWrapper(QObject):
             self._orchestrator.optimize_regions,
             region_ids=region_ids,
             spectrum_ids=spectrum_ids,
+            expand_linked=expand_linked,
             **kwargs,
         )
 
@@ -375,40 +404,6 @@ class ControllerWrapper(QObject):
             peak_id=peak_id,
         )
 
-    def create_peak_and_return_id(
-        self,
-        region_id: str,
-        model_name: str,
-        parameters: dict[str, float] | None = None,
-        peak_id: str | None = None,
-    ) -> str:
-        """
-        Create a peak and return its identifier.
-
-        Parameters
-        ----------
-        region_id : str
-            Parent region identifier.
-        model_name : str
-            Registered peak model name.
-        parameters : dict[str, float] or None, optional
-            Explicit parameter values.
-        peak_id : str or None, optional
-            Optional explicit peak identifier.
-
-        Returns
-        -------
-        str
-            Identifier of the created peak.
-        """
-        return self._mutate(
-            self._orchestrator.create_peak_and_return_id,
-            region_id=region_id,
-            model_name=model_name,
-            parameters=parameters,
-            peak_id=peak_id,
-        )
-
     def create_background(
         self,
         region_id: str,
@@ -432,6 +427,10 @@ class ControllerWrapper(QObject):
     def rename_spectrum(self, spectrum_id: str, new_name: str) -> None:
         """Rename a single spectrum and emit UI refresh signals."""
         self._mutate(self._orchestrator.rename_spectrum, spectrum_id, new_name)
+
+    def rename_component(self, component_id: str, new_name: str | None) -> None:
+        """Set a peak/background display name and emit UI refresh signals."""
+        self._mutate(self._orchestrator.rename_component, component_id, new_name)
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """Rename a group within a file and emit UI refresh signals."""

@@ -4,14 +4,23 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSplitter,
+    QStatusBar,
+    QWidget,
+)
 
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
-from .properties import PropertiesView
+from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
+from .tree_style import apply_editor_menu_style
 
 
 class MainWindow(QMainWindow):
@@ -54,7 +63,7 @@ class MainWindow(QMainWindow):
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
-        self._properties_view: PropertiesView | None = None
+        self._properties_panel: PropertiesPanel | None = None
 
         self._create_actions()
         self._create_menus()
@@ -165,6 +174,11 @@ class MainWindow(QMainWindow):
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
 
+        for action in menu_bar.actions():
+            menu = action.menu()
+            if isinstance(menu, QMenu):
+                apply_editor_menu_style(menu)
+
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
@@ -190,12 +204,12 @@ class MainWindow(QMainWindow):
         self._plot_area = PlotAreaWidget(self._controller, splitter)
         self._plot_area.setObjectName("PlotArea")
 
-        self._properties_view = PropertiesView(self._controller, splitter)
-        self._properties_view.setObjectName("PropertiesView")
+        self._properties_panel = PropertiesPanel(self._controller, splitter)
+        self._properties_panel.setObjectName("PropertiesPanel")
 
         splitter.addWidget(self._spectrum_tree_panel)
         splitter.addWidget(self._plot_area)
-        splitter.addWidget(self._properties_view)
+        splitter.addWidget(self._properties_panel)
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -237,10 +251,10 @@ class MainWindow(QMainWindow):
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
-        if self._properties_view is not None:
-            self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
+        if self._properties_panel is not None:
+            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
             self._controller.selectionChanged.connect(
-                self._properties_view.on_controller_selection_changed
+                self._properties_panel.on_controller_selection_changed
             )
 
     # ------------------------------------------------------------------

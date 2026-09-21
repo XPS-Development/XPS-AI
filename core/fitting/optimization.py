@@ -6,8 +6,7 @@ LmfitOptimizer, and optimize()
 for use as a standalone library or via the app layer. Uses core.dto projections;
 """
 
-import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -16,36 +15,18 @@ from lmfit.minimizer import MinimizerResult
 
 from core.dto import ComponentDTO, RegionDTO
 from core.evaluation import component_y
+from core.fitting.expressions import parse_parameter_expression, resolve_component_reference
 
-_COMPONENT_REF_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
-
-
-def resolve_component_reference(token: str, component_ids: Iterable[str]) -> str | None:
-    """
-    Map an expression token to a full component id.
-
-    Exact id match always applies. Otherwise, return the unique component id such that
-    ``id.startswith(token)``.
-
-    Parameters
-    ----------
-    token : str
-        Identifier from an expression (short prefix or full id).
-    component_ids : Iterable[str]
-        Known component ids for the current optimization scope.
-
-    Returns
-    -------
-    str | None
-        Resolved full id, or ``None`` if unknown or ambiguous.
-    """
-    ids = tuple(component_ids)
-    if token in ids:
-        return token
-    matches = [cid for cid in ids if cid.startswith(token)]
-    if len(matches) == 1:
-        return matches[0]
-    return None
+__all__ = [
+    "LmfitOptimizer",
+    "OptimizationContext",
+    "OptimizationExpressionPlan",
+    "OptimizationPlanner",
+    "OptimizedComponent",
+    "build_contexts",
+    "optimize",
+    "resolve_component_reference",
+]
 
 
 def _component_fully_fixed(cmp: ComponentDTO) -> bool:
@@ -161,42 +142,22 @@ def _analyze_parameter_expression(
     owner_component_id: str,
     param_name: str,
     known_ids: frozenset[str],
-    components_by_id: dict[str, ComponentDTO],
+    parameter_names_by_component: dict[str, set[str]],
     graph: dict[str, set[str]],
 ) -> str | None:
-    tokens = _COMPONENT_REF_RE.findall(expr)
-    translated = expr
-    lmfit_ok = True
-
-    for token in tokens:
-        if token.replace(".", "", 1).isdigit():
-            continue
-
-        resolved = resolve_component_reference(token, known_ids)
-        if resolved is None:
-            lmfit_ok = False
-            continue
-
-        if resolved != owner_component_id and resolved in graph:
-            graph[owner_component_id].add(resolved)
-            graph[resolved].add(owner_component_id)
-
-        target = components_by_id.get(resolved)
-        if target is None:
-            lmfit_ok = False
-            continue
-
-        if param_name not in target.parameters:
-            lmfit_ok = False
-            continue
-
-        translated = re.sub(
-            rf"\b{re.escape(token)}\b",
-            f"{resolved}_{param_name}",
-            translated,
-        )
-
-    return translated if lmfit_ok else None
+    """Parse ``expr`` via :func:`parse_parameter_expression` and update ``graph``."""
+    parsed = parse_parameter_expression(
+        expr,
+        owner_component_id=owner_component_id,
+        parameter_name=param_name,
+        known_component_ids=known_ids,
+        parameter_names_by_component=parameter_names_by_component,
+    )
+    for ref in parsed.references:
+        if ref.component_id != owner_component_id and ref.component_id in graph:
+            graph[owner_component_id].add(ref.component_id)
+            graph[ref.component_id].add(owner_component_id)
+    return parsed.lmfit_expr
 
 
 def _build_expression_plan(
@@ -204,7 +165,7 @@ def _build_expression_plan(
 ) -> OptimizationExpressionPlan:
     components = [cmp for ctx in contexts for cmp in ctx.components]
     known_ids = frozenset(cmp.id_ for cmp in components)
-    components_by_id = {cmp.id_: cmp for cmp in components}
+    parameter_names_by_component = {cmp.id_: set(cmp.parameters.keys()) for cmp in components}
 
     graph: dict[str, set[str]] = {}
     for cmp in components:
@@ -221,7 +182,7 @@ def _build_expression_plan(
                 owner_component_id=cmp.id_,
                 param_name=pname,
                 known_ids=known_ids,
-                components_by_id=components_by_id,
+                parameter_names_by_component=parameter_names_by_component,
                 graph=graph,
             )
             lmfit_expr_by_component_param[(cmp.id_, pname)] = lmfit_e
@@ -261,21 +222,37 @@ class OptimizationPlanner:
         return groups
 
     @staticmethod
-    def _group_contexts(
+    def _context_dependency_graph(
         contexts: tuple[OptimizationContext, ...],
-        component_groups: list[set[str]],
-    ) -> list[tuple[OptimizationContext, ...]]:
-        grouped: list[list[OptimizationContext]] = [[] for _ in component_groups]
+        component_graph: dict[str, set[str]],
+    ) -> dict[str, set[str]]:
+        """
+        Lift component expression edges onto the contexts (regions) that own them.
 
+        A single region may hold peaks from more than one component-level clique.
+        Grouping contexts by the first intersecting component clique orphans
+        cross-clique expressions and makes lmfit raise ``NameError``. Context-level
+        edges keep every region that participates in a dependency chain together.
+        """
+        context_ids = [ctx.id_ for ctx in contexts]
+        graph: dict[str, set[str]] = {cid: set() for cid in context_ids}
+        owner_context: dict[str, str] = {}
         for ctx in contexts:
-            ctx_cmp_ids = {cmp.id_ for cmp in ctx.components}
+            for cmp in ctx.components:
+                owner_context[cmp.id_] = ctx.id_
 
-            for i, grp in enumerate(component_groups):
-                if ctx_cmp_ids & grp:
-                    grouped[i].append(ctx)
-                    break
+        for component_id, neighbors in component_graph.items():
+            ctx_a = owner_context.get(component_id)
+            if ctx_a is None:
+                continue
+            for other_id in neighbors:
+                ctx_b = owner_context.get(other_id)
+                if ctx_b is None or ctx_b == ctx_a:
+                    continue
+                graph[ctx_a].add(ctx_b)
+                graph[ctx_b].add(ctx_a)
 
-        return [tuple(g) for g in grouped if g]
+        return graph
 
     def get_groups(
         self,
@@ -286,6 +263,10 @@ class OptimizationPlanner:
         """
         Split contexts into independent optimization groups.
 
+        Groups are connected components of **contexts** linked by expression
+        dependencies between their components. Contexts with no cross-links
+        remain separate so independent regions can still fit in parallel.
+
         Parameters
         ----------
         contexts : tuple[OptimizationContext, ...]
@@ -294,12 +275,20 @@ class OptimizationPlanner:
             Pre-built expression analysis for ``contexts``. If ``None``, a plan
             is computed once from ``contexts`` (same graph as ``dependency_graph``).
         """
+        if not contexts:
+            return []
         if expression_plan is not None:
-            graph = expression_plan.dependency_graph
+            component_graph = expression_plan.dependency_graph
         else:
-            graph = _build_expression_plan(contexts).dependency_graph
-        component_groups = self._connected_components(graph)
-        return self._group_contexts(contexts, component_groups)
+            component_graph = _build_expression_plan(contexts).dependency_graph
+        context_graph = self._context_dependency_graph(contexts, component_graph)
+        groups: list[tuple[OptimizationContext, ...]] = []
+        for ctx_ids in self._connected_components(context_graph):
+            # Preserve input order within each group.
+            groups.append(tuple(ctx for ctx in contexts if ctx.id_ in ctx_ids))
+        # Keep deterministic order by first context appearance in the input tuple.
+        groups.sort(key=lambda group: contexts.index(group[0]))
+        return groups
 
 
 class LmfitOptimizer:
@@ -319,13 +308,16 @@ class LmfitOptimizer:
         param_name: str,
     ) -> str | None:
         known_ids = frozenset(self._component_index.keys())
+        parameter_names_by_component = {
+            cid: set(cmp.parameters.keys()) for cid, cmp in self._component_index.items()
+        }
         graph = {cid: set() for cid in self._component_index}
         return _analyze_parameter_expression(
             expr,
             owner_component_id=owner_component_id,
             param_name=param_name,
             known_ids=known_ids,
-            components_by_id=self._component_index,
+            parameter_names_by_component=parameter_names_by_component,
             graph=graph,
         )
 
@@ -337,11 +329,13 @@ class LmfitOptimizer:
     ) -> Parameters:
         params = Parameters()
 
+        # Add every parameter without expr first so cross-component references
+        # resolve regardless of region/component iteration order.
+        pending_expr: list[tuple[str, str]] = []
         for cmp in components:
             for pname, param_obj in cmp.parameters.items():
                 full_name = f"{cmp.id_}_{pname}"
-
-                expr = None
+                expr: str | None = None
                 if param_obj.expr:
                     if expression_plan is not None:
                         expr = expression_plan.lmfit_expr_by_component_param.get((cmp.id_, pname))
@@ -358,8 +352,13 @@ class LmfitOptimizer:
                     min=param_obj.lower,
                     max=param_obj.upper,
                     vary=param_obj.vary if expr is None else False,
-                    expr=expr,
+                    expr=None,
                 )
+                if expr is not None:
+                    pending_expr.append((full_name, expr))
+
+        for full_name, expr in pending_expr:
+            params[full_name].set(expr=expr)
 
         return params
 
@@ -459,8 +458,14 @@ def optimize(
     ctx_tuple = tuple(contexts)
     plan = _build_expression_plan(ctx_tuple)
     result: list[OptimizedComponent] = []
+    groups = planner.get_groups(ctx_tuple, expression_plan=plan)
 
-    for ctx_group in planner.get_groups(ctx_tuple, expression_plan=plan):
-        result.extend(optimizer.optimize(ctx_group, expression_plan=plan, **kwargs))
+    for ctx_group in groups:
+        if len(groups) == 1 and len(ctx_group) == len(ctx_tuple):
+            group_plan = plan
+        else:
+            # Per-group plan so exprs never reference params outside this minimize.
+            group_plan = _build_expression_plan(ctx_group)
+        result.extend(optimizer.optimize(ctx_group, expression_plan=group_plan, **kwargs))
 
     return tuple(result)

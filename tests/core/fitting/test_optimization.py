@@ -129,17 +129,23 @@ def _make_component(
     params: dict[str, float],
     *,
     amp_expr: str | None = None,
+    cen_expr: str | None = None,
 ) -> ComponentDTO:
     """Create a minimal ComponentDTO for testing."""
     param_dtos = {}
     for name, val in params.items():
+        expr = None
+        if name == "amp":
+            expr = amp_expr
+        elif name == "cen":
+            expr = cen_expr
         param_dtos[name] = ParameterDTO(
             name=name,
             value=val,
             lower=-np.inf if name != "amp" else 0,
             upper=np.inf if name != "frac" else 1,
             vary=True,
-            expr=amp_expr if name == "amp" else None,
+            expr=expr,
         )
     return ComponentDTO(
         id_=comp_id,
@@ -217,6 +223,37 @@ class TestOptimizationPlanner:
         assert len(groups) == 1
         assert groups[0][0] is ctx
 
+    def test_region_with_two_expr_cliques_keeps_all_linked_contexts(self):
+        """A region spanning two component cliques must not split their partners apart."""
+        x = np.linspace(-5, 5, 80)
+        y = np.exp(-(x**2)) + 0.1
+
+        id_a = "pa3cf67e3aec942db988d3d93e635b014"
+        id_b = "pb1111111111111111111111111111111"
+        id_d = "pd3333333333333333333333333333333"
+        id_e = "pe4444444444444444444444444444444"
+
+        pa = _make_component(id_a, "r1", {"amp": 1, "cen": 0, "sig": 1, "frac": 0})
+        pd = _make_component(id_d, "r1", {"amp": 1, "cen": 1, "sig": 1, "frac": 0})
+        pb = _make_component(id_b, "r2", {"amp": 1, "cen": 0, "sig": 1, "frac": 0}, cen_expr=id_a)
+        pe = _make_component(id_e, "r3", {"amp": 1, "cen": 0, "sig": 1, "frac": 0}, cen_expr=id_d)
+
+        from core.dto import RegionDTO
+
+        ra = RegionDTO(id_="r1", parent_id="s1", normalized=False, x=x, y=y.copy())
+        rb = RegionDTO(id_="r2", parent_id="s2", normalized=False, x=x, y=y.copy())
+        re = RegionDTO(id_="r3", parent_id="s3", normalized=False, x=x, y=y.copy())
+        ctxs = build_contexts([(ra, [pa, pd]), (rb, [pb]), (re, [pe])])
+
+        groups = OptimizationPlanner().get_groups(ctxs)
+        assert len(groups) == 1
+        assert {ctx.id_ for ctx in groups[0]} == {"r1", "r2", "r3"}
+
+        result = optimize(ctxs, method="least_squares")
+        by_id = {r.component_id: r for r in result}
+        assert np.isclose(by_id[id_b].parameters["cen"], by_id[id_a].parameters["cen"])
+        assert np.isclose(by_id[id_e].parameters["cen"], by_id[id_d].parameters["cen"])
+
 
 class TestLmfitOptimizer:
     """Tests for LmfitOptimizer."""
@@ -264,6 +301,28 @@ class TestLmfitOptimizer:
         optimizer = LmfitOptimizer()
         result = optimizer.optimize((ctx,), method="least_squares")
         assert len(result) == 2
+        by_id = {r.component_id: r for r in result}
+        assert np.isclose(
+            by_id["peakBB01xx"].parameters["amp"], by_id["peakAA01xx"].parameters["amp"] * 0.25
+        )
+
+    def test_optimize_with_scientific_notation_and_sqrt_in_expr(self):
+        """Sci notation / lmfit builtins must not silently drop the constraint."""
+        x = np.linspace(-5, 5, 100)
+        y = 0.8 * np.exp(-(x**2) / 2)
+
+        cmp1 = _make_component(
+            "peakAA01xx", "r1", {"amp": 0.8, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+        )
+        cmp2 = _make_component(
+            "peakBB01xx",
+            "r1",
+            {"amp": 0.2, "cen": 0.0, "sig": 1.0, "frac": 0.0},
+            amp_expr="sqrt(peakAA * peakAA) * 1.0e0 * 0.25",
+        )
+        ctx = OptimizationContext("r1", "s1", False, x, y, (cmp1, cmp2))
+
+        result = LmfitOptimizer().optimize((ctx,), method="least_squares")
         by_id = {r.component_id: r for r in result}
         assert np.isclose(
             by_id["peakBB01xx"].parameters["amp"], by_id["peakAA01xx"].parameters["amp"] * 0.25

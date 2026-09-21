@@ -651,6 +651,7 @@ class ComponentService(BaseCoreService):
         parameters: dict[str, float] | None = None,
         component_id: str | None = None,
         expected_type: type[Peak] | type[Background] | type[Component] = Component,
+        name: str | None = None,
     ) -> Peak | Background:
         """
         Instantiate a component using a registered parametric model.
@@ -665,6 +666,10 @@ class ComponentService(BaseCoreService):
             Initial parameter values.
         component_id : str, optional
             Explicit component identifier.
+        expected_type : type
+            Required concrete component type.
+        name : str or None, optional
+            Optional display label.
 
         Returns
         -------
@@ -686,6 +691,7 @@ class ComponentService(BaseCoreService):
                 model=model,
                 region_id=region_id,
                 component_id=component_id,
+                name=name,
                 **parameters,
             )
         elif isinstance(model, BasePeakModel):
@@ -693,6 +699,7 @@ class ComponentService(BaseCoreService):
                 model=model,
                 region_id=region_id,
                 component_id=component_id,
+                name=name,
                 **parameters,
             )
         else:
@@ -930,6 +937,35 @@ class ComponentService(BaseCoreService):
         """Return the parametric model bound to the component."""
         component = self._get_typed(component_id, Component)
         return component.model
+
+    def get_name(self, component_id: str) -> str | None:
+        """
+        Return the optional display name of a component.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+
+        Returns
+        -------
+        str or None
+            User-visible label, or ``None`` when unset.
+        """
+        return self._get_typed(component_id, Component).name
+
+    def set_name(self, component_id: str, name: str | None) -> None:
+        """
+        Set the optional display name of a component.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        name : str or None
+            New label, or ``None`` to clear.
+        """
+        self._get_typed(component_id, Component).name = name
 
 
 class MetadataService(BaseCoreService):

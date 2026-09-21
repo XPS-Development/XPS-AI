@@ -247,3 +247,27 @@ def test_get_model_returns_model_instance(srv, region_id):
     model = srv.get_model(peak_id)
 
     assert isinstance(model, type(ModelRegistry.get("pseudo-voigt")))
+
+
+def test_get_set_name_roundtrip(srv, region_id):
+    """Optional display name can be set, read, and cleared."""
+    peak_id = srv.create_peak(region_id, "pseudo-voigt")
+    assert srv.get_name(peak_id) is None
+
+    srv.set_name(peak_id, "C1s")
+    assert srv.get_name(peak_id) == "C1s"
+
+    srv.set_name(peak_id, None)
+    assert srv.get_name(peak_id) is None
+
+
+def test_create_component_obj_accepts_name(srv, region_id):
+    """_create_component_obj stores an optional display name."""
+    peak = srv._create_component_obj(
+        region_id,
+        "pseudo-voigt",
+        parameters={"cen": 1.0},
+        expected_type=Peak,
+        name="N1s",
+    )
+    assert peak.name == "N1s"
