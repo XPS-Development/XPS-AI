@@ -139,7 +139,8 @@ def test_refresh_region_actions_when_empty(mock_controller: MagicMock) -> None:
 
 
 def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> None:
-    """COMPONENT rows expose truncated id and a stable color string."""
+    """COMPONENT rows expose truncated id and the first-peak palette color."""
+    from ui.component_colors import PEAK_COLORS
     from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole, ObjectIdRole
 
     mock_controller.get_app_parameters.return_value.show_id_in_properties_tree = True
@@ -153,6 +154,7 @@ def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> 
         component_id="pabcdef123",
         component_kind="peak",
         object_id="pabcdef123",
+        color_index=0,
     )
     model._root_item.append_child(peak)
     model.beginResetModel()
@@ -160,4 +162,4 @@ def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> 
     index = model.index(0, 0, QModelIndex())
     assert model.data(index, ObjectIdRole) == "pabcdef123"
     assert model.data(index, ObjectIdPrefixRole) == "pabcd"
-    assert isinstance(model.data(index, ComponentColorRole), str)
+    assert model.data(index, ComponentColorRole) == PEAK_COLORS[0]

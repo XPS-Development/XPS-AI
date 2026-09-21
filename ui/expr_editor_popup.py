@@ -119,6 +119,7 @@ class ExprPickerItem:
     parent: ExprPickerItem | None = None
     object_id: str | None = None
     component_kind: Literal["peak", "background"] | None = None
+    color_index: int = 0
     search_text: str = ""
     _row: int = 0
     children: list[ExprPickerItem] = field(default_factory=list)
@@ -237,6 +238,7 @@ class ExprPickerModel(QAbstractItemModel):
                                     kind="component",
                                     object_id=peak_id,
                                     component_kind="peak",
+                                    color_index=peak_index - 1,
                                     search_text=f"{peak_label} {peak_id}".lower(),
                                 )
                             )
@@ -316,7 +318,10 @@ class ExprPickerModel(QAbstractItemModel):
 
         if role == ComponentColorRole:
             if item.kind == "component" and item.object_id is not None:
-                return color_for_component(item.object_id, kind=item.component_kind or "peak")
+                return color_for_component(
+                    kind=item.component_kind or "peak",
+                    index=item.color_index,
+                )
             if item.kind in {"spectrum", "file", "group"}:
                 return _STATUS_COLORS.get(self._structure_status(item))
             return None
