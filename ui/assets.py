@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PySide6.QtGui import QIcon
 
+APP_NAME = "XPS-AI"
+
 
 def bundle_root() -> Path:
     """

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .assets import load_app_icon
+from .assets import APP_NAME, load_app_icon
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
             name = path.name
 
         dirty = "*" if self._controller.is_dirty else ""
-        self.setWindowTitle(f"Spectrum Viewer - {dirty}{name}")
+        self.setWindowTitle(f"{APP_NAME} - {dirty}{name}")
 
     def _update_status_bar(self) -> None:
         """Refresh the status bar text with path, dirty flag, and selection."""

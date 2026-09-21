@@ -47,7 +47,7 @@ def test_window_title_shows_dirty_marker_for_untitled(window: MainWindow) -> Non
     """A never-saved dirty document shows ``*Untitled`` in the title."""
     assert window._controller.is_dirty is True
     window._update_window_title()
-    assert window.windowTitle() == "Spectrum Viewer - *Untitled"
+    assert window.windowTitle() == "XPS-AI - *Untitled"
 
 
 def test_window_title_clears_dirty_marker_after_save(window: MainWindow, tmp_path) -> None:
@@ -56,7 +56,7 @@ def test_window_title_clears_dirty_marker_after_save(window: MainWindow, tmp_pat
     window._controller.dump_collection(path)
     window._update_window_title()
     assert window._controller.is_dirty is False
-    assert window.windowTitle() == "Spectrum Viewer - demo.json"
+    assert window.windowTitle() == "XPS-AI - demo.json"
 
 
 def test_confirm_close_accepts_when_clean(
