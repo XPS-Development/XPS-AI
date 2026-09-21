@@ -37,6 +37,7 @@ from .assets import icon_path
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
+from .expr_editor_popup import ExprEditorPopup
 from .name_id_delegate import (
     ComponentColorRole,
     NameWithIdDelegate,
@@ -174,6 +175,16 @@ def _parameter_constraint_marks(item: PropertyItem) -> str:
     if item.param_expr:
         return "ƒ"
     return ""
+
+
+def _ancestor_region_id(item: PropertyItem) -> str | None:
+    """Walk parents to find the nearest ``region_id``."""
+    node: PropertyItem | None = item
+    while node is not None:
+        if node.region_id is not None:
+            return node.region_id
+        node = node.parent
+    return None
 
 
 class PropertiesModel(QAbstractItemModel):
@@ -359,6 +370,9 @@ class PropertiesModel(QAbstractItemModel):
         if item.kind == ItemKind.PARAMETER_FIELD and col == 1:
             if item.parameter_field == "vary":
                 return base_flags | Qt.ItemFlag.ItemIsUserCheckable
+            if item.parameter_field == "expr":
+                # Edited via ExprEditorPopup on click, not an inline QLineEdit.
+                return base_flags
             return base_flags | Qt.ItemFlag.ItemIsEditable
 
         if col == 0 and item.kind == ItemKind.COMPONENT and item.component_id is not None:
@@ -626,11 +640,14 @@ class PropertiesModel(QAbstractItemModel):
             and item.parameter_field is not None
         ):
             field = item.parameter_field
-            text = str(value).strip().replace(",", ".")
             coerced_field: str | float | None
             if field == "expr":
-                coerced_field = text or None
+                if value is None:
+                    coerced_field = None
+                else:
+                    coerced_field = str(value).strip() or None
             elif field in {"lower", "upper"}:
+                text = str(value).strip().replace(",", ".")
                 if text in {"", "—", "-", "inf", "+inf", "-inf", "∞", "-∞"}:
                     coerced_field = float("-inf") if field == "lower" else float("inf")
                 else:
@@ -1213,6 +1230,54 @@ class PropertiesDelegate(QStyledItemDelegate):
         if model is not None:
             model.setData(index, new_name, Qt.ItemDataRole.EditRole)
 
+    def show_expr_popup(self, index: QModelIndex) -> None:
+        """
+        Open the expression constructor popup for a ``PARAMETER_FIELD`` expr cell.
+
+        Parameters
+        ----------
+        index : QModelIndex
+            Expr value cell index.
+        """
+        item = index.internalPointer() if index.isValid() else None
+        if (
+            not isinstance(item, PropertyItem)
+            or item.kind != ItemKind.PARAMETER_FIELD
+            or item.parameter_field != "expr"
+        ):
+            return
+        view = self.parent()
+        if not isinstance(view, QWidget):
+            return
+
+        region_id = _ancestor_region_id(item)
+        spectrum_id = getattr(self._controller, "selected_spectrum_id", None)
+        if isinstance(spectrum_id, str) and not spectrum_id:
+            spectrum_id = None
+        if spectrum_id is None and region_id is not None:
+            try:
+                spectrum_id = self._controller.query.get_parent_id(region_id)
+            except KeyError:
+                spectrum_id = None
+
+        initial = "" if item.value is None else str(item.value)
+        persistent = QPersistentModelIndex(index)
+
+        def _on_accepted(text: object) -> None:
+            model = persistent.model()
+            if model is None or not persistent.isValid():
+                return
+            model.setData(_as_model_index(persistent), text, Qt.ItemDataRole.EditRole)
+
+        ExprEditorPopup.open_for(
+            self._controller,
+            initial_text=initial,
+            focus_spectrum_id=spectrum_id if isinstance(spectrum_id, str) else None,
+            focus_region_id=region_id,
+            parent=view,
+            on_accepted=_on_accepted,
+        )
+
     def createEditor(
         self,
         parent: QWidget,
@@ -1275,7 +1340,6 @@ class PropertiesDelegate(QStyledItemDelegate):
         if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field in {
             "lower",
             "upper",
-            "expr",
         }:
             editor = QLineEdit(parent)
             editor.setFrame(False)
@@ -1303,15 +1367,12 @@ class PropertiesDelegate(QStyledItemDelegate):
         if (
             item.kind == ItemKind.PARAMETER_FIELD
             and isinstance(editor, QLineEdit)
-            and item.parameter_field in {"lower", "upper", "expr"}
+            and item.parameter_field in {"lower", "upper"}
         ):
-            if item.parameter_field == "expr":
-                editor.setText("" if item.value is None else str(item.value))
-            else:
-                editor.setText(_format_value(item.value) if item.value is not None else "")
-                # Show empty for ±inf so the cell matches collapsed display.
-                if isinstance(item.value, (int, float)) and not math.isfinite(float(item.value)):
-                    editor.setText("")
+            editor.setText(_format_value(item.value) if item.value is not None else "")
+            # Show empty for ±inf so the cell matches collapsed display.
+            if isinstance(item.value, (int, float)) and not math.isfinite(float(item.value)):
+                editor.setText("")
             return
 
         super().setEditorData(editor, index)
@@ -1977,7 +2038,7 @@ class PropertiesView(EditorTreeView):
         self._sync_parameter_detail_and_slider()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Open the model picker when the model value chip is clicked."""
+        """Open model or expression pickers when their value cells are clicked."""
         super().mouseReleaseEvent(event)
         if event.button() != Qt.MouseButton.LeftButton:
             return
@@ -1985,13 +2046,15 @@ class PropertiesView(EditorTreeView):
         if not index.isValid() or index.column() != 1:
             return
         item = index.internalPointer()
-        if not isinstance(item, PropertyItem) or item.kind != ItemKind.COMPONENT_MODEL:
+        if not isinstance(item, PropertyItem):
             return
         rect = self.visualRect(index)
-        self._value_delegate.show_model_menu(
-            self.viewport().mapToGlobal(rect.bottomLeft()),
-            index,
-        )
+        global_pos = self.viewport().mapToGlobal(rect.bottomLeft())
+        if item.kind == ItemKind.COMPONENT_MODEL:
+            self._value_delegate.show_model_menu(global_pos, index)
+            return
+        if item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field == "expr":
+            self._value_delegate.show_expr_popup(index)
 
     def on_controller_selection_changed(
         self,
