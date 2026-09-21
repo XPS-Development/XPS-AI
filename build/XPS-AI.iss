@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "XPS-AI"
-#define MyAppVersion "0.0.0"
+#define MyAppVersion "0.2.0"
 #define MyAppPublisher "XPS Development"
 #define MyAppURL "https://github.com/XPS-Development/XPS-AI/"
 #define MyAppExeName "XPS-AI.exe"
