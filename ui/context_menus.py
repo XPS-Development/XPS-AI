@@ -1,16 +1,14 @@
-"""
-Shared spectrum- and region-level context menus for the plot and properties panel.
-"""
+"""Shared spectrum- and region-level context menus for the plot and properties panel."""
 
 from dataclasses import dataclass
 
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMenu, QWidget
 
-from .component_creation_dialog import ComponentCreationDialog
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
-
+from .optimize_confirm import confirm_and_optimize
+from .tree_style import apply_editor_menu_style
 
 # TODO: refactor as a modular context menu factory
 
@@ -62,13 +60,22 @@ class SpectrumContextMenuActions:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.optimize_regions(spectrum_ids=[spectrum_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            spectrum_ids=[spectrum_id],
+        )
 
     def _on_auto_fit(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.auto_fit_spectra([spectrum_id])
+        self._controller.run_segmenter([spectrum_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            spectrum_ids=[spectrum_id],
+        )
 
     def _on_export_spectrum_csv(self) -> None:
         spectrum_id = self._controller.selected_spectrum_id
@@ -122,6 +129,7 @@ def attach_spectrum_context_actions(
         optimize.triggered.connect(lambda _checked=False: state._on_optimize())
         auto_fit.triggered.connect(lambda _checked=False: state._on_auto_fit())
     export_spectrum_csv.triggered.connect(lambda _checked=False: state._on_export_spectrum_csv())
+    apply_editor_menu_style(menu)
 
     return state
 
@@ -134,11 +142,9 @@ class RegionContextMenuActions:
     Parameters
     ----------
     add_peak : QAction
-        Quick-add a default peak.
+        Add a peak with the default model.
     set_background : QAction
-        Quick-add default background (disabled if one exists).
-    add_component : QAction
-        Open the component creation dialog.
+        Add default background (disabled if one exists).
     optimize_region : QAction
         Optimize this region only.
     delete_region : QAction
@@ -147,7 +153,6 @@ class RegionContextMenuActions:
 
     add_peak: QAction
     set_background: QAction
-    add_component: QAction
     optimize_region: QAction
     delete_region: QAction
     export_peak_csv: QAction
@@ -161,21 +166,19 @@ class RegionContextMenuActions:
         self.set_background.setEnabled(not has_background)
 
     def _on_add_peak(self) -> None:
-        self._controller.create_peak(self._region_id, "pseudo-voigt", parameters=None)
+        model_name = self._controller.get_app_parameters().default_peak_model
+        self._controller.create_peak(self._region_id, model_name, parameters=None)
 
     def _on_set_background(self) -> None:
-        self._controller.create_background(self._region_id, "shirley", parameters=None)
-
-    def _on_add_component(self) -> None:
-        dialog = ComponentCreationDialog(
-            self._controller,
-            region_id=self._region_id,
-            parent=self._dialog_parent,
-        )
-        dialog.exec()
+        model_name = self._controller.get_app_parameters().default_background_model
+        self._controller.create_background(self._region_id, model_name, parameters=None)
 
     def _on_optimize_region(self) -> None:
-        self._controller.optimize_regions(region_ids=[self._region_id])
+        confirm_and_optimize(
+            self._dialog_parent,
+            self._controller,
+            region_ids=[self._region_id],
+        )
 
     def _on_delete_region(self) -> None:
         if self._controller.selected_region_id == self._region_id:
@@ -209,7 +212,7 @@ def attach_region_context_actions(
     region_id : str
         Target region identifier.
     dialog_parent : QWidget
-        Parent for modal dialogs (e.g. component creation).
+        Parent for modal dialogs (e.g. optimize confirm).
 
     Returns
     -------
@@ -217,15 +220,13 @@ def attach_region_context_actions(
         Action references and ``update_enabled_state`` for this region.
     """
     if include_model_actions:
-        add_peak = menu.addAction("Add peak (fast)")
-        set_background = menu.addAction("Set background (fast)")
-        add_component = menu.addAction("Add component...")
+        add_peak = menu.addAction("Add peak")
+        set_background = menu.addAction("Set background")
         optimize_region = menu.addAction("Optimize region")
         delete_region = menu.addAction("Delete region")
     else:
-        add_peak = QAction("Add peak (fast)", menu)
-        set_background = QAction("Set background (fast)", menu)
-        add_component = QAction("Add component...", menu)
+        add_peak = QAction("Add peak", menu)
+        set_background = QAction("Set background", menu)
         optimize_region = QAction("Optimize region", menu)
         delete_region = QAction("Delete region", menu)
     export_peak_csv = menu.addAction("Export peaks")
@@ -233,7 +234,6 @@ def attach_region_context_actions(
     state = RegionContextMenuActions(
         add_peak=add_peak,
         set_background=set_background,
-        add_component=add_component,
         optimize_region=optimize_region,
         delete_region=delete_region,
         export_peak_csv=export_peak_csv,
@@ -244,9 +244,9 @@ def attach_region_context_actions(
     if include_model_actions:
         add_peak.triggered.connect(lambda _checked=False: state._on_add_peak())
         set_background.triggered.connect(lambda _checked=False: state._on_set_background())
-        add_component.triggered.connect(lambda _checked=False: state._on_add_component())
         optimize_region.triggered.connect(lambda _checked=False: state._on_optimize_region())
         delete_region.triggered.connect(lambda _checked=False: state._on_delete_region())
     export_peak_csv.triggered.connect(lambda _checked=False: state._on_export_peak_csv())
+    apply_editor_menu_style(menu)
 
     return state

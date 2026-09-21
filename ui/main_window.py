@@ -1,15 +1,28 @@
+"""Main window: spectrum tree, plot area, properties, and menus."""
+
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter, QStatusBar, QWidget
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QSplitter,
+    QStatusBar,
+    QWidget,
+)
 
+from .assets import APP_NAME, load_app_icon
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
-from .properties import PropertiesView
+from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
+from .tree_style import apply_editor_menu_style
 
 
 class MainWindow(QMainWindow):
@@ -31,6 +44,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        if getattr(sys, "frozen", False):
+            self.setWindowIcon(load_app_icon())
         self._controller = controller
 
         self._action_new: QAction | None = None
@@ -52,7 +67,7 @@ class MainWindow(QMainWindow):
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
-        self._properties_view: PropertiesView | None = None
+        self._properties_panel: PropertiesPanel | None = None
 
         self._create_actions()
         self._create_menus()
@@ -61,8 +76,8 @@ class MainWindow(QMainWindow):
         self._connect_controller_signals()
 
         self._update_undo_redo_state(
-            can_undo=self._controller.orchestrator.can_undo,
-            can_redo=self._controller.orchestrator.can_redo,
+            can_undo=self._controller.can_undo,
+            can_redo=self._controller.can_redo,
         )
         self._update_window_title()
         self._update_status_bar()
@@ -163,9 +178,29 @@ class MainWindow(QMainWindow):
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
 
+        for action in menu_bar.actions():
+            menu = action.menu()
+            if isinstance(menu, QMenu):
+                apply_editor_menu_style(menu)
+
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
-        splitter = QSplitter(Qt.Horizontal, self)
+        splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        splitter.setObjectName("MainSplitter")
+        splitter.setHandleWidth(1)
+        splitter.setStyleSheet(
+            """
+            QSplitter#MainSplitter::handle:horizontal {
+                background: #c8c8c8;
+                width: 1px;
+                margin: 0;
+                padding: 0;
+            }
+            QSplitter#MainSplitter::handle:horizontal:hover {
+                background: #a8a8a8;
+            }
+            """
+        )
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
@@ -173,12 +208,12 @@ class MainWindow(QMainWindow):
         self._plot_area = PlotAreaWidget(self._controller, splitter)
         self._plot_area.setObjectName("PlotArea")
 
-        self._properties_view = PropertiesView(self._controller, splitter)
-        self._properties_view.setObjectName("PropertiesView")
+        self._properties_panel = PropertiesPanel(self._controller, splitter)
+        self._properties_panel.setObjectName("PropertiesPanel")
 
         splitter.addWidget(self._spectrum_tree_panel)
         splitter.addWidget(self._plot_area)
-        splitter.addWidget(self._properties_view)
+        splitter.addWidget(self._properties_panel)
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -193,6 +228,15 @@ class MainWindow(QMainWindow):
     def _create_status_bar(self) -> None:
         """Create and attach the status bar."""
         status_bar = QStatusBar(self)
+        status_bar.setStyleSheet(
+            """
+            QStatusBar {
+                background: #fafafa;
+                border-top: 1px solid #e5e5e5;
+                color: #666666;
+            }
+            """
+        )
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
 
@@ -204,12 +248,18 @@ class MainWindow(QMainWindow):
 
         if self._spectrum_tree_panel is not None:
             self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
+            # Structure dots depend on regions/peaks created by auto-fit / optimize.
+            self._controller.propertiesNeedsRefresh.connect(
+                self._spectrum_tree_panel.tree.refresh_structure_status
+            )
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
-        if self._properties_view is not None:
-            self._controller.propertiesNeedsRefresh.connect(self._properties_view.refresh)
-            self._controller.selectionChanged.connect(self._properties_view.refresh)
+        if self._properties_panel is not None:
+            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
+            self._controller.selectionChanged.connect(
+                self._properties_panel.on_controller_selection_changed
+            )
 
     # ------------------------------------------------------------------
     # Slots for actions
@@ -219,29 +269,34 @@ class MainWindow(QMainWindow):
         """Create a new collection (clear current workspace)."""
         if not self._confirm_discard_changes():
             return
-        self._controller.orchestrator.new_collection()
-        self._controller.emit_full_ui_refresh()
+        self._controller.new_collection()
 
     def _on_open_triggered(self) -> None:
         """
         Open a collection or spectrum file using the controller.
 
         The dialog offers options to open a saved JSON collection or import
-        spectra files supported by the import service (.txt, .dat, .vms,
+        spectra files supported by the import service (.txt, .csv, .dat, .vms,
         .vamas) via :meth:`ControllerWrapper.import_spectra`.
         """
-
         filename, selected_filter = QFileDialog.getOpenFileName(
             self,
             "Open or import",
             "",
-            "Files (*.json *.txt *.dat *.vms *.vamas);;Collections (*.json);;Spectra (*.txt *.dat *.vms *.vamas);;All files (*)",
+            "Files (*.json *.txt *.csv *.dat *.vms *.vamas);;Collections (*.json);;"
+            "Spectra (*.txt *.csv *.dat *.vms *.vamas);;All files (*)",
         )
         if not filename:
             return
 
         suffix = Path(filename).suffix.lower()
-        if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
+        if "Spectra" in selected_filter or suffix in {
+            ".txt",
+            ".csv",
+            ".dat",
+            ".vms",
+            ".vamas",
+        }:
             self._controller.import_spectra(filename)
         else:
             if not self._confirm_discard_changes():
@@ -253,27 +308,11 @@ class MainWindow(QMainWindow):
 
     def _on_save_triggered(self) -> None:
         """Save the collection using the default or last used path."""
-        if self._controller.get_default_save_path() is None:
-            self._on_save_as_triggered()
-            return
-        self._controller.dump_collection()
-        self._update_window_title()
-        self._update_status_bar()
+        self._try_save()
 
     def _on_save_as_triggered(self) -> None:
         """Save the collection to a user-selected path."""
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save collection as",
-            "",
-            "JSON files (*.json);;All files (*)",
-        )
-        if not filename:
-            return
-
-        self._controller.dump_collection(filename)
-        self._update_window_title()
-        self._update_status_bar()
+        self._try_save_as()
 
     def _on_undo_triggered(self) -> None:
         """Trigger an undo via the controller."""
@@ -291,14 +330,14 @@ class MainWindow(QMainWindow):
         """Export peak parameters from currently selected spectrum as CSV."""
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
-            self._show_info("No spectrum selected", "Select a spectrum before exporting peak parameters.")
+            self._show_info(
+                "No spectrum selected", "Select a spectrum before exporting peak parameters."
+            )
             return
         export_peaks(self._controller, [spectrum_id], parent=self)
 
     def _on_export_all_selected_spectra_triggered(self) -> None:
-        """
-        Export all selected spectra.
-        """
+        """Export all selected spectra."""
         if self._spectrum_tree_panel is None:
             return
         spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
@@ -308,14 +347,14 @@ class MainWindow(QMainWindow):
         export_spectra(self._controller, spectrum_ids, parent=self)
 
     def _on_export_peaks_all_selected_spectra_triggered(self) -> None:
-        """
-        Export peak parameters from all selected spectra.
-        """
+        """Export peak parameters from all selected spectra."""
         if self._spectrum_tree_panel is None:
             return
         spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
         if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select one or more spectra before exporting peaks.")
+            self._show_info(
+                "No spectrum selected", "Select one or more spectra before exporting peaks."
+            )
             return
         export_peaks(self._controller, spectrum_ids, parent=self)
 
@@ -332,7 +371,7 @@ class MainWindow(QMainWindow):
             self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
             return
 
-        self._controller.auto_fit_spectra(spectrum_ids)
+        self._controller.auto_fit(spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
@@ -374,7 +413,12 @@ class MainWindow(QMainWindow):
         self._update_window_title()
         self._update_status_bar()
 
-    def _on_selection_changed(self, spectrum_id: str | None, region_id: str | None) -> None:
+    def _on_selection_changed(
+        self,
+        spectrum_id: str | None,
+        region_id: str | None,
+        component_id: str | None = None,
+    ) -> None:
         """
         React to selection changes by updating the status bar.
 
@@ -384,7 +428,10 @@ class MainWindow(QMainWindow):
             Selected spectrum identifier.
         region_id : str or None
             Selected region identifier.
+        component_id : str or None, optional
+            Selected component identifier.
         """
+        del spectrum_id, region_id, component_id
         self._update_status_bar()
 
     # ------------------------------------------------------------------
@@ -398,8 +445,61 @@ class MainWindow(QMainWindow):
         if self._action_redo is not None:
             self._action_redo.setEnabled(can_redo)
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """
+        Prompt to save unsaved changes before the window closes.
+
+        Parameters
+        ----------
+        event : QCloseEvent
+            Qt close event; ignored if the user cancels or save fails.
+        """
+        if self._confirm_close():
+            event.accept()
+        else:
+            event.ignore()
+
+    def _try_save(self) -> bool:
+        """
+        Save the collection to the default path, or run Save As if unset.
+
+        Returns
+        -------
+        bool
+            True if the document was saved successfully.
+        """
+        if self._controller.get_default_save_path() is None:
+            return self._try_save_as()
+        self._controller.dump_collection()
+        self._update_window_title()
+        self._update_status_bar()
+        return True
+
+    def _try_save_as(self) -> bool:
+        """
+        Save the collection to a path chosen by the user.
+
+        Returns
+        -------
+        bool
+            True if the user picked a path and the document was saved.
+        """
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save collection as",
+            "",
+            "JSON files (*.json);;All files (*)",
+        )
+        if not filename:
+            return False
+
+        self._controller.dump_collection(filename)
+        self._update_window_title()
+        self._update_status_bar()
+        return True
+
     def _update_window_title(self) -> None:
-        """Set the window title based on save path"""
+        """Set the window title from save path and dirty state."""
         path: Path | None = self._controller.get_default_save_path()
 
         if path is None:
@@ -407,8 +507,8 @@ class MainWindow(QMainWindow):
         else:
             name = path.name
 
-        title = f"Spectrum Viewer - {name}"
-        self.setWindowTitle(title)
+        dirty = "*" if self._controller.is_dirty else ""
+        self.setWindowTitle(f"{APP_NAME} - {dirty}{name}")
 
     def _update_status_bar(self) -> None:
         """Refresh the status bar text with path, dirty flag, and selection."""
@@ -420,12 +520,15 @@ class MainWindow(QMainWindow):
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
+        component_id = self._controller.selected_component_id
 
         selection_parts: list[str] = []
         if spectrum_id is not None:
             selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
         if region_id is not None:
             selection_parts.append(f"Region: {region_id[:5]}")
+        if component_id is not None:
+            selection_parts.append(f"Component: {component_id[:5]}")
 
         extra_selection = ""
         if self._spectrum_tree_panel is not None:
@@ -441,7 +544,7 @@ class MainWindow(QMainWindow):
         selection_str_base = " | ".join(selection_parts) if selection_parts else "No selection"
         selection_str = f"{selection_str_base}{extra_selection}"
 
-        if self._controller.orchestrator.is_dirty:
+        if self._controller.is_dirty:
             text = f"* {path_str} | {selection_str}"
         else:
             text = f"{path_str} | {selection_str}"
@@ -456,7 +559,7 @@ class MainWindow(QMainWindow):
         bool
             True if the operation may proceed, False to cancel.
         """
-        if not self._controller.orchestrator.is_dirty:
+        if not self._controller.is_dirty:
             return True
 
         answer = QMessageBox.question(
@@ -467,6 +570,33 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.No,
         )
         return answer == QMessageBox.StandardButton.Yes
+
+    def _confirm_close(self) -> bool:
+        """
+        Ask whether to save, discard, or cancel when closing with dirty state.
+
+        Returns
+        -------
+        bool
+            True if the window may close, False to keep it open.
+        """
+        if not self._controller.is_dirty:
+            return True
+
+        answer = QMessageBox.question(
+            self,
+            "Unsaved changes",
+            "Save changes before closing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if answer == QMessageBox.StandardButton.Save:
+            return self._try_save()
+        if answer == QMessageBox.StandardButton.Discard:
+            return True
+        return False
 
     def _show_info(self, title: str, message: str) -> None:
         """

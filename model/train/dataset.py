@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 import torch
 from torch.utils.data import Dataset
 
-from tools import interpolate
+from core.numerics import interpolate
 
 
 class XPSDataset(Dataset):

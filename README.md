@@ -1,7 +1,7 @@
 # XPS-AI
 The XPS-AI project is a comprehensive toolset for analyzing X-ray Photoelectron Spectroscopy (XPS) spectra. The project provides a neural network model for XPS spectra segmentation, data processing and visualization tools for analyzing XPS spectra, and a graphical user interface (GUI) for easy interaction with the tools.
 
-## v0.1.0 — First Public Release
+## v0.2.0
 
 This release introduces a fully redesigned application architecture, enabling significant improvements in performance, flexibility, and extensibility.
 
@@ -32,7 +32,7 @@ This release introduces a fully redesigned application architecture, enabling si
 
 #### Windows Installer
 
-1. Download `xps-ai_0.1.0_x64.exe`
+1. Download `xps-ai_0.2.0_x64.exe`
 2. Run the installer
 3. Follow the setup instructions
 
@@ -49,41 +49,25 @@ This release introduces a fully redesigned application architecture, enabling si
 
    ```bash
    git clone https://github.com/XPS-Development/XPS-AI.git
+   cd XPS-AI
    ```
 
-2. Navigate to the project directory:
+2. Install [uv](https://docs.astral.sh/uv/).
+
+3. Install dependencies:
 
    ```bash
-   cd xps-ai
+   uv sync --group dev
    ```
 
-3. (Optional) Create a virtual environment:
+4. Run the application:
 
    ```bash
-   python -m venv venv
+   uv run python main.py
    ```
 
-4. Activate the virtual environment:
+For matplotlib-based debugging (`debug/viewer.py`), also sync the interactive group:
 
-   * Windows:
-
-     ```bash
-     venv\Scripts\activate
-     ```
-   * Linux/macOS:
-
-     ```bash
-     source venv/bin/activate
-     ```
-
-5. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-6. Run the application:
-
-   ```bash
-   python main.py
-   ```
+```bash
+uv sync --group dev --group interactive
+```

@@ -1,6 +1,10 @@
 __pycache__
-.vscode
+.pytest_cache
+.ruff_cache
+.coverage
 .venv
+.vscode
+
 model/train/data
 train_log*
 *.ipynb

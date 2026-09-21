@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from core.objects import RuntimeParameter, Component, Peak, Background, Region, Spectrum
-from core.math_models import PseudoVoigtPeakModel, ConstantBackgroundModel, LinearBackgroundModel
+from core.math_models import ConstantBackgroundModel, PseudoVoigtPeakModel
+from core.objects import Background, Component, Peak, Region, RuntimeParameter, Spectrum
 
 
 # === RuntimeParameter tests ===
@@ -138,7 +138,7 @@ def test_region_rejects_non_slice():
 
 
 def test_region_rejects_invalid_step():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="slice step must be None or 1"):
         Region(slice_=slice(0, 10, 2), parent_id="s1")
 
 
@@ -164,12 +164,12 @@ def test_spectrum_creates_id():
 
 
 def test_spectrum_validates_shape():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="x and y must have the same length"):
         Spectrum(x=np.arange(3), y=np.arange(4))
 
 
 def test_spectrum_validates_ndim():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="x and y must be 1D arrays"):
         Spectrum(x=np.ones((3, 1)), y=np.ones((3,)))
 
 

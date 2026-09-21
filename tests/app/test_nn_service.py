@@ -2,11 +2,6 @@
 
 from uuid import uuid4
 
-import numpy as np
-import pytest
-
-from tools.dto import DTOService
-
 from app.command.changes import (
     CompositeChange,
     CreateBackground,
@@ -18,8 +13,8 @@ from app.command.core import CommandExecutor, UndoRedoStack, create_default_regi
 from app.nn_adapter import segmenter_results_to_changes
 from app.nn_service import NNService
 from core.services import CoreContext
-from tools.nn.segmenter import SegmenterResult
-from tools.nn.types import (
+from inference.segmenter import SegmenterResult
+from inference.types import (
     BackgroundDetectionResult,
     PeakDetectionResult,
     RegionDetectionResult,
@@ -97,8 +92,10 @@ def test_segmenter_results_to_changes_multiple_regions():
     create_regions = [c for c in change.changes if isinstance(c, CreateRegion)]
     assert len(create_regions) == 2
     assert create_regions[0].region_id != create_regions[1].region_id
-    assert create_regions[0].start == 10 and create_regions[0].stop == 50
-    assert create_regions[1].start == 60 and create_regions[1].stop == 120
+    assert create_regions[0].start == 10
+    assert create_regions[0].stop == 50
+    assert create_regions[1].start == 60
+    assert create_regions[1].stop == 120
 
 
 def test_segmenter_results_to_changes_no_background():
@@ -122,6 +119,8 @@ def test_segmenter_results_to_changes_multiple_peaks():
 
     create_peaks = [c for c in change.changes if isinstance(c, CreatePeak)]
     assert len(create_peaks) == 2
+    assert create_peaks[0].parameters is not None
+    assert create_peaks[1].parameters is not None
     assert create_peaks[0].parameters["cen"] == 30.0
     assert create_peaks[1].parameters["cen"] == 70.0
 
@@ -144,10 +143,16 @@ def test_segmenter_changes_execute_via_command_executor(empty_collection, simple
     segmenter_changes = segmenter_results_to_changes(sid, results)
     executor.execute(segmenter_changes)
 
-    regions = [obj for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Region"]
-    peaks = [obj for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Peak"]
+    regions = [
+        obj for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Region"
+    ]
+    peaks = [
+        obj for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Peak"
+    ]
     backgrounds = [
-        obj for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Background"
+        obj
+        for obj in empty_collection.objects_index.values()
+        if obj.__class__.__name__ == "Background"
     ]
 
     assert len(regions) == 1
@@ -165,7 +170,7 @@ def test_nn_service_run_segmenter_returns_composite_change(spectrum_id, dto_serv
     orig_spec = dto_service.get_spectrum(spectrum_id, normalized=False)
 
     # Patch pipeline to return mock results without loading ONNX
-    service._pipeline.run = lambda n, o: [_make_result(20, 180)]
+    service._pipeline.run = lambda n, o: [_make_result(20, 180)]  # ty: ignore[invalid-assignment]
 
     change = service.run_segmenter(spectrum_id, norm_spec, orig_spec)
 

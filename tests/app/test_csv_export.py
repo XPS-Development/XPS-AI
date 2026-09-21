@@ -28,7 +28,9 @@ def test_csv_export_service_exports_spectrum_file(
     assert text.startswith("x,y")
 
 
-def test_orchestrator_exports_peak_parameters(simple_collection, peak_id: str, tmp_path: Path) -> None:
+def test_orchestrator_exports_peak_parameters(
+    simple_collection, peak_id: str, tmp_path: Path
+) -> None:
     orchestrator = AppOrchestrator(simple_collection, AppParameters())
     output = tmp_path / "orchestrator_peak.csv"
 

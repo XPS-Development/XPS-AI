@@ -5,10 +5,10 @@ Produces CompositeChange with CreateSpectrum and SetSpectrumMetadata
 for each spectrum in the file.
 """
 
-from uuid import uuid4
 from pathlib import Path
+from uuid import uuid4
 
-from tools.parsers import parse_spectrum_file
+from formats import parse_spectrum_file
 
 from .command.changes import CompositeChange, CreateSpectrum, SetMetadata
 
@@ -25,11 +25,12 @@ def import_spectra(
     Parameters
     ----------
     path : str or Path
-        Path to the spectrum file (.txt, .dat, .vms, .vamas).
+        Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
     use_binding_energy : bool, optional
         Whether to use binding energy as the x-axis.
     use_cps : bool, optional
         Whether to use CPS as the y-axis.
+
     Returns
     -------
     CompositeChange
@@ -38,7 +39,7 @@ def import_spectra(
     parsed = parse_spectrum_file(path, use_binding_energy=use_binding_energy, use_cps=use_cps)
     changes = []
 
-    for i, ps in enumerate(parsed):
+    for _i, ps in enumerate(parsed):
         sid = f"s{uuid4().hex}"
         changes.append(CreateSpectrum(x=ps.x, y=ps.y, spectrum_id=sid))
         changes.append(SetMetadata(obj_id=sid, metadata=ps.metadata))

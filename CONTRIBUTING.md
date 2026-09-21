@@ -30,7 +30,17 @@
      ```
 
 4. **Ревью и слияние**
-   - PR проверяется, изменения вливаются в `dev`. (Однажды появятся тесты и с нормальным CI)
+   - PR в `dev`/`main` проходит GitHub Actions CI: `ruff check`, `ruff format --check`,
+     `ty check`, `pytest --cov` (см. `.github/workflows/ci.yml`). `ty check` включает `tests/`.
+   - Перед пушем локально:
+     ```bash
+     uv sync --group dev
+     uv run ruff check .
+     uv run ruff format --check .
+     uv run ty check
+     uv run pytest --cov --cov-report=term-missing
+     ```
+   - После зелёного CI PR ревьюится и вливается в `dev`.
 
 5. **Обновление `main`**
    - Когда набор изменений готов к релизу, создаётся Pull Request из `dev` в `main`.

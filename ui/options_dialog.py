@@ -1,3 +1,5 @@
+"""Dialog for editing application parameters."""
+
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.json_utils import parse_json_object
-from app.orchestration import AppParameters
+from app.parameters import AppParameters
 
 
 class OptionsDialog(QDialog):
@@ -37,6 +39,7 @@ class OptionsDialog(QDialog):
         self.setWindowTitle("Application settings")
 
         self._automatic_methods_cb = QCheckBox()
+        self._default_peak_model_edit = QLineEdit()
         self._default_bg_model_edit = QLineEdit()
         self._show_spectrum_id_in_tree_cb = QCheckBox()
         self._show_residuals_plot_cb = QCheckBox()
@@ -85,6 +88,7 @@ class OptionsDialog(QDialog):
         core_group = QGroupBox("Core")
         core_layout = QFormLayout(core_group)
         core_layout.addRow("Automatic methods", self._automatic_methods_cb)
+        core_layout.addRow("Default peak model", self._default_peak_model_edit)
         core_layout.addRow("Default background model", self._default_bg_model_edit)
         core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
         core_layout.addRow("Show residuals plot", self._show_residuals_plot_cb)
@@ -124,7 +128,9 @@ class OptionsDialog(QDialog):
 
         main_layout.addLayout(groups_grid)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
@@ -144,7 +150,8 @@ class OptionsDialog(QDialog):
             Source parameters.
         """
         self._automatic_methods_cb.setChecked(params.automatic_methods)
-        self._default_bg_model_edit.setText(params.default_background_model_for_auto_methods)
+        self._default_peak_model_edit.setText(params.default_peak_model)
+        self._default_bg_model_edit.setText(params.default_background_model)
         self._show_spectrum_id_in_tree_cb.setChecked(params.show_spectrum_id_in_tree)
         self._show_residuals_plot_cb.setChecked(params.show_residuals_plot)
         idx = self._region_slice_display_mode_combo.findData(params.region_slice_display_mode)
@@ -160,7 +167,9 @@ class OptionsDialog(QDialog):
         self._nn_smooth_cb.setChecked(params.nn_smooth)
         self._nn_interp_num_sb.setValue(params.nn_interp_num)
 
-        self._optimization_kwargs_edit.setPlainText(self._dict_to_pretty_json(params.optimization_kwargs))
+        self._optimization_kwargs_edit.setPlainText(
+            self._dict_to_pretty_json(params.optimization_kwargs)
+        )
 
         self._serialization_mode_edit.setText(str(params.default_serialization_mode))
         self._serialization_path_edit.setText(str(params.default_serialization_path or ""))
@@ -170,7 +179,9 @@ class OptionsDialog(QDialog):
             self._serialization_indent_sb.setValue(params.default_serialization_indent)
 
         self._serialization_use_gzip_cb.setChecked(params.default_serialization_use_gzip)
-        self._serialization_compresslevel_sb.setValue(int(params.default_serialization_compresslevel))
+        self._serialization_compresslevel_sb.setValue(
+            int(params.default_serialization_compresslevel)
+        )
 
     def apply_to_params(self, params: AppParameters) -> None:
         """
@@ -187,7 +198,8 @@ class OptionsDialog(QDialog):
             If optimization kwargs JSON is invalid.
         """
         params.automatic_methods = self._automatic_methods_cb.isChecked()
-        params.default_background_model_for_auto_methods = self._default_bg_model_edit.text()
+        params.default_peak_model = self._default_peak_model_edit.text()
+        params.default_background_model = self._default_bg_model_edit.text()
         params.show_spectrum_id_in_tree = self._show_spectrum_id_in_tree_cb.isChecked()
         params.show_residuals_plot = self._show_residuals_plot_cb.isChecked()
         mode_data = self._region_slice_display_mode_combo.currentData()
@@ -207,10 +219,12 @@ class OptionsDialog(QDialog):
         kwargs, err = parse_json_object(opt_text)
         if err is not None:
             raise ValueError(err)
-        params.optimization_kwargs = kwargs
+        params.optimization_kwargs = kwargs if kwargs is not None else {}
 
         mode_text = self._serialization_mode_edit.text().strip() or "replace"
-        params.default_serialization_mode = mode_text  # type: ignore[assignment]
+        if mode_text not in ("append", "replace"):
+            raise ValueError("Default serialization mode must be append or replace")
+        params.default_serialization_mode = mode_text
 
         path_text = self._serialization_path_edit.text().strip()
         params.default_serialization_path = Path(path_text) if path_text else None
@@ -219,7 +233,9 @@ class OptionsDialog(QDialog):
         params.default_serialization_indent = None if indent_value == 0 else indent_value
 
         params.default_serialization_use_gzip = self._serialization_use_gzip_cb.isChecked()
-        params.default_serialization_compresslevel = int(self._serialization_compresslevel_sb.value())
+        params.default_serialization_compresslevel = int(
+            self._serialization_compresslevel_sb.value()
+        )
 
     def validate_and_apply(self, params: AppParameters) -> bool:
         """
@@ -249,4 +265,3 @@ class OptionsDialog(QDialog):
         if not data:
             return "{}"
         return json.dumps(data, indent=2, sort_keys=True)
-

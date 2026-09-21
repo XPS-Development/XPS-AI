@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,10 +12,12 @@ def qapp() -> QApplication:
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
-    return app
+    return cast(QApplication, app)
 
 
-def test_spectrum_context_menu_exports_csv(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spectrum_context_menu_exports_csv(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del qapp
     controller = MagicMock()
     controller.selected_spectrum_id = "s1"
@@ -33,7 +36,9 @@ def test_spectrum_context_menu_exports_csv(qapp: QApplication, monkeypatch: pyte
     assert calls == [["s1"]]
 
 
-def test_region_context_menu_exports_first_peak(qapp: QApplication, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_region_context_menu_exports_first_peak(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     del qapp
     controller = MagicMock()
     controller.query.get_background_id.return_value = None

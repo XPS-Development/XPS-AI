@@ -5,427 +5,48 @@ Aggregates app services and the command/change pipeline into a single entry poin
 for running services, applying changes (create/update/metadata/remove), and undo/redo.
 """
 
-from dataclasses import dataclass, field
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Literal
+
+from numpy.typing import NDArray
 
 from core.collection import CoreCollection
-from core.metadata import Metadata, SpectrumMetadata
+from core.metadata import Metadata
 from core.services import CoreContext
-from tools.dto import ComponentDTO, DTOService, RegionDTO, SpectrumDTO
 
-from .automatization import AutomatizationAdapter
 from .command.changes import (
     BaseChange,
-    CompositeChange,
-    CreateBackground,
-    CreatePeak,
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
     ParameterField,
     RemoveMetadata,
     RemoveObject,
-    ReplaceBackgroundModel,
-    ReplacePeakModel,
     SetMetadata,
     UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
 )
-from .command.commands import Command
+from .command.commands import Command, UpdateParameterCommand, UpdateRegionSliceCommand
 from .command.core import CommandExecutor, UndoRedoStack, create_default_registry
+from .command.refresh import UiRefresh
 from .csv_export import CSVExportService
 from .error_dump import apply_safe_execution_to_class
 from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
+from .parameters import AppParameters
+from .query_service import QueryService
 from .serialization import SerializationService
-
-
-@dataclass
-class AppParameters:
-    """
-    Parameters for the app orchestrator.
-
-    This dataclass stores configuration values that control import behavior,
-    NN and optimization services, serialization defaults, and selected UI
-    preferences that need to be persisted between sessions.
-    """
-
-    # ---- Core collection parameters ----
-    automatic_methods: bool = True
-    default_background_model_for_auto_methods: str = "shirley"
-
-    # ---- UI parameters ----
-    show_spectrum_id_in_tree: bool = True
-    region_slice_display_mode: Literal["value", "index"] = "value"
-    show_id_in_properties_tree: bool = True
-    show_residuals_plot: bool = True
-
-    # ---- Import service parameters ----
-    import_use_binding_energy: bool = True
-    import_use_cps: bool = True
-
-    # ---- NN service parameters ----
-    nn_model_path: str | None = "assets/models/model.onnx"
-    nn_pred_threshold: float = 0.5
-    nn_smooth: bool = True
-    nn_interp_num: int = 256
-
-    # ---- Optimization service parameters ----
-    optimization_kwargs: dict[str, Any] = field(default_factory=dict)
-
-    # ---- Serialization service parameters ----
-    default_serialization_mode: Literal["append", "replace", "new"] = "replace"
-    default_serialization_path: str | Path | None = None
-    default_serialization_indent: int | None = None
-    default_serialization_use_gzip: bool = True
-    default_serialization_compresslevel: int = 9
-
-
-class QueryService:
-    """
-    Thin wrapper for querying the collection, metadata and DTO.
-    """
-
-    def __init__(self, ctx: CoreContext) -> None:
-        """
-        Initialize query service with access to core services and DTOs.
-
-        Parameters
-        ----------
-        ctx : CoreContext
-            Core services context providing query, metadata and data access.
-        """
-        self._ctx = ctx
-        self._dto = DTOService(ctx)
-
-    # ---- Collection queries (read-only) ----
-
-    def check_object_exists(self, obj_id: str) -> bool:
-        """
-        Return True if an object with the given ID exists in the collection.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the core object.
-
-        Returns
-        -------
-        bool
-            True if the object exists, False otherwise.
-        """
-        return self._ctx.query.check_object_exists(obj_id)
-
-    def get_parent_id(self, obj_id: str) -> str:
-        """
-        Return the identifier of the first parent of a core object.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the core object.
-
-        Returns
-        -------
-        str
-            Identifier of the object's parent.
-        """
-        return self._ctx.query.get_parent(obj_id)
-
-    def get_subtree_ids(self, obj_id: str) -> tuple[str, ...]:
-        """
-        Return the identifier of the object and all its descendants.
-
-        Parameters
-        ----------
-        obj_id : str
-            Root object identifier.
-
-        Returns
-        -------
-        tuple[str, ...]
-            The object ID and all descendant IDs.
-        """
-        return self._ctx.query.get_subtree(obj_id)
-
-    def get_regions_ids(self, spectrum_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all regions that belong to a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the parent spectrum.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Region identifiers whose parent is the given spectrum.
-        """
-        return self._ctx.query.get_regions(spectrum_id)
-
-    def get_components_ids(self, region_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all components (peaks and background) in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Component identifiers belonging to the region.
-        """
-        return self._ctx.query.get_components(region_id)
-
-    def get_peaks_ids(self, region_id: str) -> tuple[str, ...]:
-        """
-        Return identifiers of all peak components in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Peak identifiers belonging to the region.
-        """
-        return self._ctx.query.get_peaks(region_id)
-
-    def get_background_id(self, region_id: str) -> str | None:
-        """
-        Return the identifier of the unique background component in a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-
-        Returns
-        -------
-        str or None
-            Background identifier, or None if no background exists.
-        """
-        return self._ctx.query.get_background(region_id)
-
-    def get_all_peaks_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all peaks in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All peak identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_peaks()
-
-    def get_all_spectra_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all spectra in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All spectrum identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_spectra()
-
-    def get_all_regions_ids(self) -> tuple[str, ...]:
-        """
-        Return identifiers of all regions in the collection.
-
-        Returns
-        -------
-        tuple[str, ...]
-            All region identifiers registered in the collection.
-        """
-        return self._ctx.query.get_all_regions()
-
-    # ---- Metadata queries (read-only) ----
-
-    def get_metadata(self, obj_id: str) -> Metadata | None:
-        """
-        Retrieve metadata for a core object.
-
-        Parameters
-        ----------
-        obj_id : str
-            Identifier of the object.
-
-        Returns
-        -------
-        Metadata or None
-            Stored metadata, if any.
-        """
-        return self._ctx.metadata.get_metadata(obj_id)
-
-    def find_objects(
-        self,
-        md_field: str,
-        md_value: str,
-        *,
-        match_exact: bool = False,
-        tp: type[Metadata] | None = None,
-    ) -> tuple[str, ...]:
-        """
-        Find object identifiers whose metadata matches the given field and value.
-
-        Parameters
-        ----------
-        md_field : str
-            Metadata field to match.
-        md_value : str
-            Metadata value to match.
-        match_exact : bool, default=False
-            If True, match exact value, otherwise perform a substring match.
-        tp : type[Metadata] or None, optional
-            Metadata type to filter by.
-
-        Returns
-        -------
-        tuple[str, ...]
-            Object identifiers with matching metadata.
-        """
-        return self._ctx.metadata.find_objects(
-            md_field=md_field,
-            md_value=md_value,
-            match_exact=match_exact,
-            tp=tp,
-        )
-
-    # ---- Region queries ----
-
-    def get_region_slice(
-        self, region_id: str, mode: Literal["value", "index"] = "index"
-    ) -> tuple[int | float, int | float]:
-        """
-        Return the start and stop values or indices of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        mode : Literal["value", "index"], default="index"
-            Mode of the slice retrieval.
-
-        Returns
-        -------
-        tuple[int | float, int | float]
-            Start and stop values or indices of the region.
-        """
-        return self._ctx.region.get_slice(region_id, mode=mode)
-
-    # ---- DTO projections ----
-
-    def get_spectrum_dto(self, spectrum_id: str, *, normalized: bool = False) -> SpectrumDTO:
-        """
-        Return an immutable DTO projection of a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the spectrum.
-        normalized : bool, default=False
-            If True, return normalized spectrum data.
-
-        Returns
-        -------
-        SpectrumDTO
-            Spectrum data transfer object.
-        """
-        return self._dto.get_spectrum(spectrum_id, normalized=normalized)
-
-    def get_region_dto(self, region_id: str, *, normalized: bool = False) -> RegionDTO:
-        """
-        Return an immutable DTO projection of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        normalized : bool, default=False
-            If True, return normalized region data.
-
-        Returns
-        -------
-        RegionDTO
-            Region data transfer object.
-        """
-        return self._dto.get_region(region_id, normalized=normalized)
-
-    def get_component_dto(self, component_id: str, *, normalized: bool = False) -> ComponentDTO:
-        """
-        Return an immutable DTO projection of a component.
-
-        Parameters
-        ----------
-        component_id : str
-            Identifier of the component.
-        normalized : bool, default=False
-            If True, return normalized component parameters.
-
-        Returns
-        -------
-        ComponentDTO
-            Component data transfer object.
-        """
-        return self._dto.get_component(component_id, normalized=normalized)
-
-    def get_spectrum_dto_repr(
-        self,
-        spectrum_id: str,
-        *,
-        normalized: bool = False,
-    ) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
-        """
-        Return a complete immutable representation of a spectrum.
-
-        Parameters
-        ----------
-        spectrum_id : str
-            Identifier of the spectrum.
-        normalized : bool, default=False
-            If True, return normalized data and parameters.
-
-        Returns
-        -------
-        tuple[
-            SpectrumDTO,
-            tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...],
-        ]
-            Spectrum DTO and all regions with their component DTOs.
-        """
-        return self._dto.get_spectrum_repr(spectrum_id, normalized=normalized)
-
-    def get_region_dto_repr(
-        self,
-        region_id: str,
-        *,
-        normalized: bool = False,
-    ) -> tuple[RegionDTO, tuple[ComponentDTO, ...]]:
-        """
-        Return a complete immutable representation of a region.
-
-        Parameters
-        ----------
-        region_id : str
-            Identifier of the region.
-        normalized : bool, default=False
-            If True, return normalized data and parameters.
-
-        Returns
-        -------
-        tuple[RegionDTO, tuple[ComponentDTO, ...]]
-            Region DTO and its component DTOs.
-        """
-        return self._dto.get_region_repr(region_id, normalized=normalized)
+from .usecases import (
+    AnalysisUseCases,
+    DocumentUseCases,
+    EditingUseCases,
+    ExportUseCases,
+    HierarchyUseCases,
+)
+from .usecases.analysis import FitScopePreview
 
 
 class AppOrchestrator:
@@ -465,11 +86,24 @@ class AppOrchestrator:
             pred_threshold=params.nn_pred_threshold,
             smooth=params.nn_smooth,
             interp_num=params.nn_interp_num,
+            peak_model_name=params.default_peak_model,
+            background_model_name=params.default_background_model,
         )
         self._optimization = OptimizationService()
-        self._automatization = AutomatizationAdapter()
         self._serialization = SerializationService()
         self._csv_export = CSVExportService()
+        self._editing = EditingUseCases(self._query, params)
+        self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
+        self._hierarchy = HierarchyUseCases(self._query)
+        self._export = ExportUseCases(self._query, self._csv_export)
+        self._document = DocumentUseCases(
+            self._core_collection,
+            self.__ctx.metadata,
+            self._serialization,
+            self._params,
+            self._executor,
+        )
+        self._pending_ui_refresh = UiRefresh(0)
 
     @property
     def core_collection(self) -> CoreCollection:
@@ -521,6 +155,30 @@ class AppOrchestrator:
             pred_threshold=self._params.nn_pred_threshold,
             smooth=self._params.nn_smooth,
             interp_num=self._params.nn_interp_num,
+            peak_model_name=self._params.default_peak_model,
+            background_model_name=self._params.default_background_model,
+        )
+        self._analysis.set_nn(self._nn)
+
+    def apply_params(self, params: AppParameters) -> None:
+        """
+        Replace application parameters and reconfigure dependent services.
+
+        Parameters
+        ----------
+        params : AppParameters
+            New parameter set to install.
+        """
+        self._params = params
+        self.reconfigure_services_from_params()
+        self._editing = EditingUseCases(self._query, self._params)
+        self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, self._params)
+        self._document = DocumentUseCases(
+            self._core_collection,
+            self.__ctx.metadata,
+            self._serialization,
+            self._params,
+            self._executor,
         )
 
     @property
@@ -536,19 +194,41 @@ class AppOrchestrator:
     @property
     def is_dirty(self) -> bool:
         """True if there are unsaved changes."""
-        return self._serialization.is_dirty
+        return self.__stack.is_dirty
 
     def execute(self, change: BaseChange) -> None:
         """
         Execute a change (build command, apply, push to undo stack).
+
+        Accumulates :class:`~app.command.refresh.UiRefresh` flags from the
+        executed command for later consumption by the UI layer.
 
         Parameters
         ----------
         change : BaseChange
             Any change (single or CompositeChange).
         """
-        self._executor.execute(change)
-        self._serialization.mark_dirty()
+        cmd = self._executor.execute(change)
+        self._pending_ui_refresh |= cmd.combined_ui_refresh()
+
+    def execute_optional(self, change: BaseChange | None) -> None:
+        """Execute ``change`` when it is not ``None``; otherwise no-op."""
+        if change is not None:
+            self.execute(change)
+
+    def consume_pending_ui_refresh(self) -> UiRefresh:
+        """
+        Return and clear UI refresh flags accumulated since the last consume.
+
+        Returns
+        -------
+        UiRefresh
+            Combined flags from executed commands (and document ops that set
+            pending explicitly).
+        """
+        flags = self._pending_ui_refresh
+        self._pending_ui_refresh = UiRefresh(0)
+        return flags
 
     def undo(self) -> None:
         """Undo the last executed command."""
@@ -591,7 +271,7 @@ class AppOrchestrator:
         Parameters
         ----------
         path : str or Path
-            Path to the spectrum file (.txt, .dat, .vms, .vamas).
+            Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
         """
         change = import_spectra_changes(
             path,
@@ -623,21 +303,10 @@ class AppOrchestrator:
         spectrum_ids : Sequence of str
             Identifiers of the parent spectra for CreateRegion.
         """
-        changes: list[CompositeChange] = []
-        for spectrum_id in spectrum_ids:
-            # Prevent NN from creating regions/components on spectra that already have regions.
-            if self._query.get_regions_ids(spectrum_id):
-                continue
-            normalized_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=True)
-            original_spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-            changes.append(self._nn.run_segmenter(spectrum_id, normalized_spectrum, original_spectrum))
+        change = self._analysis.run_segmenter(spectrum_ids)
+        self.execute_optional(change)
 
-        if not changes:
-            return
-
-        self.execute(CompositeChange(changes=changes))
-
-    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs: Any) -> None:
+    def auto_fit(self, spectrum_ids: Sequence[str], **kwargs) -> None:
         """
         Run the NN segmenter then region optimization for the given spectra.
 
@@ -662,18 +331,47 @@ class AppOrchestrator:
         self.run_segmenter(spectrum_ids)
         self.optimize_regions(spectrum_ids=spectrum_ids, **kwargs)
 
+    def preview_fit_scope(
+        self,
+        *,
+        region_ids: Sequence[str] | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> FitScopePreview:
+        """
+        Preview expression-closed regions for an upcoming optimize (read-only).
+
+        Parameters
+        ----------
+        region_ids : Sequence of str, optional
+            Regions the user selected.
+        spectrum_ids : Sequence of str, optional
+            Spectra whose regions form the selection.
+
+        Returns
+        -------
+        FitScopePreview
+            Selected vs expanded region sets for a confirmation dialog.
+        """
+        return self._analysis.preview_fit_scope(
+            region_ids=region_ids,
+            spectrum_ids=spectrum_ids,
+        )
+
     def optimize_regions(
         self,
         *,
         region_ids: Sequence[str] | None = None,
         spectrum_ids: Sequence[str] | None = None,
-        **kwargs: Any,
+        expand_linked: bool = True,
+        **kwargs,
     ) -> None:
         """
         Run optimization and execute UpdateMultipleParameterValues changes.
 
-        Default optimization kwargs from AppParameters are merged with explicit
-        kwargs; caller values override defaults on conflict.
+        When ``expand_linked`` is True, expands to the expression-dependency
+        closure before fitting. Default optimization kwargs from AppParameters
+        are merged with explicit kwargs; caller values override defaults on
+        conflict.
 
         Parameters
         ----------
@@ -681,27 +379,19 @@ class AppOrchestrator:
             Identifiers of the regions to optimize.
         spectrum_ids : Sequence of str
             Identifiers of the spectra to optimize.
+        expand_linked : bool, default True
+            If True, include expression-linked regions outside the selection.
         **kwargs
             Passed to lmfit.minimize; overrides AppParameters.optimization_kwargs.
         """
-        merged = {**self._params.optimization_kwargs, **kwargs}
-        changes: list[CompositeChange] = []
-
-        if region_ids is None and spectrum_ids is None:
-            raise ValueError("region_ids or spectrum_ids must be provided")
-
-        if region_ids is None:
-            region_ids = []
-            for spectrum_id in spectrum_ids:
-                region_ids.extend(self._query.get_regions_ids(spectrum_id))
-
-        region_reprs: list[tuple[RegionDTO, tuple[ComponentDTO, ...]]] = []
-        for region_id in region_ids:
-            region_repr = self._query.get_region_dto_repr(region_id, normalized=True)
-            region_reprs.append(region_repr)
-
-        changes.append(self._optimization.optimize_regions(region_reprs, **merged))
-        self.execute(CompositeChange(changes=changes))
+        self.execute(
+            self._analysis.optimize_regions(
+                region_ids=region_ids,
+                spectrum_ids=spectrum_ids,
+                expand_linked=expand_linked,
+                **kwargs,
+            )
+        )
 
     # ---- Parameters and models ----
 
@@ -725,6 +415,130 @@ class AppOrchestrator:
             )
         )
 
+    def preview_parameter_value(
+        self,
+        component_id: str,
+        name: str,
+        value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """
+        Apply a parameter value without recording undo (live preview).
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        name : str
+            Parameter name.
+        value : float
+            Preview value.
+        normalized : bool, optional
+            Whether ``value`` is normalized.
+        """
+        self.__ctx.component.set_parameter(
+            component_id,
+            name,
+            normalized=normalized,
+            value=value,
+        )
+        self._pending_ui_refresh |= UiRefresh.PLOT
+
+    def commit_parameter_preview(
+        self,
+        component_id: str,
+        name: str,
+        old_value: float,
+        new_value: float,
+        *,
+        normalized: bool = False,
+    ) -> None:
+        """
+        Record undo for a value already applied via :meth:`preview_parameter_value`.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        name : str
+            Parameter name.
+        old_value : float
+            Value before the preview drag started.
+        new_value : float
+            Final value already present on the component.
+        normalized : bool, optional
+            Whether values are normalized.
+        """
+        if float(old_value) == float(new_value):
+            return
+        cmd = UpdateParameterCommand(
+            component_id=component_id,
+            name=name,
+            parameter_field="value",
+            new_value=new_value,
+            old_value=old_value,
+            normalized=normalized,
+        )
+        self._executor.record(cmd)
+        # Value is already applied and visible; skip PROPERTIES rebuild so the
+        # open slider editor is not destroyed mid-commit.
+        self._pending_ui_refresh |= UiRefresh.PLOT | UiRefresh.DOCUMENT
+
+    def preview_region_slice(
+        self,
+        region_id: str,
+        start: int | float,
+        stop: int | float,
+        *,
+        mode: Literal["value", "index"] = "value",
+    ) -> None:
+        """
+        Apply a region slice without recording undo (live preview).
+
+        Parameters
+        ----------
+        region_id : str
+            Region identifier.
+        start, stop : int or float
+            Preview bounds in ``mode`` units.
+        mode : {"value", "index"}, optional
+            Whether bounds are axis values or sample indices.
+        """
+        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
+        cmd = UpdateRegionSliceCommand.from_change(change, self.__ctx)
+        cmd.apply(self.__ctx)
+        self._pending_ui_refresh |= UiRefresh.PLOT
+
+    def commit_region_slice_preview(
+        self,
+        region_id: str,
+        old_start_index: int,
+        old_stop_index: int,
+    ) -> None:
+        """
+        Record undo for a slice already applied via :meth:`preview_region_slice`.
+
+        Parameters
+        ----------
+        region_id : str
+            Region identifier.
+        old_start_index, old_stop_index : int
+            Index bounds before the preview drag started.
+        """
+        new_start, new_stop = self.__ctx.region.get_slice(region_id, mode="index")
+        if int(old_start_index) == int(new_start) and int(old_stop_index) == int(new_stop):
+            return
+        cmd = UpdateRegionSliceCommand(
+            region_id=region_id,
+            new_start=int(new_start),
+            new_stop=int(new_stop),
+            old_start=int(old_start_index),
+            old_stop=int(old_stop_index),
+        )
+        self._executor.record(cmd)
+        self._pending_ui_refresh |= UiRefresh.PLOT | UiRefresh.DOCUMENT
+
     def update_parameters(
         self,
         component_id: str,
@@ -733,10 +547,11 @@ class AppOrchestrator:
         normalized: bool = False,
     ) -> None:
         """Update multiple parameter values at once; executed as a command."""
+        parameters_f: dict[str, float] = {k: float(v) for k, v in parameters.items()}
         self.execute(
             UpdateMultipleParameterValues(
                 component_id=component_id,
-                parameters=parameters,
+                parameters=parameters_f,
                 normalized=normalized,
             )
         )
@@ -749,24 +564,7 @@ class AppOrchestrator:
         mode: Literal["value", "index"] = "index",
     ) -> None:
         """Update the index slice of an existing region; executed as a command."""
-        change = UpdateRegionSlice(region_id=region_id, start=start, stop=stop, mode=mode)
-
-        if self._params.automatic_methods:
-            background_id = self._query.get_background_id(region_id)
-            if background_id is not None:
-                background_dto = self._query.get_component_dto(background_id)
-                spectrum_id = self._query.get_parent_id(region_id)
-                spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-                bg_change = self._automatization.update_intensities(
-                    background_dto=background_dto,
-                    spectrum_dto=spectrum,
-                    new_slice=(start, stop),
-                    slice_mode=mode,
-                )
-                self.execute(CompositeChange(changes=[change, bg_change]))
-                return
-
-        self.execute(change)
+        self.execute(self._editing.update_region_slice(region_id, start, stop, mode=mode))
 
     def replace_peak_model(
         self,
@@ -776,9 +574,9 @@ class AppOrchestrator:
     ) -> None:
         """Replace a peak's model (and optionally parameters); executed as a command."""
         self.execute(
-            ReplacePeakModel(
-                peak_id=peak_id,
-                new_model_name=new_model_name,
+            self._editing.replace_peak_model(
+                peak_id,
+                new_model_name,
                 parameters=parameters,
             )
         )
@@ -791,22 +589,10 @@ class AppOrchestrator:
         background_id: str | None = None,
     ) -> None:
         """Replace a background's model; executed as a command."""
-        if self._params.automatic_methods and parameters is None:
-            spectrum_dto = self._query.get_spectrum_dto(
-                self._query.get_parent_id(region_id),
-                normalized=False,
-            )
-            reg_slice = self._query.get_region_slice(region_id, mode="index")
-            parameters = self._automatization.get_bg_parameters(
-                new_model_name,
-                spectrum_dto,
-                reg_slice,
-                "index",
-            )
         self.execute(
-            ReplaceBackgroundModel(
-                region_id=region_id,
-                new_model_name=new_model_name,
+            self._editing.replace_background_model(
+                region_id,
+                new_model_name,
                 parameters=parameters,
                 background_id=background_id,
             )
@@ -816,8 +602,8 @@ class AppOrchestrator:
 
     def create_spectrum(
         self,
-        x: Any,
-        y: Any,
+        x: NDArray,
+        y: NDArray,
         spectrum_id: str | None = None,
     ) -> None:
         """Create a new spectrum; executed as a command."""
@@ -850,19 +636,14 @@ class AppOrchestrator:
         peak_id: str | None = None,
     ) -> None:
         """Create a new peak component; executed as a command."""
-        if self._params.automatic_methods and model_name == "pseudo-voigt" and parameters is None:
-            region_repr = self._query.get_region_dto_repr(region_id, normalized=False)
-            change = self._automatization.create_pseudo_voigt_peak(region_repr[0], region_repr[1])
-            self.execute(change)
-        else:
-            self.execute(
-                CreatePeak(
-                    region_id=region_id,
-                    model_name=model_name,
-                    parameters=parameters,
-                    peak_id=peak_id,
-                )
+        self.execute(
+            self._editing.create_peak(
+                region_id,
+                model_name,
+                parameters=parameters,
+                peak_id=peak_id,
             )
+        )
 
     def create_background(
         self,
@@ -872,28 +653,14 @@ class AppOrchestrator:
         background_id: str | None = None,
     ) -> None:
         """Create or replace a background component; executed as a command."""
-        if self._params.automatic_methods and parameters is None:
-            spectrum_id = self._query.get_parent_id(region_id)
-            spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
-            start, stop = self._query.get_region_slice(region_id, mode="index")
-            change = self._automatization.create_background(
-                region_id=region_id,
-                spectrum_dto=spectrum,
-                new_slice=(start, stop),
-                slice_mode="index",
-                model_name=model_name,
+        self.execute(
+            self._editing.create_background(
+                region_id,
+                model_name,
+                parameters=parameters,
                 background_id=background_id,
             )
-            self.execute(change)
-        else:
-            self.execute(
-                CreateBackground(
-                    region_id=region_id,
-                    model_name=model_name,
-                    parameters=parameters,
-                    background_id=background_id,
-                )
-            )
+        )
 
     # ---- Metadata ----
 
@@ -912,16 +679,20 @@ class AppOrchestrator:
         new_name : str
             New display name for the spectrum.
         """
-        metadata = self._query.get_metadata(spectrum_id)
-        if isinstance(metadata, SpectrumMetadata):
-            updated = SpectrumMetadata(
-                name=new_name,
-                group=metadata.group,
-                file=metadata.file,
-            )
-        else:
-            updated = SpectrumMetadata(name=new_name, group="", file="")
-        self.execute(SetMetadata(obj_id=spectrum_id, metadata=updated))
+        self.execute(self._hierarchy.rename_spectrum(spectrum_id, new_name))
+
+    def rename_component(self, component_id: str, new_name: str | None) -> None:
+        """
+        Set the optional display name of a peak or background.
+
+        Parameters
+        ----------
+        component_id : str
+            Component identifier.
+        new_name : str or None
+            New label, or ``None``/blank to clear.
+        """
+        self.execute(self._editing.rename_component(component_id, new_name))
 
     def rename_group(self, file_label: str, old_group_label: str, new_group_label: str) -> None:
         """
@@ -936,20 +707,9 @@ class AppOrchestrator:
         new_group_label : str
             New group label.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
+        self.execute_optional(
+            self._hierarchy.rename_group(file_label, old_group_label, new_group_label)
         )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata) and md.group == old_group_label:
-                updated = SpectrumMetadata(name=md.name, group=new_group_label, file=md.file)
-                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
 
     def rename_file(self, old_file_label: str, new_file_label: str) -> None:
         """
@@ -962,20 +722,7 @@ class AppOrchestrator:
         new_file_label : str
             New file label.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=old_file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata):
-                updated = SpectrumMetadata(name=md.name, group=md.group, file=new_file_label)
-                changes.append(SetMetadata(obj_id=spectrum_id, metadata=updated))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
+        self.execute_optional(self._hierarchy.rename_file(old_file_label, new_file_label))
 
     # ---- Remove ----
 
@@ -1002,19 +749,7 @@ class AppOrchestrator:
         group_label : str
             Group label to remove.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        changes: list[BaseChange] = []
-        for spectrum_id in spectrum_ids:
-            md = self._query.get_metadata(spectrum_id)
-            if isinstance(md, SpectrumMetadata) and md.group == group_label:
-                changes.append(FullRemoveObject(obj_id=spectrum_id))
-        if changes:
-            self.execute(CompositeChange(changes=changes))
+        self.execute_optional(self._hierarchy.remove_group(file_label, group_label))
 
     def remove_file(self, file_label: str) -> None:
         """
@@ -1025,16 +760,7 @@ class AppOrchestrator:
         file_label : str
             File label whose spectra should be removed.
         """
-        spectrum_ids = self._query.find_objects(
-            md_field="file",
-            md_value=file_label,
-            match_exact=True,
-            tp=SpectrumMetadata,
-        )
-        if not spectrum_ids:
-            return
-        changes: list[BaseChange] = [FullRemoveObject(obj_id=spectrum_id) for spectrum_id in spectrum_ids]
-        self.execute(CompositeChange(changes=changes))
+        self.execute_optional(self._hierarchy.remove_file(file_label))
 
     # ---- Serialization ----
 
@@ -1064,19 +790,8 @@ class AppOrchestrator:
         ValueError
             If path is None and no default path is set.
         """
-        resolved_path = path if path is not None else self._params.default_serialization_path
-        if resolved_path is None:
-            raise ValueError("path is required when AppParameters.default_serialization_path is not set")
-        resolved_indent = indent if indent is not None else self._params.default_serialization_indent
-        self._serialization.dump(
-            path=resolved_path,
-            collection=self._core_collection,
-            metadata_service=self.__ctx.metadata,
-            indent=resolved_indent,
-            use_gzip=self._params.default_serialization_use_gzip,
-            compresslevel=self._params.default_serialization_compresslevel,
-        )
-        self.set_default_save_path(resolved_path)
+        self._document.dump_collection(path, indent=indent)
+        self._pending_ui_refresh |= UiRefresh.DOCUMENT
 
     def load_collection(
         self,
@@ -1088,7 +803,7 @@ class AppOrchestrator:
         Load collection and metadata from a JSON file.
 
         If mode is omitted, AppParameters.default_serialization_mode is used.
-        For replace mode, the undo/redo stack is cleared.
+        The undo/redo stack is cleared after a successful load.
         Plain vs gzip input is auto-detected (``.gz`` suffix or gzip magic bytes).
 
         Parameters
@@ -1100,23 +815,7 @@ class AppOrchestrator:
             - replace: clear current collection/metadata in-place, then load.
             If None, uses AppParameters.default_serialization_mode (must be append or replace).
         """
-        resolved_mode = mode if mode is not None else self._params.default_serialization_mode
-        if resolved_mode not in ("append", "replace"):
-            raise ValueError(
-                f"mode must be 'append' or 'replace', got {resolved_mode!r}; "
-                "AppParameters.default_serialization_mode='new' is not supported"
-            )
-        self._serialization.load(
-            path=path,
-            collection=self._core_collection,
-            metadata_service=self.__ctx.metadata,
-            mode=resolved_mode,
-        )
-
-        self.set_default_save_path(path)
-
-        if resolved_mode == "replace":
-            self._executor.clear()
+        self._document.load_collection(path, mode=mode)
 
     def new_collection(self) -> None:
         """
@@ -1124,11 +823,8 @@ class AppOrchestrator:
 
         Used when creating a new document (e.g. File > New).
         """
-        self._core_collection.clear()
-        self.__ctx.metadata.clear()
-        self._params.default_serialization_path = None
-        self._serialization.mark_dirty()
-        self._executor.clear()
+        self._document.new_collection()
+        self._pending_ui_refresh |= UiRefresh.ALL
 
     # ---- CSV export ----
 
@@ -1158,13 +854,10 @@ class AppOrchestrator:
         use_xps_peak_names : bool, optional
             If True, apply pseudo-voigt XPS aliases.
         """
-        components: list[ComponentDTO] = []
-        for region_id in self._query.get_regions_ids(spectrum_id):
-            for peak_id in self._query.get_peaks_ids(region_id):
-                components.append(self._query.get_component_dto(peak_id, normalized=normalized))
-        self._csv_export.export_spectrum_peak_parameters(
+        self._export.export_peak_parameters(
+            spectrum_id,
             path,
-            tuple(components),
+            normalized=normalized,
             separator=separator,
             use_xps_peak_names=use_xps_peak_names,
             precision=precision,
@@ -1202,10 +895,10 @@ class AppOrchestrator:
         include_difference : bool, optional
             If True, include residual/difference column.
         """
-        spectrum_repr = self._query.get_spectrum_dto_repr(spectrum_id, normalized=normalized)
-        self._csv_export.export_spectrum(
+        self._export.export_spectrum(
+            spectrum_id,
             path,
-            spectrum_repr,
+            normalized=normalized,
             separator=separator,
             include_evaluated_components=include_evaluated_components,
             include_background=include_background,

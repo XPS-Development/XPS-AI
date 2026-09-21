@@ -3,21 +3,21 @@ pyqtgraph-based plot area for spectrum visualization.
 
 Displays the selected spectrum with raw data, background, peaks, model,
 and optional residuals. Driven by ``ControllerWrapper`` selection and signals,
-using the viewer data provider protocol and :func:`tools.evaluation.spectrum_bundle`.
+using precomputed plot data from the application query layer.
 """
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol, cast
 
-import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.mouseEvents import HoverEvent, MouseClickEvent, MouseDragEvent
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
-from tools.evaluation import SpectrumEvaluationResult, spectrum_bundle
+from core.evaluation import PlotCurve, SpectrumPlotData
 
+from .component_colors import color_for_component
 from .context_menus import (
     SpectrumContextMenuActions,
     attach_region_context_actions,
@@ -25,10 +25,9 @@ from .context_menus import (
 )
 from .controller import ControllerWrapper
 
-
 # Curve styling constants
-PEN_RAW = pg.mkPen(color="k", width=1)
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
+PEN_BACKGROUND_SELECTED = pg.mkPen(color="k", width=3, style=Qt.PenStyle.DashLine)
 PEN_MODEL = pg.mkPen(color="r", width=1.5)
 PEN_RESIDUALS = pg.mkPen(color="#808080", width=2)
 
@@ -37,8 +36,14 @@ REGION_BOUNDS_HOVER_PEN = pg.mkPen(color="#000000", width=4)
 REGION_BOUNDS_BRUSH = pg.mkBrush(0, 0, 0, 0)
 REGION_BOUNDS_HOVER_BRUSH = pg.mkBrush(0, 0, 255, 10)
 
-# Peak colors (cycled per peak)
-PEAK_COLORS: list[str] = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+_PEAK_WIDTH = 4.0
+_PEAK_WIDTH_SELECTED = 6.0
+_PEAK_WIDTH_DIMMED = 2.5
+_CURVE_CLICK_WIDTH = 12
+_RAW_SYMBOL_SIZE = 4
+_RAW_COLOR = (140, 140, 140, 220)
+# Fixed left-axis width so main and residuals plot areas stay aligned.
+_LEFT_AXIS_WIDTH = 80
 
 
 class DoubleClickAutoRangeViewBox(pg.ViewBox):
@@ -50,7 +55,8 @@ class DoubleClickAutoRangeViewBox(pg.ViewBox):
     """
 
     def __init__(self, **kwargs: Any) -> None:
-        """
+        """Initialize the view box.
+
         Parameters
         ----------
         **kwargs : Any
@@ -89,7 +95,8 @@ class VieBoxCustomContextMenu(DoubleClickAutoRangeViewBox):
         controller: ControllerWrapper,
         **kwargs: Any,
     ) -> None:
-        """
+        """Initialize the view box with a spectrum context menu.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -153,7 +160,8 @@ class RegionContextPlotWidget(pg.PlotWidget):
         controller: ControllerWrapper,
         parent: QWidget | None = None,
     ) -> None:
-        """
+        """Initialize the plot widget with a custom ViewBox.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -174,7 +182,9 @@ class RegionContextPlotWidget(pg.PlotWidget):
             enableMenu=False,
         )
 
-        vb = self.plotItem.getViewBox()
+        plot_item = self.plotItem
+        assert plot_item is not None
+        vb = plot_item.getViewBox()
         vb.setMenuEnabled(True)
 
 
@@ -211,7 +221,8 @@ class InteractiveRegion(pg.LinearRegionItem):
         dialog_parent: QWidget,
         **kwargs: Any,
     ) -> None:
-        """
+        """Initialize the linear region item for a spectrum region.
+
         Parameters
         ----------
         region_id : str
@@ -342,7 +353,8 @@ class PlotAreaWidget(QWidget):
         controller: ControllerWrapper,
         parent: QWidget | None = None,
     ) -> None:
-        """
+        """Initialize the plot area from the controller.
+
         Parameters
         ----------
         controller : ControllerWrapper
@@ -355,7 +367,7 @@ class PlotAreaWidget(QWidget):
         self._roi_items_by_region: dict[str, InteractiveRegion] = {}
         self._roi_region_ids_in_plot: set[str] = set()
         self._cursor_label: QLabel | None = None
-        self._last_result: SpectrumEvaluationResult | None = None
+        self._last_plot_data: SpectrumPlotData | None = None
         self._last_spectrum_id: str | None = None
 
         layout = QVBoxLayout(self)
@@ -366,6 +378,7 @@ class PlotAreaWidget(QWidget):
         self._main_plot = RegionContextPlotWidget(controller=self._controller)
         self._main_plot.setBackground("w")
         self._main_plot.showGrid(x=True, y=True, alpha=0.3)
+        self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         layout.addWidget(self._main_plot, stretch=1)
 
         # Residuals plot (shared x-axis, locked y)
@@ -377,6 +390,7 @@ class PlotAreaWidget(QWidget):
         self._res_plot.setBackground("w")
         self._res_plot.showGrid(x=True, y=True, alpha=0.3)
         self._res_plot.setMinimumHeight(80)
+        self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         self._res_plot.getViewBox().setXLink(self._main_plot.getViewBox())
         self._res_plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         layout.addWidget(self._res_plot, stretch=0)
@@ -387,8 +401,13 @@ class PlotAreaWidget(QWidget):
             "background-color: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 2px;"
         )
         self._cursor_label.setText("x: —  y: —")
-        self._cursor_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._main_plot.scene().sigMouseMoved.connect(self._on_main_plot_mouse_moved)
+        self._cursor_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        class _SceneWithMouseSignal(Protocol):
+            sigMouseMoved: Any
+
+        scene = cast(_SceneWithMouseSignal, self._main_plot.scene())
+        scene.sigMouseMoved.connect(self._on_main_plot_mouse_moved)
 
     def _on_main_plot_mouse_moved(self, pos: QPointF) -> None:
         """
@@ -424,7 +443,7 @@ class PlotAreaWidget(QWidget):
         """
         Redraw plots from the controller's current spectrum selection.
 
-        Loads data via ``get_spectrum_repr`` and :func:`spectrum_bundle`,
+        Loads data via :meth:`QueryService.get_spectrum_plot_data`,
         updates ROIs, and repaints the main and residuals plots. If no spectrum
         is selected, clears the plot area.
         """
@@ -433,13 +452,12 @@ class PlotAreaWidget(QWidget):
             self.clear_plot()
             return
 
-        spectrum, regions = self._controller.get_spectrum_repr(spectrum_id, normalized=False)
-        result = spectrum_bundle(spectrum, regions, include_background=True)
+        plot_data = self._controller.query.get_spectrum_plot_data(spectrum_id, normalized=False)
 
-        self._last_result = result
+        self._last_plot_data = plot_data
         self._sync_residuals_visibility()
         self._sync_rois_for_spectrum(spectrum_id=spectrum_id)
-        self._draw_spectrum(result)
+        self._draw_spectrum(plot_data)
         self._position_cursor_label()
 
     def _position_cursor_label(self) -> None:
@@ -453,7 +471,7 @@ class PlotAreaWidget(QWidget):
         self._main_plot.clear()
         self._res_plot.clear()
         self._clear_rois()
-        self._last_result = None
+        self._last_plot_data = None
         self._last_spectrum_id = None
 
     def _clear_rois(self) -> None:
@@ -500,7 +518,9 @@ class PlotAreaWidget(QWidget):
             start_val, stop_val = self._controller.query.get_region_slice(rid, mode="value")
             roi = self._roi_items_by_region.get(rid)
             if roi is None:
-                roi = self._create_region_roi(region_id=rid, start=float(start_val), stop=float(stop_val))
+                roi = self._create_region_roi(
+                    region_id=rid, start=float(start_val), stop=float(stop_val)
+                )
                 self._roi_items_by_region[rid] = roi
                 self._roi_region_ids_in_plot.discard(rid)
             else:
@@ -538,13 +558,18 @@ class PlotAreaWidget(QWidget):
             controller=self._controller,
             dialog_parent=self,
         )
-        roi.sigRegionChangeFinished.connect(lambda _roi=roi: self._on_roi_region_change_finished(_roi))
+        roi.sigRegionChangeFinished.connect(
+            lambda _roi=roi: self._on_roi_region_change_finished(_roi)
+        )
         roi.sigClickedRegion.connect(self._on_roi_clicked)
         return roi
 
     def _on_roi_clicked(self, region_id: str) -> None:
         """
         Update selection when the user clicks an ROI.
+
+        Deferred so a plot refresh does not destroy the ROI while its click
+        handler is still running.
 
         Parameters
         ----------
@@ -554,7 +579,11 @@ class PlotAreaWidget(QWidget):
         spectrum_id = self._controller.selected_spectrum_id
         if spectrum_id is None:
             return
-        self._controller.set_selection(spectrum_id, region_id)
+
+        def _apply() -> None:
+            self._controller.set_selection(spectrum_id, region_id)
+
+        QTimer.singleShot(0, _apply)
 
     def _iter_rois(self) -> Iterable[InteractiveRegion]:
         """
@@ -579,20 +608,17 @@ class PlotAreaWidget(QWidget):
         low, high = roi.getRegion()
         self._controller.update_region_slice(roi.region_id, low, high, mode="value")
 
-    def _draw_spectrum(self, result: SpectrumEvaluationResult) -> None:
+    def _draw_spectrum(self, plot_data: SpectrumPlotData) -> None:
         """
         Render the main spectrum stack and optional residuals subplot.
 
         Clears both plot widgets, re-attaches existing ``InteractiveRegion``
-        items, draws the raw spectrum, per-region backgrounds, peaks, and model
-        on the main plot, and draws per-region residual traces on ``_res_plot``
-        when it is visible (y range derived from residual data).
+        items, and draws precomputed curves on the main and residuals plots.
 
         Parameters
         ----------
-        result : SpectrumEvaluationResult
-            Bundled x/y data and per-region fit components from
-            :func:`spectrum_bundle`.
+        plot_data : SpectrumPlotData
+            Display-ready curves from the application query layer.
         """
         self._main_plot.clear()
         self._res_plot.clear()
@@ -603,46 +629,111 @@ class PlotAreaWidget(QWidget):
             self._main_plot.addItem(roi)
             self._roi_region_ids_in_plot.add(rid)
 
-        # Raw spectrum (full range)
-        self._main_plot.plot(result.x, result.y, pen=PEN_RAW)
+        for curve in plot_data.curves:
+            if curve.kind == "residual":
+                if self._res_plot.isVisible():
+                    self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                continue
 
-        all_res_x: list[np.ndarray] = []
-        all_res_y: list[np.ndarray] = []
+            if curve.kind == "raw":
+                item = self._main_plot.plot(
+                    curve.x,
+                    curve.y,
+                    pen=pg.mkPen(color=_RAW_COLOR, width=1),
+                    symbol="o",
+                    symbolSize=_RAW_SYMBOL_SIZE,
+                    symbolPen=None,
+                    symbolBrush=_RAW_COLOR,
+                )
+                item.setZValue(0)
+                continue
 
-        for region in result.regions:
-            x = region.x
-            bg_y = np.zeros_like(x) if region.background is None else region.background.y
-
-            # Background
-            if region.background is not None:
-                self._main_plot.plot(x, bg_y, pen=PEN_BACKGROUND)
-
-            # Peaks (background + peak contribution)
-            for idx, peak in enumerate(region.peaks):
-                color = PEAK_COLORS[idx % len(PEAK_COLORS)]
-                pen = pg.mkPen(color=color, width=2.5)
-                self._main_plot.plot(x, bg_y + peak.y, pen=pen)
-                # bg_y = bg_y + peak.y
-
-            # Model
-            self._main_plot.plot(x, region.model, pen=PEN_MODEL)
-
-            # Collect residuals for bottom plot
-            res = region.residuals
-            if res.size > 0:
-                all_res_x.append(x)
-                all_res_y.append(res)
+            pen = self._pen_for_curve(curve)
+            item = self._main_plot.plot(curve.x, curve.y, pen=pen)
+            if curve.kind == "model":
+                item.setZValue(30)
+                continue
+            if curve.kind == "background":
+                selected = curve.component_id is not None and self._is_selected_component(
+                    curve.component_id
+                )
+                item.setZValue(20 if selected else 5)
+                if curve.component_id is not None:
+                    item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
+                    cid = curve.component_id
+                    item.sigClicked.connect(
+                        lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
+                    )
+                continue
+            if curve.kind == "peak" and curve.component_id is not None:
+                item.setZValue(20 if self._is_selected_component(curve.component_id) else 10)
+                item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
+                cid = curve.component_id
+                item.sigClicked.connect(
+                    lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
+                )
 
         if self._res_plot.isVisible():
-            # Residuals subplot: same x as spectrum, one curve per region
-            for rx, ry in zip(all_res_x, all_res_y):
-                self._res_plot.plot(rx, ry, pen=PEN_RESIDUALS)
-
-            # Lock residuals y-axis from data
-            if all_res_y:
-                concat = np.concatenate(all_res_y)
-                r_min, r_max = float(np.min(concat)), float(np.max(concat))
-                margin = max((r_max - r_min) * 0.1, 1e-12)
-                self._res_plot.setYRange(r_min - margin, r_max + margin)
+            if plot_data.residual_y_range is not None:
+                self._res_plot.setYRange(*plot_data.residual_y_range)
             else:
                 self._res_plot.setYRange(-1, 1)
+
+        self._align_plot_axes()
+
+    def _align_plot_axes(self) -> None:
+        """Keep main and residuals left axes the same width so plot areas line up."""
+        self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
+        self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
+
+    def _is_selected_component(self, component_id: str) -> bool:
+        """Return True if ``component_id`` is the controller's selected component."""
+        return self._controller.selected_component_id == component_id
+
+    def _on_curve_clicked(self, component_id: str) -> None:
+        """
+        Select the component whose curve was clicked.
+
+        Selection is deferred so :meth:`refresh` (triggered by
+        ``selectionChanged``) does not destroy the clicked ``PlotDataItem``
+        while ``sigClicked`` is still on the stack.
+
+        Parameters
+        ----------
+        component_id : str
+            Peak or background id carried by the clicked plot item.
+        """
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            return
+        try:
+            dto = self._controller.query.get_component_dto(component_id)
+        except KeyError:
+            return
+        region_id = dto.parent_id
+
+        def _apply() -> None:
+            self._controller.set_selection(spectrum_id, region_id, component_id)
+
+        QTimer.singleShot(0, _apply)
+
+    def _pen_for_curve(self, curve: PlotCurve) -> Any:
+        """Map a plot curve kind to a pyqtgraph pen, with selection highlighting."""
+        selected_id = self._controller.selected_component_id
+        is_selected = curve.component_id is not None and curve.component_id == selected_id
+        has_selection = selected_id is not None
+
+        if curve.kind == "background":
+            return PEN_BACKGROUND_SELECTED if is_selected else PEN_BACKGROUND
+        if curve.kind == "model":
+            return PEN_MODEL
+        if curve.kind == "peak":
+            color = color_for_component(kind="peak", index=curve.peak_index or 0)
+            if is_selected:
+                width = _PEAK_WIDTH_SELECTED
+            elif has_selection:
+                width = _PEAK_WIDTH_DIMMED
+            else:
+                width = _PEAK_WIDTH
+            return pg.mkPen(color=color, width=width)
+        return PEN_RESIDUALS

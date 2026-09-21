@@ -1,0 +1,77 @@
+"""Spectrum file parsers for casa-like .txt, .dat, .csv, and VAMAS formats."""
+
+from pathlib import Path
+
+from .averaged_regions import looks_like_averaged_regions_header, parse_averaged_regions
+from .casa import parse_casa_txt
+from .dat import parse_dat
+from .types import ParsedSpectrum
+from .vamas import parse_vamas
+
+__all__ = [
+    "ParsedSpectrum",
+    "parse_averaged_regions",
+    "parse_casa_txt",
+    "parse_dat",
+    "parse_spectrum_file",
+    "parse_vamas",
+]
+
+
+def parse_spectrum_file(
+    path: str | Path, *, use_binding_energy: bool = True, use_cps: bool = True
+) -> list[ParsedSpectrum]:
+    """
+    Parse a spectrum file and return extracted spectra.
+
+    Dispatches by file extension:
+    - .txt -> casa-like format
+    - .csv -> wide averaged-regions table
+    - .dat -> averaged-regions if headered, else two-column x, y
+    - .vms, .vamas -> VAMAS format
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the spectrum file.
+    use_binding_energy : bool, optional
+        If True, use binding energy axis for x; otherwise use kinetic energy.
+        Default True.
+    use_cps : bool, optional
+        If True, use CPS axis for y; otherwise use counts.
+        Default True.
+
+    Returns
+    -------
+    list[ParsedSpectrum]
+        One or more spectra depending on the format.
+
+    Raises
+    ------
+    ValueError
+        If the file extension is not supported.
+    """
+    path = Path(path) if isinstance(path, str) else path
+    suffix = path.suffix.lower()
+
+    if suffix == ".txt":
+        return parse_casa_txt(path, use_binding_energy=use_binding_energy, use_cps=use_cps)
+    if suffix == ".csv":
+        return parse_averaged_regions(path)
+    if suffix == ".dat":
+        if _dat_is_averaged_regions(path):
+            return parse_averaged_regions(path)
+        return parse_dat(path)
+    if suffix in (".vms", ".vamas"):
+        return parse_vamas(path, use_binding_energy=use_binding_energy, use_cps=use_cps)
+
+    raise ValueError(f"Unsupported file extension: {suffix}")
+
+
+def _dat_is_averaged_regions(path: Path) -> bool:
+    """Return True if the .dat file starts with an averaged-regions header."""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        first = f.readline()
+    if not first.strip():
+        return False
+    return looks_like_averaged_regions_header(first)

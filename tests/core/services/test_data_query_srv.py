@@ -22,10 +22,10 @@ def test_get_norm_ctx_by_region(srv, region_id):
 
 
 def test_get_norm_ctx_invalid_args(srv):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="spectrum_id or region_id should be provided"):
         srv.get_norm_ctx()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Only one of spectrum_id or region_id"):
         srv.get_norm_ctx(spectrum_id="a", region_id="b")
 
 

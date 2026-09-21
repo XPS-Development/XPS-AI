@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
+from core.metadata import PeakMetadata, RegionMetadata, SpectrumMetadata
 from core.services import MetadataService, SpectrumService
-from core.metadata import SpectrumMetadata, RegionMetadata, PeakMetadata
 
 
 @pytest.fixture
@@ -142,7 +142,6 @@ def test_find_objects_fuzzy_match_partial(srv, spectrum_id):
 def test_find_objects_multiple_objects(srv, spectrum_id, simple_collection):
     """find_objects returns multiple matching object IDs."""
     # Create additional spectrum in the same collection
-    from core.services import SpectrumService
 
     spec_srv = SpectrumService(simple_collection)
     x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -225,7 +224,6 @@ def test_find_objects_empty_when_field_not_exists(srv, spectrum_id):
 
 def test_find_objects_fuzzy_match_multiple_matches(srv, spectrum_id, simple_collection):
     """find_objects fuzzy match finds multiple objects with matching substrings."""
-    from core.services import SpectrumService
 
     spec_srv = SpectrumService(simple_collection)
     x = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])

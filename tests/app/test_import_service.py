@@ -1,10 +1,9 @@
 """Tests for import service."""
 
-import pytest
-
-from app.import_service import import_spectra
 from app.command.changes import CompositeChange, CreateSpectrum, SetMetadata
 from app.command.core import CommandExecutor, UndoRedoStack, create_default_registry
+from app.import_service import import_spectra
+from core.metadata import SpectrumMetadata
 
 
 def test_import_spectra_returns_composite_change():
@@ -36,11 +35,14 @@ def test_import_spectra_execute_via_command_executor(empty_collection):
 
     assert len(empty_collection.objects_index) >= 1
     spectrum_ids = [
-        oid for oid, obj in empty_collection.objects_index.items() if obj.__class__.__name__ == "Spectrum"
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if obj.__class__.__name__ == "Spectrum"
     ]
     assert len(spectrum_ids) == 1
     metadata = ctx.metadata.get_metadata(spectrum_ids[0])
     assert metadata is not None
+    assert isinstance(metadata, SpectrumMetadata)
     assert metadata.name == "Ag3d"
     assert "test_1_spec.txt" in metadata.file
 
@@ -76,3 +78,36 @@ def test_import_spectra_vamas_creates_multiple_spectra(empty_collection):
         1 for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Spectrum"
     )
     assert spectrum_count >= 1
+
+
+def test_import_spectra_averaged_regions_creates_multiple_spectra(empty_collection):
+    """Import from averaged-regions CSV creates one spectrum per column pair."""
+    from core.services import CoreContext
+
+    ctx = CoreContext.from_collection(empty_collection)
+    stack = UndoRedoStack()
+    executor = CommandExecutor(ctx, stack, create_default_registry())
+
+    change = import_spectra("tests/data/test_averaged_regions.csv")
+    create_changes = [c for c in change.changes if isinstance(c, CreateSpectrum)]
+    set_md_changes = [c for c in change.changes if isinstance(c, SetMetadata)]
+    assert len(create_changes) == 3
+    assert len(set_md_changes) == 3
+
+    executor.execute(change)
+
+    spectrum_ids = [
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if obj.__class__.__name__ == "Spectrum"
+    ]
+    assert len(spectrum_ids) == 3
+    names: set[str] = set()
+    for sid in spectrum_ids:
+        metadata = ctx.metadata.get_metadata(sid)
+        assert isinstance(metadata, SpectrumMetadata)
+        names.add(metadata.name)
+    assert names == {"C1s", "O1s", "Ti2p"}
+
+    executor.undo()
+    assert len(empty_collection.objects_index) == 0

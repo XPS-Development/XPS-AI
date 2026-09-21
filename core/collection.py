@@ -1,6 +1,8 @@
-from typing import Dict, TypeVar
+"""Core object registry: spectra, regions, peaks, and backgrounds."""
 
-from .objects import CoreObject, Spectrum, Region
+from typing import TypeVar
+
+from .objects import CoreObject, Region, Spectrum
 
 T = TypeVar("T")
 
@@ -18,7 +20,7 @@ class CoreCollection:
 
     The collection is responsible for:
     - Object registration and lookup by ID
-    - Maintaining parent–child relationships via `parent_id`
+    - Maintaining parent-child relationships via `parent_id`
     - Cascading removal of hierarchical objects
 
     It is intentionally *not* responsible for:
@@ -59,8 +61,8 @@ class CoreCollection:
         Global mapping from object ID to core object instance.
     """
 
-    def __init__(self):
-        self.objects_index: Dict[str, CoreObject] = {}
+    def __init__(self) -> None:
+        self.objects_index: dict[str, CoreObject] = {}
 
     def add(self, obj: CoreObject) -> None:
         """
@@ -228,16 +230,12 @@ class CoreCollection:
         return tuple(result)
 
     def get_parent(self, obj_id: str) -> CoreObject | None:
-        """
-        Retrieve the parent of an object.
-        """
+        """Retrieve the parent of an object."""
         parent_id = self.objects_index[obj_id].parent_id
         return self.objects_index[parent_id] if parent_id else None
 
     def get_typed_parent(self, obj_id: str, tp: type[T]) -> T | None:
-        """
-        Retrieve the parent of an object and check type.
-        """
+        """Retrieve the parent of an object and check type."""
         parent = self.get_parent(obj_id)
         if parent is None:
             return None

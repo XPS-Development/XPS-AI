@@ -19,7 +19,7 @@ def test_create_region(srv: RegionService, spectrum_id: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "start, stop",
+    ("start", "stop"),
     [
         (-1, 5),
         (0, 1000),
@@ -87,7 +87,9 @@ def test_create_region_value_mode(srv: RegionService, spectrum_id: str) -> None:
     assert stop_val >= 4.9
 
 
-def test_create_region_value_mode_extreme_values_clamped(srv: RegionService, spectrum_id: str) -> None:
+def test_create_region_value_mode_extreme_values_clamped(
+    srv: RegionService, spectrum_id: str
+) -> None:
     """create_region with mode='value' and values outside x range uses searchsorted; valid region created."""
     # Values beyond x range yield indices at 0 and len(x); slice is still valid (0 < 200 <= 200)
     rid = srv.create_region(spectrum_id, start=-100.0, stop=100.0, mode="value")
@@ -117,5 +119,6 @@ def test_get_slice_value_mode(srv: RegionService, region_id: str) -> None:
     start_val, stop_val = srv.get_slice(region_id, mode="value")
     region = srv.collection.get_typed(region_id, Region)
     spectrum = srv.collection.get_typed_parent(region_id, Spectrum)
+    assert spectrum is not None
     assert start_val == spectrum.x[region.slice_.start]
     assert stop_val == spectrum.x[region.slice_.stop - 1]
