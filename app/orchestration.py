@@ -271,7 +271,7 @@ class AppOrchestrator:
         Parameters
         ----------
         path : str or Path
-            Path to the spectrum file (.txt, .dat, .vms, .vamas).
+            Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
         """
         change = import_spectra_changes(
             path,

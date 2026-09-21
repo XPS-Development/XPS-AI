@@ -78,3 +78,35 @@ def test_import_spectra_vamas_creates_multiple_spectra(empty_collection):
         1 for obj in empty_collection.objects_index.values() if obj.__class__.__name__ == "Spectrum"
     )
     assert spectrum_count >= 1
+
+
+def test_import_spectra_averaged_regions_creates_multiple_spectra(empty_collection):
+    """Import from averaged-regions CSV creates one spectrum per column pair."""
+    from core.services import CoreContext
+
+    ctx = CoreContext.from_collection(empty_collection)
+    stack = UndoRedoStack()
+    executor = CommandExecutor(ctx, stack, create_default_registry())
+
+    change = import_spectra("tests/data/test_averaged_regions.csv")
+    create_changes = [c for c in change.changes if isinstance(c, CreateSpectrum)]
+    set_md_changes = [c for c in change.changes if isinstance(c, SetMetadata)]
+    assert len(create_changes) == 3
+    assert len(set_md_changes) == 3
+
+    executor.execute(change)
+
+    spectrum_ids = [
+        oid
+        for oid, obj in empty_collection.objects_index.items()
+        if obj.__class__.__name__ == "Spectrum"
+    ]
+    assert len(spectrum_ids) == 3
+    names = {
+        ctx.metadata.get_metadata(sid).name  # type: ignore[union-attr]
+        for sid in spectrum_ids
+    }
+    assert names == {"C1s", "O1s", "Ti2p"}
+
+    executor.undo()
+    assert len(empty_collection.objects_index) == 0

@@ -25,7 +25,7 @@ def import_spectra(
     Parameters
     ----------
     path : str or Path
-        Path to the spectrum file (.txt, .dat, .vms, .vamas).
+        Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
     use_binding_energy : bool, optional
         Whether to use binding energy as the x-axis.
     use_cps : bool, optional

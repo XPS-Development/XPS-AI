@@ -272,20 +272,27 @@ class MainWindow(QMainWindow):
         Open a collection or spectrum file using the controller.
 
         The dialog offers options to open a saved JSON collection or import
-        spectra files supported by the import service (.txt, .dat, .vms,
+        spectra files supported by the import service (.txt, .csv, .dat, .vms,
         .vamas) via :meth:`ControllerWrapper.import_spectra`.
         """
         filename, selected_filter = QFileDialog.getOpenFileName(
             self,
             "Open or import",
             "",
-            "Files (*.json *.txt *.dat *.vms *.vamas);;Collections (*.json);;Spectra (*.txt *.dat *.vms *.vamas);;All files (*)",
+            "Files (*.json *.txt *.csv *.dat *.vms *.vamas);;Collections (*.json);;"
+            "Spectra (*.txt *.csv *.dat *.vms *.vamas);;All files (*)",
         )
         if not filename:
             return
 
         suffix = Path(filename).suffix.lower()
-        if "Spectra" in selected_filter or suffix in {".txt", ".dat", ".vms", ".vamas"}:
+        if "Spectra" in selected_filter or suffix in {
+            ".txt",
+            ".csv",
+            ".dat",
+            ".vms",
+            ".vamas",
+        }:
             self._controller.import_spectra(filename)
         else:
             if not self._confirm_discard_changes():

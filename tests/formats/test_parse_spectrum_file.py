@@ -16,7 +16,7 @@ def test_parse_spectrum_file_txt_dispatches_to_casa():
 
 
 def test_parse_spectrum_file_dat_dispatches_to_dat():
-    """parse_spectrum_file dispatches .dat to dat parser."""
+    """parse_spectrum_file dispatches plain .dat to two-column dat parser."""
     with tempfile.NamedTemporaryFile(suffix=".dat", delete=False) as f:
         f.write(b"1.0 10.0\n2.0 20.0\n")
         path = Path(f.name)
@@ -26,6 +26,20 @@ def test_parse_spectrum_file_dat_dispatches_to_dat():
         assert len(result[0].x) == 2
     finally:
         path.unlink()
+
+
+def test_parse_spectrum_file_csv_dispatches_to_averaged_regions():
+    """parse_spectrum_file dispatches .csv to averaged-regions parser."""
+    result = parse_spectrum_file("tests/data/test_averaged_regions.csv")
+    assert len(result) == 3
+    assert [ps.metadata.name for ps in result] == ["C1s", "O1s", "Ti2p"]
+
+
+def test_parse_spectrum_file_headered_dat_dispatches_to_averaged_regions():
+    """parse_spectrum_file routes headered .dat to averaged-regions parser."""
+    result = parse_spectrum_file("tests/data/test_averaged_regions.dat")
+    assert len(result) == 3
+    assert result[0].metadata.name == "C1s"
 
 
 def test_parse_spectrum_file_vms_dispatches_to_vamas():
