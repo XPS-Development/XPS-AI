@@ -1,11 +1,18 @@
 """Spectrum tree panel with search, auto-fit, and optimize controls."""
 
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex, QSize
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
+from .assets import icon_path
 from .controller import ControllerWrapper
 from .optimize_confirm import confirm_and_optimize
 from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
+
+_SEARCH_ICON = QIcon(str(icon_path("search.svg")))
+_FLASK_ICON = QIcon(str(icon_path("flask.svg")))
+_OPTIMIZE_ICON = QIcon(str(icon_path("optimize.svg")))
+_BTN_ICON_SIZE = QSize(14, 14)
 
 
 class SpectrumTreePanel(QWidget):
@@ -23,9 +30,14 @@ class SpectrumTreePanel(QWidget):
         self._controller = controller
         self._search_edit = QLineEdit(self)
         self._search_edit.setPlaceholderText("Search spectra, groups, files…")
+        self._search_edit.addAction(_SEARCH_ICON, QLineEdit.ActionPosition.LeadingPosition)
         self._tree = SpectrumTreeWidget(controller, self)
         self._auto_fit_btn = QPushButton("Auto fit", self)
+        self._auto_fit_btn.setIcon(_FLASK_ICON)
+        self._auto_fit_btn.setIconSize(_BTN_ICON_SIZE)
         self._optimize_btn = QPushButton("Optimize", self)
+        self._optimize_btn.setIcon(_OPTIMIZE_ICON)
+        self._optimize_btn.setIconSize(_BTN_ICON_SIZE)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 0)
