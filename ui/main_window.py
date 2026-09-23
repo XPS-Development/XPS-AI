@@ -8,7 +8,6 @@ from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QSplitter,
     QStatusBar,
@@ -22,7 +21,6 @@ from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
-from .tree_style import apply_editor_menu_style
 
 
 class MainWindow(QMainWindow):
@@ -178,29 +176,11 @@ class MainWindow(QMainWindow):
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
 
-        for action in menu_bar.actions():
-            menu = action.menu()
-            if isinstance(menu, QMenu):
-                apply_editor_menu_style(menu)
-
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("MainSplitter")
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet(
-            """
-            QSplitter#MainSplitter::handle:horizontal {
-                background: #c8c8c8;
-                width: 1px;
-                margin: 0;
-                padding: 0;
-            }
-            QSplitter#MainSplitter::handle:horizontal:hover {
-                background: #a8a8a8;
-            }
-            """
-        )
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
@@ -228,15 +208,6 @@ class MainWindow(QMainWindow):
     def _create_status_bar(self) -> None:
         """Create and attach the status bar."""
         status_bar = QStatusBar(self)
-        status_bar.setStyleSheet(
-            """
-            QStatusBar {
-                background: #fafafa;
-                border-top: 1px solid #e5e5e5;
-                color: #666666;
-            }
-            """
-        )
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
 
@@ -583,20 +554,37 @@ class MainWindow(QMainWindow):
         if not self._controller.is_dirty:
             return True
 
-        answer = QMessageBox.question(
-            self,
-            "Unsaved changes",
-            "Save changes before closing?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
-        )
-        if answer == QMessageBox.StandardButton.Save:
+        choice = self._prompt_unsaved_close()
+        if choice == "save":
             return self._try_save()
-        if answer == QMessageBox.StandardButton.Discard:
+        if choice == "discard":
             return True
         return False
+
+    def _prompt_unsaved_close(self) -> str:
+        """
+        Show the unsaved-changes close dialog.
+
+        Returns
+        -------
+        {"save", "discard", "cancel"}
+            User choice. Discard uses a short label so the button fits on Linux.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Unsaved changes")
+        box.setText("Save changes before closing?")
+        save_btn = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(save_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == save_btn:
+            return "save"
+        if clicked == discard_btn:
+            return "discard"
+        return "cancel"
 
     def _show_info(self, title: str, message: str) -> None:
         """

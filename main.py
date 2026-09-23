@@ -14,6 +14,7 @@ from app.error_dump import (
 from ui.assets import APP_NAME, load_app_icon
 from ui.controller import ControllerWrapper
 from ui.main_window import MainWindow
+from ui.theme import install_theme
 
 
 class _SafeNotifyApplication(QApplication):
@@ -67,6 +68,7 @@ def main() -> int:
         Exit code from the Qt event loop.
     """
     app = _SafeNotifyApplication(sys.argv)
+    install_theme(app)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
     if getattr(sys, "frozen", False):

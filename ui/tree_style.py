@@ -1,142 +1,20 @@
-"""Shared editor-style look for spectrum and properties trees and menus."""
+"""Tree view with continuous rounded selection/hover row chrome.
+
+Application colors and stylesheets live in :mod:`ui.theme`. Call
+:func:`apply_editor_tree_style` to select hairline vs spaced row padding via
+the ``editorRows`` dynamic property.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QMouseEvent, QPainter
+from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QTreeView, QWidget
 
-from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QRectF, Qt
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPalette
-from PySide6.QtWidgets import QMenu, QStyle, QStyleOptionViewItem, QTreeView, QWidget
+from . import theme
 
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QComboBox
-
-# Side panels sit slightly off-white; the plot stays pure white.
-_PANEL_BG = "#f7f7f7"
-_SELECTION_BG = "#e4e4e4"
-_HOVER_BG = "#ececec"
-_ITEM_RADIUS = 6
-_MENU_RADIUS = "10px"
 _ROW_INSET_X = 4
 _ROW_INSET_Y = 1
-
-_TREE_BASE = f"""
-QTreeView {{
-    background: {_PANEL_BG};
-    border: none;
-    outline: none;
-    show-decoration-selected: 0;
-}}
-QTreeView::item {{
-    background: transparent;
-    margin: 0px;
-    border: none;
-}}
-QTreeView::item:hover,
-QTreeView::item:hover:!selected,
-QTreeView::item:selected,
-QTreeView::item:selected:active,
-QTreeView::item:selected:!active {{
-    background: transparent;
-    color: #000000;
-}}
-QTreeView::branch {{
-    background: transparent;
-}}
-"""
-
-_ITEM_HAIRLINES = """
-QTreeView::item {
-    border-bottom: 1px solid #e8e8e8;
-    padding: 2px 4px;
-}
-"""
-
-_ITEM_SPACED = """
-QTreeView::item {
-    padding: 4px 4px;
-}
-"""
-
-_HEADER_STYLE = f"""
-QHeaderView::section {{
-    background: {_PANEL_BG};
-    border: none;
-    border-bottom: 1px solid #e0e0e0;
-    padding: 4px 6px;
-    color: #555555;
-}}
-"""
-
-_COMBO_STYLE = f"""
-QComboBox {{
-    background: #ffffff;
-    border: 1px solid #d0d0d0;
-    border-radius: 6px;
-    padding: 2px 8px;
-    color: #000000;
-    min-height: 20px;
-}}
-QComboBox:hover {{
-    border: 1px solid #b8b8b8;
-}}
-QComboBox::drop-down {{
-    subcontrol-origin: padding;
-    subcontrol-position: center right;
-    width: 18px;
-    border: none;
-}}
-QComboBox QAbstractItemView {{
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: {_MENU_RADIUS};
-    padding: 4px;
-    outline: none;
-    selection-background-color: {_SELECTION_BG};
-    selection-color: #000000;
-}}
-"""
-
-_MENU_STYLE = f"""
-QMenu {{
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: {_MENU_RADIUS};
-    padding: 4px;
-}}
-QMenu::item {{
-    background: transparent;
-    color: #000000;
-    padding: 6px 28px 6px 12px;
-    border-radius: 6px;
-    margin: 1px 2px;
-}}
-QMenu::item:selected {{
-    background: {_SELECTION_BG};
-    color: #000000;
-}}
-QMenu::item:disabled {{
-    color: #a0a0a0;
-}}
-QMenu::item:checked {{
-    font-weight: normal;
-}}
-QMenu::separator {{
-    height: 1px;
-    background: #ebebeb;
-    margin: 4px 8px;
-}}
-QMenu::indicator {{
-    width: 14px;
-    height: 14px;
-    margin-right: 4px;
-}}
-QMenu::right-arrow {{
-    width: 10px;
-    height: 10px;
-    margin-right: 6px;
-}}
-"""
 
 
 def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
@@ -158,6 +36,7 @@ class EditorTreeView(QTreeView):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._hover_row_index = QPersistentModelIndex()
+        self._hover_rect = QRect()
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
@@ -183,6 +62,11 @@ class EditorTreeView(QTreeView):
         """Clear hover chrome when the pointer leaves the view."""
         self._set_hover_row(QModelIndex())
         super().leaveEvent(event)
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """Keep the cached hover rect aligned after the viewport scrolls."""
+        super().scrollContentsBy(dx, dy)
+        self._refresh_hover_rect()
 
     def _paint_row_background(
         self,
@@ -214,16 +98,22 @@ class EditorTreeView(QTreeView):
             float(width),
             float(height),
         )
-        color = QColor(_SELECTION_BG if selected else _HOVER_BG)
+        color = QColor(theme.SELECTION_BG if selected else theme.HOVER_BG)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
-        painter.drawRoundedRect(rect, float(_ITEM_RADIUS), float(_ITEM_RADIUS))
+        painter.drawRoundedRect(rect, float(theme.ITEM_RADIUS), float(theme.ITEM_RADIUS))
         painter.restore()
 
     def _set_hover_row(self, index: QModelIndex) -> None:
-        """Update which row shows hover chrome and schedule a repaint."""
+        """Update which row shows hover chrome and schedule a targeted repaint.
+
+        Invalidates only the previous and new row strips. The previous strip
+        uses a cached ``QRect`` (never ``visualRect`` on a stale index). The
+        new strip uses ``visualRect`` on a fresh ``indexAt`` / sibling index,
+        which is safe outside of paint handlers.
+        """
         new = index.sibling(index.row(), 0) if index.isValid() else QModelIndex()
         old = (
             _as_model_index(self._hover_row_index)
@@ -232,11 +122,34 @@ class EditorTreeView(QTreeView):
         )
         if self._same_row(old, new):
             return
+        viewport = self.viewport()
+        old_rect = QRect(self._hover_rect)
+        if not old_rect.isNull():
+            viewport.update(old_rect)
         self._hover_row_index = (
             QPersistentModelIndex(new) if new.isValid() else QPersistentModelIndex()
         )
-        # Full viewport update avoids visualRect on possibly-stale indexes.
-        self.viewport().update()
+        self._hover_rect = self._row_chrome_rect(new) if new.isValid() else QRect()
+        if not self._hover_rect.isNull():
+            viewport.update(self._hover_rect)
+
+    def _refresh_hover_rect(self) -> None:
+        """Recompute ``_hover_rect`` after layout shifts (e.g. scroll)."""
+        if not self._hover_row_index.isValid():
+            self._hover_rect = QRect()
+            return
+        idx = _as_model_index(self._hover_row_index)
+        self._hover_rect = self._row_chrome_rect(idx) if idx.isValid() else QRect()
+
+    def _row_chrome_rect(self, index: QModelIndex) -> QRect:
+        """Return the full-width viewport rect covering the row chrome."""
+        if not index.isValid():
+            return QRect()
+        cell = self.visualRect(index)
+        if cell.isNull():
+            return QRect()
+        # Pad 1px for antialiased rounded corners beyond the cell bounds.
+        return QRect(0, cell.y() - 1, self.viewport().width(), cell.height() + 2)
 
     @staticmethod
     def _same_row(a: QModelIndex, b: QModelIndex) -> bool:
@@ -251,85 +164,26 @@ class EditorTreeView(QTreeView):
 def apply_editor_tree_style(
     view: QTreeView,
     *,
-    with_header: bool = False,
     row_separators: bool = True,
 ) -> None:
     """
-    Apply editor-style panel chrome for trees with rounded row selection.
+    Mark a tree for editor-style row chrome via the ``editorRows`` property.
 
     Prefer :class:`EditorTreeView` so selection/hover paint as one continuous
-    rounded strip. Plain ``QTreeView`` still gets transparent cell fills.
+    rounded strip. The application stylesheet in :mod:`ui.theme` styles trees
+    that have this property set.
 
     Parameters
     ----------
     view : QTreeView
         Tree to style.
-    with_header : bool, optional
-        When True, also style the header sections (properties panel).
     row_separators : bool, optional
         When True, draw light hairlines between rows; otherwise use slightly
         taller row padding (spectrum tree).
     """
-    palette = view.palette()
-    palette.setColor(QPalette.ColorRole.Base, QColor(_PANEL_BG))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(_SELECTION_BG))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
-    view.setPalette(palette)
-    parts = [_TREE_BASE]
-    if row_separators:
-        parts.append(_ITEM_HAIRLINES)
-    else:
-        parts.append(_ITEM_SPACED)
-    if with_header:
-        parts.append(_HEADER_STYLE)
-    view.setStyleSheet("".join(parts))
-
-
-def apply_editor_combo_style(combo: QComboBox) -> None:
-    """
-    Style a combo box and its popup with rounded chrome and gray selection.
-
-    Parameters
-    ----------
-    combo : QComboBox
-        Combo box to style.
-    """
-    palette = combo.palette()
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(_SELECTION_BG))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
-    combo.setPalette(palette)
-    combo.setStyleSheet(_COMBO_STYLE)
-    view = combo.view()
-    if view is not None:
-        view_palette = view.palette()
-        view_palette.setColor(QPalette.ColorRole.Highlight, QColor(_SELECTION_BG))
-        view_palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
-        view_palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
-        view.setPalette(view_palette)
-
-
-def _style_one_menu(menu: QMenu) -> None:
-    """Apply palette and stylesheet to a single menu popup."""
-    menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-    palette = menu.palette()
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(_SELECTION_BG))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
-    palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
-    menu.setPalette(palette)
-    menu.setStyleSheet(_MENU_STYLE)
-
-
-def apply_editor_menu_style(menu: QMenu) -> None:
-    """
-    Style a popup menu like the model picker (rounded chrome, gray selection).
-
-    Also styles nested submenus already attached via ``addMenu``.
-
-    Parameters
-    ----------
-    menu : QMenu
-        Menu to style.
-    """
-    _style_one_menu(menu)
-    for child in menu.findChildren(QMenu):
-        _style_one_menu(child)
+    view.setProperty("editorRows", "hairlines" if row_separators else "spaced")
+    style = view.style()
+    if style is not None:
+        for widget in (view, view.header()):
+            style.unpolish(widget)
+            style.polish(widget)

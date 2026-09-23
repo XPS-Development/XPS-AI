@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import theme
 from .assets import icon_path
 from .component_colors import (
     STATUS_COLOR_EMPTY,
@@ -50,6 +51,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from .theme import make_translucent_popup
 from .tree_style import EditorTreeView, apply_editor_tree_style
 
 if TYPE_CHECKING:
@@ -68,44 +70,6 @@ _STATUS_COLORS = {
     "peaks": STATUS_COLOR_PEAKS,
 }
 _STATUS_RANK = {"empty": 0, "regions": 1, "peaks": 2}
-
-_POPUP_STYLE = """
-QFrame#ExprEditorPopup {
-    background: transparent;
-    border: none;
-}
-QLineEdit#ExprEditorField,
-QLineEdit#ExprSearchField {
-    background: #ffffff;
-    border: 1px solid #d0d0d0;
-    border-radius: 6px;
-    padding: 4px 8px;
-    color: #000000;
-    min-height: 22px;
-}
-QLineEdit#ExprEditorField:focus,
-QLineEdit#ExprSearchField:focus {
-    border: 1px solid #b8b8b8;
-}
-QToolButton#ExprCopyButton {
-    background: transparent;
-    border: none;
-    padding: 2px;
-    border-radius: 4px;
-}
-QToolButton#ExprCopyButton:hover {
-    background: #f0f0f0;
-}
-QTreeView {
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
-}
-"""
-
-_POPUP_BG = QColor("#ffffff")
-_POPUP_BORDER = QColor("#a8a8a8")
-_POPUP_RADIUS = 10.0
 
 ExprNodeKind = Literal["file", "group", "spectrum", "region", "component"]
 
@@ -418,16 +382,14 @@ class ExprEditorPopup(QFrame):
         focus_region_id: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        super().__init__(parent, Qt.WindowType.Popup)
         self.setObjectName("ExprEditorPopup")
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        make_translucent_popup(self)
         self._controller = controller
         self._committed = False
         self._copy_feedback_token = 0
         self._focus_spectrum_id = focus_spectrum_id
         self._focus_region_id = focus_region_id
-
-        self.setStyleSheet(_POPUP_STYLE)
 
         self._expr_edit = QLineEdit(self)
         self._expr_edit.setObjectName("ExprEditorField")
@@ -483,9 +445,9 @@ class ExprEditorPopup(QFrame):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.rect().adjusted(1, 1, -1, -1)
         path = QPainterPath()
-        path.addRoundedRect(rect, _POPUP_RADIUS, _POPUP_RADIUS)
-        painter.fillPath(path, _POPUP_BG)
-        painter.setPen(QPen(_POPUP_BORDER, 1.5))
+        path.addRoundedRect(rect, float(theme.POPUP_RADIUS), float(theme.POPUP_RADIUS))
+        painter.fillPath(path, QColor(theme.SURFACE))
+        painter.setPen(QPen(QColor(theme.POPUP_BORDER), 1.5))
         painter.drawPath(path)
 
     def _finish_open(self) -> None:

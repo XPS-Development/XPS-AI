@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QMenu, QWidget
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .optimize_confirm import confirm_and_optimize
-from .tree_style import apply_editor_menu_style
 
 # TODO: refactor as a modular context menu factory
 
@@ -129,7 +128,6 @@ def attach_spectrum_context_actions(
         optimize.triggered.connect(lambda _checked=False: state._on_optimize())
         auto_fit.triggered.connect(lambda _checked=False: state._on_auto_fit())
     export_spectrum_csv.triggered.connect(lambda _checked=False: state._on_export_spectrum_csv())
-    apply_editor_menu_style(menu)
 
     return state
 
@@ -247,6 +245,5 @@ def attach_region_context_actions(
         optimize_region.triggered.connect(lambda _checked=False: state._on_optimize_region())
         delete_region.triggered.connect(lambda _checked=False: state._on_delete_region())
     export_peak_csv.triggered.connect(lambda _checked=False: state._on_export_peak_csv())
-    apply_editor_menu_style(menu)
 
     return state

@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from core.math_models import ModelRegistry
 from core.math_models.soft_ranges import soft_region_bound_range
 
+from . import theme
 from .assets import icon_path
 from .component_colors import color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
@@ -46,11 +47,10 @@ from .name_id_delegate import (
 )
 from .optimize_confirm import confirm_and_optimize
 from .parameter_value_editor import ParameterValueEditor
-from .tree_style import EditorTreeView, apply_editor_menu_style, apply_editor_tree_style
+from .tree_style import EditorTreeView, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
-_FIELD_EDIT_STYLE = "QLineEdit { background: transparent; border: none; padding: 1px 2px; }"
 
 
 def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
@@ -321,10 +321,10 @@ class PropertiesModel(QAbstractItemModel):
             and col == 0
             and item.kind == ItemKind.PARAMETER_FIELD
         ):
-            return QColor("#888888")
+            return QColor(theme.TEXT_SUBTLE)
 
         if role == Qt.ItemDataRole.ForegroundRole and col == 0 and item.kind == ItemKind.ACTION_ROW:
-            return QColor("#666666")
+            return QColor(theme.TEXT_MUTED)
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 0:
@@ -1166,15 +1166,15 @@ class PropertiesDelegate(QStyledItemDelegate):
             painter.restore()
             return
 
-        painter.setPen(QColor("#d0d0d0"))
-        painter.setBrush(QColor("#ffffff"))
+        painter.setPen(QColor(theme.BORDER))
+        painter.setBrush(QColor(theme.SURFACE))
         painter.drawRoundedRect(rect, 6, 6)
 
         chevron = "▾"
         metrics = opt.fontMetrics
         chevron_w = metrics.horizontalAdvance(chevron) + 8
         text_rect = rect.adjusted(8, 0, -chevron_w, 0)
-        painter.setPen(QColor("#000000"))
+        painter.setPen(QColor(theme.TEXT))
         painter.setFont(opt.font)
         elided = metrics.elidedText(text, Qt.TextElideMode.ElideRight, text_rect.width())
         painter.drawText(
@@ -1182,7 +1182,7 @@ class PropertiesDelegate(QStyledItemDelegate):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             elided,
         )
-        painter.setPen(QColor("#666666"))
+        painter.setPen(QColor(theme.TEXT_MUTED))
         painter.drawText(
             rect.adjusted(0, 0, -6, 0),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -1215,7 +1215,6 @@ class PropertiesDelegate(QStyledItemDelegate):
         current = str(item.value or "")
 
         menu = QMenu(view)
-        apply_editor_menu_style(menu)
         for name in names:
             action = menu.addAction(name)
             action.setCheckable(True)
@@ -1347,7 +1346,7 @@ class PropertiesDelegate(QStyledItemDelegate):
         }:
             editor = QLineEdit(parent)
             editor.setFrame(False)
-            editor.setStyleSheet(_FIELD_EDIT_STYLE)
+            editor.setObjectName("PropertiesFieldEdit")
             return editor
 
         return super().createEditor(parent, option, index)
@@ -1722,7 +1721,7 @@ class PropertiesNameDelegate(NameWithIdDelegate):
 
         text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
         painter.save()
-        painter.setPen(QColor("#666666"))
+        painter.setPen(QColor(theme.TEXT_MUTED))
         text_rect = option.rect.adjusted(icon_size + _ACTION_ICON_GAP + 2, 0, 0, 0)
         painter.drawText(
             text_rect,
@@ -1781,6 +1780,7 @@ class PropertiesView(EditorTreeView):
         self._applied_default_expand = False
         self._slider_editor_index: QPersistentModelIndex | None = None
         self._expanded_param_index: QPersistentModelIndex | None = None
+        self._suppress_cell_picker = False
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self._name_delegate = PropertiesNameDelegate(self)
@@ -1796,7 +1796,7 @@ class PropertiesView(EditorTreeView):
         self._apply_column_widths()
         self.setUniformRowHeights(False)
         self.setAlternatingRowColors(False)
-        apply_editor_tree_style(self, with_header=True)
+        apply_editor_tree_style(self)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._on_custom_context_menu)
         self.selectionModel().selectionChanged.connect(self._on_selection_changed)
@@ -1804,6 +1804,7 @@ class PropertiesView(EditorTreeView):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Run row actions/deletes/copy on press without changing the selection."""
+        self._suppress_cell_picker = False
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             index = self.indexAt(pos)
@@ -1833,6 +1834,7 @@ class PropertiesView(EditorTreeView):
                     return
                 if self._value_delegate.hit_copy(value_index, pos, self.visualRect(value_index)):
                     self._copy_value_at(value_index)
+                    self._suppress_cell_picker = True
                     event.accept()
                     return
         super().mousePressEvent(event)
@@ -2046,11 +2048,17 @@ class PropertiesView(EditorTreeView):
         super().mouseReleaseEvent(event)
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        if self._suppress_cell_picker:
+            self._suppress_cell_picker = False
+            return
         index = self.indexAt(event.position().toPoint())
         if not index.isValid() or index.column() != 1:
             return
         item = index.internalPointer()
         if not isinstance(item, PropertyItem):
+            return
+        # Copy glyph shares the value cell; do not open pickers when releasing on it.
+        if self._value_delegate.hit_copy(index, event.position().toPoint(), self.visualRect(index)):
             return
         rect = self.visualRect(index)
         global_pos = self.viewport().mapToGlobal(rect.bottomLeft())
@@ -2451,5 +2459,4 @@ class PropertiesView(EditorTreeView):
         else:
             return
 
-        apply_editor_menu_style(menu)
         menu.popup(self.viewport().mapToGlobal(pos))
