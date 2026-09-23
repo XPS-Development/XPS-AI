@@ -91,7 +91,7 @@ class OptionsDialog(QDialog):
         core_layout.addRow("Default peak model", self._default_peak_model_edit)
         core_layout.addRow("Default background model", self._default_bg_model_edit)
         core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
-        core_layout.addRow("Show residuals plot", self._show_residuals_plot_cb)
+        core_layout.addRow("Show χ² plot", self._show_residuals_plot_cb)
         core_layout.addRow("Region slice in properties", self._region_slice_display_mode_combo)
         core_layout.addRow("Show object ID in properties tree", self._show_id_in_properties_tree_cb)
 

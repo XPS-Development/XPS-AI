@@ -338,7 +338,7 @@ QLineEdit#PropertiesFieldEdit {{
     border: none;
     padding: 1px 2px;
 }}
-QLabel#PlotCursorLabel {{
+QLabel#PlotCursorLabel, QLabel#PlotChiSquareLabel {{
     background-color: rgba(255, 255, 255, 0.8);
     padding: 2px 4px;
     border-radius: 2px;

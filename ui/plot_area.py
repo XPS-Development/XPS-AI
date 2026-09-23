@@ -2,7 +2,7 @@
 pyqtgraph-based plot area for spectrum visualization.
 
 Displays the selected spectrum with raw data, background, peaks, model,
-and optional residuals. Driven by ``ControllerWrapper`` selection and signals,
+and an optional chi-squared subplot. Driven by ``ControllerWrapper`` selection and signals,
 using precomputed plot data from the application query layer.
 """
 
@@ -332,7 +332,7 @@ class PlotAreaWidget(QWidget):
     Plot widget displaying the selected spectrum with fitted components.
 
     Shows main plot (raw spectrum, background, peaks, model), a separate
-    residuals subplot with shared x-axis and locked y-axis, optional ROI
+    chi-squared subplot with shared x-axis and locked y-axis, optional ROI
     for the selected region, cursor (x, y) overlay, and context menu for
     region-aware actions. Refreshes on collection or selection changes via
     the connected controller signals.
@@ -342,7 +342,7 @@ class PlotAreaWidget(QWidget):
     _main_plot : RegionContextPlotWidget
         Main spectrum and fit curves.
     _res_plot : pg.PlotWidget
-        Residuals subplot, x-linked to the main ViewBox.
+        Chi-squared subplot, x-linked to the main ViewBox.
     """
 
     _main_plot: RegionContextPlotWidget
@@ -381,7 +381,7 @@ class PlotAreaWidget(QWidget):
         self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         layout.addWidget(self._main_plot, stretch=1)
 
-        # Residuals plot (shared x-axis, locked y)
+        # Chi-squared plot (shared x-axis, locked y)
         self._res_plot = pg.PlotWidget(
             parent=self,
             viewBox=DoubleClickAutoRangeViewBox(enableMenu=False),
@@ -394,6 +394,11 @@ class PlotAreaWidget(QWidget):
         self._res_plot.getViewBox().setXLink(self._main_plot.getViewBox())
         self._res_plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         layout.addWidget(self._res_plot, stretch=0)
+
+        self._chi_label = QLabel(self._res_plot)
+        self._chi_label.setObjectName("PlotChiSquareLabel")
+        self._chi_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._chi_label.hide()
 
         # Cursor (x, y) overlay on main plot
         self._cursor_label = QLabel(self._main_plot)
@@ -436,13 +441,14 @@ class PlotAreaWidget(QWidget):
         """
         super().resizeEvent(event)
         self._position_cursor_label()
+        self._position_chi_label()
 
     def refresh(self) -> None:
         """
         Redraw plots from the controller's current spectrum selection.
 
         Loads data via :meth:`QueryService.get_spectrum_plot_data`,
-        updates ROIs, and repaints the main and residuals plots. If no spectrum
+        updates ROIs, and repaints the main and chi-squared plots. If no spectrum
         is selected, clears the plot area.
         """
         spectrum_id = self._controller.selected_spectrum_id
@@ -456,6 +462,7 @@ class PlotAreaWidget(QWidget):
         self._sync_residuals_visibility()
         self._sync_rois_for_spectrum(spectrum_id=spectrum_id)
         self._draw_spectrum(plot_data)
+        self._update_chi_label(plot_data)
         self._position_cursor_label()
 
     def _position_cursor_label(self) -> None:
@@ -464,10 +471,33 @@ class PlotAreaWidget(QWidget):
             self._cursor_label.adjustSize()
             self._cursor_label.move(self._main_plot.width() - self._cursor_label.width() - 8, 8)
 
+    def _position_chi_label(self) -> None:
+        """Place the chi-squared readout in the upper-left of the error plot."""
+        if not self._chi_label.isVisible():
+            return
+        self._chi_label.adjustSize()
+        self._chi_label.move(8, 4)
+
+    def _update_chi_label(self, plot_data: SpectrumPlotData) -> None:
+        """Show the summed χ² criterion for the curves on the error plot."""
+        stat = plot_data.chi_square
+        if stat is None or not self._res_plot.isVisible():
+            self._chi_label.hide()
+            return
+        reduced = stat.reduced_chi_square
+        if reduced is None:
+            text = f"χ² = {stat.chi_square:.6g}"
+        else:
+            text = f"χ² = {stat.chi_square:.6g}    χ²/dof = {reduced:.4g}"
+        self._chi_label.setText(text)
+        self._chi_label.show()
+        self._position_chi_label()
+
     def clear_plot(self) -> None:
-        """Clear curve items, residuals, and region ROIs."""
+        """Clear curve items, the chi-squared subplot, and region ROIs."""
         self._main_plot.clear()
         self._res_plot.clear()
+        self._chi_label.hide()
         self._clear_rois()
         self._last_plot_data = None
         self._last_spectrum_id = None
@@ -480,7 +510,7 @@ class PlotAreaWidget(QWidget):
         self._roi_region_ids_in_plot.clear()
 
     def _sync_residuals_visibility(self) -> None:
-        """Toggle residuals subplot visibility from application parameters."""
+        """Toggle the chi-squared subplot visibility from application parameters."""
         params = self._controller.get_app_parameters()
         self._res_plot.setVisible(bool(getattr(params, "show_residuals_plot", True)))
 
@@ -608,10 +638,10 @@ class PlotAreaWidget(QWidget):
 
     def _draw_spectrum(self, plot_data: SpectrumPlotData) -> None:
         """
-        Render the main spectrum stack and optional residuals subplot.
+        Render the main spectrum stack and optional chi-squared subplot.
 
         Clears both plot widgets, re-attaches existing ``InteractiveRegion``
-        items, and draws precomputed curves on the main and residuals plots.
+        items, and draws precomputed curves on the main and chi-squared plots.
 
         Parameters
         ----------
@@ -680,7 +710,7 @@ class PlotAreaWidget(QWidget):
         self._align_plot_axes()
 
     def _align_plot_axes(self) -> None:
-        """Keep main and residuals left axes the same width so plot areas line up."""
+        """Keep main and chi-squared left axes the same width so plot areas line up."""
         self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
 
