@@ -114,6 +114,46 @@ def free_parameter_count(components: tuple[ComponentDTO, ...]) -> int:
     )
 
 
+def poisson_variance(measured: NDArray) -> NDArray:
+    """
+    Return per-channel Poisson variance ``max(|measured|, 1)``.
+
+    The floor of 1 count keeps empty and negative channels finite.
+
+    Parameters
+    ----------
+    measured : NDArray
+        Measured intensity that sets the variance. This is the original
+        spectrum, not a target with fixed components removed.
+
+    Returns
+    -------
+    NDArray
+        Variance at each channel.
+    """
+    return np.maximum(np.abs(measured), 1.0)
+
+
+def chi_square_residual(difference: NDArray, measured: NDArray) -> NDArray:
+    """
+    Return the residual whose squares sum to the Poisson chi-squared.
+
+    Parameters
+    ----------
+    difference : NDArray
+        ``target - model`` on the fit grid. Equals ``y - model`` when the
+        target is the measured spectrum.
+    measured : NDArray
+        Intensities that set the Poisson variance.
+
+    Returns
+    -------
+    NDArray
+        ``difference / sqrt(max(|measured|, 1))``.
+    """
+    return difference / np.sqrt(poisson_variance(measured))
+
+
 def chi_square_contributions(y: NDArray, model: NDArray) -> NDArray:
     """
     Return per-channel Poisson chi-squared contributions.
@@ -133,8 +173,7 @@ def chi_square_contributions(y: NDArray, model: NDArray) -> NDArray:
     NDArray
         ``(y - model)² / max(|y|, 1)`` at each channel.
     """
-    variance = np.maximum(np.abs(y), 1.0)
-    return (y - model) ** 2 / variance
+    return chi_square_residual(y - model, y) ** 2
 
 
 def get_eval_fn(component: ComponentDTO) -> EvaluationLikeFn:
