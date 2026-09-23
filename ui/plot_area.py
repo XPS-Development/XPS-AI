@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.mouseEvents import HoverEvent, MouseClickEvent, MouseDragEvent
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
@@ -429,6 +429,7 @@ class PlotAreaWidget(QWidget):
             self._cursor_label.setText(f"x: {coord.x():.4g}  y: {coord.y():.4g}")
         else:
             self._cursor_label.setText("x: —  y: —")
+        self._position_cursor_label()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """
@@ -465,18 +466,47 @@ class PlotAreaWidget(QWidget):
         self._update_chi_label(plot_data)
         self._position_cursor_label()
 
+    def _viewbox_rect(self, plot: pg.PlotWidget) -> QRect:
+        """
+        Return the data area of ``plot`` in that widget's coordinates.
+
+        Falls back to the area right of the fixed left axis when the view box
+        has not been laid out yet.
+        """
+        scene_rect = plot.getViewBox().sceneBoundingRect()
+        if scene_rect.width() >= 1.0 and scene_rect.height() >= 1.0:
+            top_left = plot.mapFromScene(scene_rect.topLeft())
+            bottom_right = plot.mapFromScene(scene_rect.bottomRight())
+            rect = QRect(top_left, bottom_right).normalized()
+            if rect.width() >= 1 and rect.height() >= 1:
+                return rect
+        return QRect(
+            _LEFT_AXIS_WIDTH,
+            0,
+            max(plot.width() - _LEFT_AXIS_WIDTH, 0),
+            max(plot.height(), 1),
+        )
+
     def _position_cursor_label(self) -> None:
-        """Place the coordinate overlay in the upper-right of the main plot."""
-        if self._cursor_label is not None:
-            self._cursor_label.adjustSize()
-            self._cursor_label.move(self._main_plot.width() - self._cursor_label.width() - 8, 8)
+        """Keep the coordinate readout inside the main plot's data area, top-right."""
+        if self._cursor_label is None:
+            return
+        self._cursor_label.adjustSize()
+        rect = self._viewbox_rect(self._main_plot)
+        x = rect.right() - self._cursor_label.width() - 6
+        self._cursor_label.move(max(x, rect.left() + 4), rect.top() + 4)
 
     def _position_chi_label(self) -> None:
-        """Place the chi-squared readout in the upper-left of the error plot."""
+        """Keep the χ² readout inside the error plot's data area, clear of the axis."""
         if not self._chi_label.isVisible():
             return
         self._chi_label.adjustSize()
-        self._chi_label.move(8, 4)
+        rect = self._viewbox_rect(self._res_plot)
+        x = rect.left() + 6
+        max_x = rect.right() - self._chi_label.width() - 4
+        if max_x >= rect.left():
+            x = min(x, max_x)
+        self._chi_label.move(x, rect.top() + 2)
 
     def _update_chi_label(self, plot_data: SpectrumPlotData) -> None:
         """Show the summed χ² criterion for the curves on the error plot."""

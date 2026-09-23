@@ -53,6 +53,35 @@ def test_plot_area_refresh_uses_query_service(
     assert widget._last_plot_data is plot_data
 
 
+def test_overlay_labels_stay_inside_the_data_area(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+) -> None:
+    """χ² stays off the axis gutter, and cursor text stays inside the plot."""
+    del spectrum_id
+    controller = ControllerWrapper(collection=simple_collection)
+    widget = PlotAreaWidget(controller)
+    widget.resize(640, 480)
+    widget.show()
+    qapp.processEvents()
+
+    widget._chi_label.setText("χ² = 465.158    χ²/dof = 1.679")
+    widget._chi_label.show()
+    widget._position_chi_label()
+    chi_rect = widget._viewbox_rect(widget._res_plot)
+    assert widget._chi_label.x() >= chi_rect.left()
+    assert widget._chi_label.x() + widget._chi_label.width() <= chi_rect.right() + 1
+
+    widget._cursor_label.setText("x: 301.6  y: 123456.7")
+    widget._position_cursor_label()
+    cursor = widget._cursor_label
+    data_rect = widget._viewbox_rect(widget._main_plot)
+    assert cursor.x() >= data_rect.left()
+    assert cursor.x() + cursor.width() <= data_rect.right() + 1
+    widget.close()
+
+
 def test_plot_area_refresh_clears_when_no_selection(
     qapp: QApplication,
     simple_collection,
