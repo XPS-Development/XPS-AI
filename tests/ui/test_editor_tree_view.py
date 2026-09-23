@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import sys
-from typing import cast
+from typing import Any, cast
 
 import pytest
-from PySide6.QtCore import QModelIndex
+from PySide6.QtCore import QModelIndex, QRect
 from PySide6.QtGui import QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.tree_style import EditorTreeView, apply_editor_tree_style
 
@@ -59,4 +59,54 @@ def test_apply_editor_tree_style_sets_editor_rows_property(qapp: QApplication) -
     assert view.property("editorRows") == "hairlines"
     apply_editor_tree_style(view, row_separators=False)
     assert view.property("editorRows") == "spaced"
+    view.close()
+
+
+def test_hover_row_invalidates_only_row_rects(qapp: QApplication) -> None:
+    """Changing the hovered row updates only the old and new row strips."""
+    del qapp
+    model = QStandardItemModel()
+    model.appendRow(QStandardItem("alpha"))
+    model.appendRow(QStandardItem("beta"))
+    model.appendRow(QStandardItem("gamma"))
+
+    view = EditorTreeView()
+    view.setModel(model)
+    apply_editor_tree_style(view)
+    view.resize(240, 200)
+    view.show()
+    QApplication.processEvents()
+
+    view._set_hover_row(model.index(0, 0))
+    first = QRect(view._hover_rect)
+    assert not first.isNull()
+    assert first.width() == view.viewport().width()
+
+    updates: list[QRect | None] = []
+    viewport = view.viewport()
+
+    def _spy(*args: Any) -> None:
+        if not args:
+            updates.append(None)
+        elif len(args) == 1:
+            rect = args[0]
+            updates.append(QRect(rect) if isinstance(rect, QRect) else None)
+        else:
+            updates.append(QRect(int(args[0]), int(args[1]), int(args[2]), int(args[3])))
+        QWidget.update(viewport, *args)
+
+    viewport.update = _spy  # ty: ignore[invalid-assignment]
+
+    view._set_hover_row(model.index(2, 0))
+    assert None not in updates
+    assert len(updates) == 2
+    assert updates[0] == first
+    second = QRect(view._hover_rect)
+    assert updates[1] == second
+    assert second.y() != first.y()
+
+    updates.clear()
+    view._set_hover_row(QModelIndex())
+    assert updates == [second]
+    assert view._hover_rect.isNull()
     view.close()

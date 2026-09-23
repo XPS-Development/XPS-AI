@@ -7,7 +7,7 @@ the ``editorRows`` dynamic property.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QRectF, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QMouseEvent, QPainter
 from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QTreeView, QWidget
 
@@ -36,6 +36,7 @@ class EditorTreeView(QTreeView):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._hover_row_index = QPersistentModelIndex()
+        self._hover_rect = QRect()
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
@@ -61,6 +62,11 @@ class EditorTreeView(QTreeView):
         """Clear hover chrome when the pointer leaves the view."""
         self._set_hover_row(QModelIndex())
         super().leaveEvent(event)
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """Keep the cached hover rect aligned after the viewport scrolls."""
+        super().scrollContentsBy(dx, dy)
+        self._refresh_hover_rect()
 
     def _paint_row_background(
         self,
@@ -101,7 +107,13 @@ class EditorTreeView(QTreeView):
         painter.restore()
 
     def _set_hover_row(self, index: QModelIndex) -> None:
-        """Update which row shows hover chrome and schedule a repaint."""
+        """Update which row shows hover chrome and schedule a targeted repaint.
+
+        Invalidates only the previous and new row strips. The previous strip
+        uses a cached ``QRect`` (never ``visualRect`` on a stale index). The
+        new strip uses ``visualRect`` on a fresh ``indexAt`` / sibling index,
+        which is safe outside of paint handlers.
+        """
         new = index.sibling(index.row(), 0) if index.isValid() else QModelIndex()
         old = (
             _as_model_index(self._hover_row_index)
@@ -110,11 +122,34 @@ class EditorTreeView(QTreeView):
         )
         if self._same_row(old, new):
             return
+        viewport = self.viewport()
+        old_rect = QRect(self._hover_rect)
+        if not old_rect.isNull():
+            viewport.update(old_rect)
         self._hover_row_index = (
             QPersistentModelIndex(new) if new.isValid() else QPersistentModelIndex()
         )
-        # Full viewport update avoids visualRect on possibly-stale indexes.
-        self.viewport().update()
+        self._hover_rect = self._row_chrome_rect(new) if new.isValid() else QRect()
+        if not self._hover_rect.isNull():
+            viewport.update(self._hover_rect)
+
+    def _refresh_hover_rect(self) -> None:
+        """Recompute ``_hover_rect`` after layout shifts (e.g. scroll)."""
+        if not self._hover_row_index.isValid():
+            self._hover_rect = QRect()
+            return
+        idx = _as_model_index(self._hover_row_index)
+        self._hover_rect = self._row_chrome_rect(idx) if idx.isValid() else QRect()
+
+    def _row_chrome_rect(self, index: QModelIndex) -> QRect:
+        """Return the full-width viewport rect covering the row chrome."""
+        if not index.isValid():
+            return QRect()
+        cell = self.visualRect(index)
+        if cell.isNull():
+            return QRect()
+        # Pad 1px for antialiased rounded corners beyond the cell bounds.
+        return QRect(0, cell.y() - 1, self.viewport().width(), cell.height() + 2)
 
     @staticmethod
     def _same_row(a: QModelIndex, b: QModelIndex) -> bool:
