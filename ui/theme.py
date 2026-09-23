@@ -197,6 +197,48 @@ QStatusBar {{
     color: {TEXT_MUTED};
 }}
 
+/* --- Message boxes and dialog buttons --- */
+QMessageBox {{
+    background: {SURFACE};
+}}
+QMessageBox QLabel {{
+    color: {TEXT};
+    background: transparent;
+}}
+QMessageBox QPushButton,
+QDialogButtonBox QPushButton {{
+    background: {SURFACE};
+    border: 1px solid {BORDER};
+    border-radius: {ITEM_RADIUS}px;
+    padding: 4px 14px;
+    min-width: 72px;
+    min-height: 22px;
+    color: {TEXT};
+}}
+QMessageBox QPushButton:hover,
+QDialogButtonBox QPushButton:hover {{
+    background: {BUTTON_HOVER_BG};
+    border: 1px solid {BORDER_HOVER};
+}}
+QMessageBox QPushButton:pressed,
+QDialogButtonBox QPushButton:pressed {{
+    background: {SELECTION_BG};
+}}
+QMessageBox QPushButton:default,
+QDialogButtonBox QPushButton:default {{
+    background: {PANEL_BG};
+    border: 1px solid {BORDER_HOVER};
+}}
+QMessageBox QPushButton:disabled,
+QDialogButtonBox QPushButton:disabled {{
+    color: {TEXT_DISABLED};
+    background: {BUTTON_DISABLED_BG};
+}}
+QDialog {{
+    background: {SURFACE};
+    color: {TEXT};
+}}
+
 /* --- Side panels --- */
 QWidget#SpectrumTreePanel,
 QWidget#PropertiesPanel {{

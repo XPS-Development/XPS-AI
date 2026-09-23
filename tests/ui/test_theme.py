@@ -81,6 +81,7 @@ def test_install_theme_sets_fusion_light_and_rounds_menus(qapp: QApplication) ->
         assert style.baseStyle().name().lower() == "fusion"
         assert app.palette().color(QPalette.ColorRole.Window).lightness() > 128
         assert app.styleSheet() != ""
+        assert "QMessageBox" in app.styleSheet()
 
         menu = QMenu()
         submenu = menu.addMenu("x")
