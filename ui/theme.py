@@ -50,6 +50,8 @@ SLIDER_TRACK = "#d0d0d0"
 SLIDER_HANDLE = "#6e6e6e"
 SLIDER_HANDLE_HOVER = "#555555"
 SLIDER_HANDLE_PRESSED = "#444444"
+SCROLLBAR_THUMB = "#c8c8c8"
+SCROLLBAR_THUMB_HOVER = "#a8a8a8"
 
 ITEM_RADIUS = 6
 POPUP_RADIUS = 10
@@ -296,6 +298,62 @@ QLabel#PlotCursorLabel {{
     background-color: rgba(255, 255, 255, 0.8);
     padding: 2px 4px;
     border-radius: 2px;
+}}
+
+/* --- Scrollbars (Cursor-like thin floating pills) --- */
+QScrollBar:vertical {{
+    background: transparent;
+    border: none;
+    width: 10px;
+    margin: 0;
+}}
+QScrollBar::handle:vertical {{
+    background: {SCROLLBAR_THUMB};
+    border: none;
+    border-radius: 3px;
+    min-height: 24px;
+    margin: 2px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {SCROLLBAR_THUMB_HOVER};
+}}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {{
+    height: 0;
+    width: 0;
+    border: none;
+    background: none;
+}}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {{
+    background: none;
+}}
+QScrollBar:horizontal {{
+    background: transparent;
+    border: none;
+    height: 10px;
+    margin: 0;
+}}
+QScrollBar::handle:horizontal {{
+    background: {SCROLLBAR_THUMB};
+    border: none;
+    border-radius: 3px;
+    min-width: 24px;
+    margin: 2px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background: {SCROLLBAR_THUMB_HOVER};
+}}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {{
+    height: 0;
+    width: 0;
+    border: none;
+    background: none;
+}}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {{
+    background: none;
 }}
 """
 
