@@ -210,10 +210,12 @@ QDialogButtonBox QPushButton {{
     background: {SURFACE};
     border: 1px solid {BORDER};
     border-radius: {ITEM_RADIUS}px;
-    padding: 4px 14px;
-    min-width: 72px;
-    min-height: 22px;
+    padding: 4px 16px;
+    min-height: 24px;
     color: {TEXT};
+}}
+QDialogButtonBox QPushButton {{
+    min-width: 72px;
 }}
 QMessageBox QPushButton:hover,
 QDialogButtonBox QPushButton:hover {{

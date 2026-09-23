@@ -554,20 +554,37 @@ class MainWindow(QMainWindow):
         if not self._controller.is_dirty:
             return True
 
-        answer = QMessageBox.question(
-            self,
-            "Unsaved changes",
-            "Save changes before closing?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
-        )
-        if answer == QMessageBox.StandardButton.Save:
+        choice = self._prompt_unsaved_close()
+        if choice == "save":
             return self._try_save()
-        if answer == QMessageBox.StandardButton.Discard:
+        if choice == "discard":
             return True
         return False
+
+    def _prompt_unsaved_close(self) -> str:
+        """
+        Show the unsaved-changes close dialog.
+
+        Returns
+        -------
+        {"save", "discard", "cancel"}
+            User choice. Discard uses a short label so the button fits on Linux.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Unsaved changes")
+        box.setText("Save changes before closing?")
+        save_btn = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(save_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == save_btn:
+            return "save"
+        if clicked == discard_btn:
+            return "discard"
+        return "cancel"
 
     def _show_info(self, title: str, message: str) -> None:
         """

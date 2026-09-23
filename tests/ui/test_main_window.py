@@ -66,11 +66,11 @@ def test_confirm_close_accepts_when_clean(
     window._controller.dump_collection(tmp_path / "clean.json")
     prompted = {"called": False}
 
-    def _boom(*_a, **_k):
+    def _boom() -> str:
         prompted["called"] = True
-        return QMessageBox.StandardButton.Cancel
+        return "cancel"
 
-    monkeypatch.setattr(QMessageBox, "question", _boom)
+    monkeypatch.setattr(window, "_prompt_unsaved_close", _boom)
     assert window._confirm_close() is True
     assert prompted["called"] is False
 
@@ -79,11 +79,7 @@ def test_confirm_close_cancel_keeps_window_open(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cancel on the unsaved prompt must refuse close."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Cancel,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "cancel")
     assert window._controller.is_dirty is True
     assert window._confirm_close() is False
 
@@ -92,11 +88,7 @@ def test_confirm_close_discard_allows_close(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Discard on the unsaved prompt must allow close."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Discard,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "discard")
     assert window._confirm_close() is True
 
 
@@ -104,13 +96,25 @@ def test_confirm_close_save_uses_try_save(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Save on the unsaved prompt delegates to ``_try_save``."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Save,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "save")
     monkeypatch.setattr(window, "_try_save", lambda: True)
     assert window._confirm_close() is True
+
+
+def test_prompt_unsaved_close_uses_short_discard_label(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discard button text stays short (not ``Close without saving``)."""
+    labels: list[str] = []
+
+    def _fake_exec(box: QMessageBox) -> int:
+        labels.extend(button.text() for button in box.buttons())
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", _fake_exec)
+    assert window._prompt_unsaved_close() == "cancel"
+    assert labels == ["Save", "Cancel", "Discard"]
+    assert "Close without saving" not in labels
 
 
 def test_close_event_ignored_when_user_cancels(
