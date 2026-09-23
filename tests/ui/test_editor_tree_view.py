@@ -49,3 +49,14 @@ def test_editor_tree_view_click_selects_without_crash(qapp: QApplication) -> Non
 
     assert view.selectionModel().isRowSelected(1, QModelIndex())
     view.close()
+
+
+def test_apply_editor_tree_style_sets_editor_rows_property(qapp: QApplication) -> None:
+    """``editorRows`` is hairlines by default and spaced when separators are off."""
+    del qapp
+    view = EditorTreeView()
+    apply_editor_tree_style(view)
+    assert view.property("editorRows") == "hairlines"
+    apply_editor_tree_style(view, row_separators=False)
+    assert view.property("editorRows") == "spaced"
+    view.close()

@@ -20,7 +20,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
-from .tree_style import EditorTreeView, apply_editor_menu_style, apply_editor_tree_style
+from .tree_style import EditorTreeView, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
 _ID_DISPLAY_CHARS = 5
@@ -583,7 +583,6 @@ class SpectrumTreeWidget(EditorTreeView):
         if menu.isEmpty():
             return
 
-        apply_editor_menu_style(menu)
         menu.popup(self.viewport().mapToGlobal(pos))
 
     def _handle_rename(self, item: SpectrumTreeItem) -> None:

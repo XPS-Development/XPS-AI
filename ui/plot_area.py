@@ -397,9 +397,7 @@ class PlotAreaWidget(QWidget):
 
         # Cursor (x, y) overlay on main plot
         self._cursor_label = QLabel(self._main_plot)
-        self._cursor_label.setStyleSheet(
-            "background-color: rgba(255,255,255,0.8); padding: 2px 4px; border-radius: 2px;"
-        )
+        self._cursor_label.setObjectName("PlotCursorLabel")
         self._cursor_label.setText("x: —  y: —")
         self._cursor_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 

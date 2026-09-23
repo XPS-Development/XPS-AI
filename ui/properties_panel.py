@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
@@ -54,26 +55,7 @@ class PropertiesPanel(QWidget):
         layout.addLayout(btn_row)
         layout.addWidget(self._view)
 
-        self.setStyleSheet(
-            """
-            QWidget#PropertiesPanel {
-                background: #f7f7f7;
-            }
-            QWidget#PropertiesPanel QPushButton {
-                background: #ffffff;
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                padding: 3px 10px;
-            }
-            QWidget#PropertiesPanel QPushButton:hover {
-                background: #f0f0f0;
-            }
-            QWidget#PropertiesPanel QPushButton:disabled {
-                color: #a0a0a0;
-                background: #f3f3f3;
-            }
-            """
-        )
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self._optimize_regions_btn.clicked.connect(self._on_optimize_regions)
         self._update_button_state(self._controller.selected_spectrum_id)

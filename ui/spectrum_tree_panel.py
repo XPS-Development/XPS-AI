@@ -1,6 +1,6 @@
 """Spectrum tree panel with search, auto-fit, and optimize controls."""
 
-from PySide6.QtCore import QModelIndex, QSize
+from PySide6.QtCore import QModelIndex, QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
@@ -50,28 +50,7 @@ class SpectrumTreePanel(QWidget):
         btn_row.addWidget(self._optimize_btn)
         layout.addLayout(btn_row)
         layout.addWidget(self._tree)
-        self.setStyleSheet(
-            """
-            QWidget#SpectrumTreePanel {
-                background: #f7f7f7;
-            }
-            QWidget#SpectrumTreePanel QLineEdit {
-                background: #ffffff;
-                border: 1px solid #d8d8d8;
-                border-radius: 4px;
-                padding: 3px 6px;
-            }
-            QWidget#SpectrumTreePanel QPushButton {
-                background: #ffffff;
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                padding: 3px 10px;
-            }
-            QWidget#SpectrumTreePanel QPushButton:hover {
-                background: #f0f0f0;
-            }
-            """
-        )
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self._search_edit.textChanged.connect(self._on_search_text_changed)
         self._auto_fit_btn.clicked.connect(self._on_auto_fit_clicked)
