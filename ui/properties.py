@@ -1780,6 +1780,7 @@ class PropertiesView(EditorTreeView):
         self._applied_default_expand = False
         self._slider_editor_index: QPersistentModelIndex | None = None
         self._expanded_param_index: QPersistentModelIndex | None = None
+        self._suppress_cell_picker = False
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
         self._name_delegate = PropertiesNameDelegate(self)
@@ -1803,6 +1804,7 @@ class PropertiesView(EditorTreeView):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Run row actions/deletes/copy on press without changing the selection."""
+        self._suppress_cell_picker = False
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             index = self.indexAt(pos)
@@ -1832,6 +1834,7 @@ class PropertiesView(EditorTreeView):
                     return
                 if self._value_delegate.hit_copy(value_index, pos, self.visualRect(value_index)):
                     self._copy_value_at(value_index)
+                    self._suppress_cell_picker = True
                     event.accept()
                     return
         super().mousePressEvent(event)
@@ -2045,11 +2048,17 @@ class PropertiesView(EditorTreeView):
         super().mouseReleaseEvent(event)
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        if self._suppress_cell_picker:
+            self._suppress_cell_picker = False
+            return
         index = self.indexAt(event.position().toPoint())
         if not index.isValid() or index.column() != 1:
             return
         item = index.internalPointer()
         if not isinstance(item, PropertyItem):
+            return
+        # Copy glyph shares the value cell; do not open pickers when releasing on it.
+        if self._value_delegate.hit_copy(index, event.position().toPoint(), self.visualRect(index)):
             return
         rect = self.visualRect(index)
         global_pos = self.viewport().mapToGlobal(rect.bottomLeft())
