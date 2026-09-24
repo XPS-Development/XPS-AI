@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from .assets import APP_NAME, load_app_icon
+from .context_menus import optimize_from_selection
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
 from .options_dialog import OptionsDialog
@@ -57,6 +58,9 @@ class MainWindow(QMainWindow):
         self._action_export_peaks_all_selected_spectra_csv: QAction | None = None
         self._action_undo: QAction | None = None
         self._action_redo: QAction | None = None
+        self._action_optimize: QAction | None = None
+        self._action_split_region: QAction | None = None
+        self._action_add_peak_at_point: QAction | None = None
         self._action_auto_fit: QAction | None = None
         self._action_load_nn_model: QAction | None = None
         self._action_app_parameters: QAction | None = None
@@ -109,6 +113,15 @@ class MainWindow(QMainWindow):
         self._action_undo.setEnabled(False)
         self._action_redo.setEnabled(False)
 
+        self._action_split_region = QAction("Split region…", self)
+        self._action_split_region.setCheckable(True)
+        self._action_split_region.setShortcut(QKeySequence("S"))
+        self._action_add_peak_at_point = QAction("Add peak at point…", self)
+        self._action_add_peak_at_point.setCheckable(True)
+        self._action_add_peak_at_point.setShortcut(QKeySequence("A"))
+        self._action_optimize = QAction("Optimize", self)
+        self._action_optimize.setShortcut(QKeySequence("O"))
+
         self._action_auto_fit = QAction("Auto fit", self)
         self._action_load_nn_model = QAction("Load NN model…", self)
         self._action_app_parameters = QAction("Application parameters…", self)
@@ -129,6 +142,9 @@ class MainWindow(QMainWindow):
 
         self._action_undo.triggered.connect(self._on_undo_triggered)
         self._action_redo.triggered.connect(self._on_redo_triggered)
+        self._action_split_region.triggered.connect(self._on_split_region_triggered)
+        self._action_add_peak_at_point.triggered.connect(self._on_add_peak_at_point_triggered)
+        self._action_optimize.triggered.connect(self._on_optimize_shortcut)
 
         self._action_auto_fit.triggered.connect(self._on_auto_fit_triggered)
         self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
@@ -165,6 +181,13 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(self._action_undo)
         if self._action_redo is not None:
             edit_menu.addAction(self._action_redo)
+        edit_menu.addSeparator()
+        if self._action_add_peak_at_point is not None:
+            edit_menu.addAction(self._action_add_peak_at_point)
+        if self._action_optimize is not None:
+            edit_menu.addAction(self._action_optimize)
+        if self._action_split_region is not None:
+            edit_menu.addAction(self._action_split_region)
 
         run_menu = menu_bar.addMenu("Run")
         if self._action_auto_fit is not None:
@@ -226,6 +249,7 @@ class MainWindow(QMainWindow):
         if self._plot_area is not None:
             self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh)
+            self._plot_area.editModeChanged.connect(self._on_plot_edit_mode_changed)
         if self._properties_panel is not None:
             self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
             self._controller.selectionChanged.connect(
@@ -332,6 +356,33 @@ class MainWindow(QMainWindow):
     def _on_redo_triggered(self) -> None:
         """Trigger a redo via the controller."""
         self._controller.redo()
+
+    def _on_optimize_shortcut(self) -> None:
+        """Optimize the open spectrum, the selected region, or do nothing."""
+        optimize_from_selection(self._controller, self)
+
+    def _on_split_region_triggered(self, checked: bool = False) -> None:
+        """Toggle interactive split-region mode on the plot."""
+        if self._plot_area is None:
+            return
+        self._plot_area.set_edit_mode("split_region" if checked else None)
+
+    def _on_add_peak_at_point_triggered(self, checked: bool = False) -> None:
+        """Toggle interactive add-peak mode on the plot."""
+        if self._plot_area is None:
+            return
+        self._plot_area.set_edit_mode("add_peak" if checked else None)
+
+    def _on_plot_edit_mode_changed(self, mode: object) -> None:
+        """Keep Edit-menu checkable actions in sync with the plot edit mode."""
+        if self._action_split_region is not None:
+            self._action_split_region.blockSignals(True)
+            self._action_split_region.setChecked(mode == "split_region")
+            self._action_split_region.blockSignals(False)
+        if self._action_add_peak_at_point is not None:
+            self._action_add_peak_at_point.blockSignals(True)
+            self._action_add_peak_at_point.setChecked(mode == "add_peak")
+            self._action_add_peak_at_point.blockSignals(False)
 
     def _on_auto_fit_triggered(self) -> None:
         """Run segmenter then optimization for all selected spectra."""
