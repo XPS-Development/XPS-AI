@@ -86,6 +86,26 @@ def test_orchestrator_import_spectra(empty_collection):
     assert "test_1_spec.txt" in meta.file
 
 
+def test_orchestrator_import_multiple_spectra_one_undo(empty_collection):
+    """Importing several files is one undo step that removes all of them."""
+    orch = AppOrchestrator(empty_collection, AppParameters())
+    orch.import_spectra(
+        [
+            "tests/data/test_1_spec.txt",
+            "tests/data/test_1_spec.vms",
+        ]
+    )
+
+    spectrum_ids = [
+        oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)
+    ]
+    assert len(spectrum_ids) > 1
+    orch.undo()
+    assert not [
+        oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)
+    ]
+
+
 def test_orchestrator_run_segmenter(empty_collection, simple_gauss_spectrum):
     """run_segmenter executes CreateRegion, CreateBackground, CreatePeak."""
     orch = AppOrchestrator(empty_collection, AppParameters())

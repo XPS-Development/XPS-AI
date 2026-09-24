@@ -17,6 +17,7 @@ from core.services import CoreContext
 
 from .command.changes import (
     BaseChange,
+    CompositeChange,
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
@@ -262,23 +263,30 @@ class AppOrchestrator:
 
     # ---- App services ----
 
-    def import_spectra(self, path: str | Path) -> None:
+    def import_spectra(self, path: str | Path | Sequence[str | Path]) -> None:
         """
-        Parse a spectrum file and execute changes to create spectra with metadata.
+        Parse one or more spectrum files and create spectra with metadata.
 
         Import behavior (use_binding_energy, use_cps) is governed by AppParameters.
+        Multiple paths are applied as a single undoable composite change.
 
         Parameters
         ----------
-        path : str or Path
-            Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
+        path : str or Path or sequence of those
+            Path(s) to spectrum file(s) (.txt, .csv, .dat, .vms, .vamas).
         """
-        change = import_spectra_changes(
-            path,
-            use_binding_energy=self._params.import_use_binding_energy,
-            use_cps=self._params.import_use_cps,
-        )
-        self.execute(change)
+        paths = (path,) if isinstance(path, (str, Path)) else tuple(path)
+        if not paths:
+            return
+        changes: list[BaseChange] = []
+        for file_path in paths:
+            change = import_spectra_changes(
+                file_path,
+                use_binding_energy=self._params.import_use_binding_energy,
+                use_cps=self._params.import_use_cps,
+            )
+            changes.extend(change.changes)
+        self.execute(CompositeChange(changes=changes))
 
     def load_nn_model(self, model_path: str | Path) -> None:
         """

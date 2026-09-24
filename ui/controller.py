@@ -154,8 +154,8 @@ class ControllerWrapper(QObject):
         self._orchestrator.redo()
         self._emit_ui_for_command(cmd)
 
-    def import_spectra(self, path: str | Path) -> None:
-        """Import spectra from a file and emit signals."""
+    def import_spectra(self, path: str | Path | Sequence[str | Path]) -> None:
+        """Import spectra from one or more files and emit signals."""
         self._mutate(self._orchestrator.import_spectra, path)
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:

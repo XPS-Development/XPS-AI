@@ -261,35 +261,41 @@ class MainWindow(QMainWindow):
 
     def _on_open_triggered(self) -> None:
         """
-        Open a collection or spectrum file using the controller.
+        Open a collection or import one or more spectrum files.
 
         The dialog offers options to open a saved JSON collection or import
         spectra files supported by the import service (.txt, .csv, .dat, .vms,
-        .vamas) via :meth:`ControllerWrapper.import_spectra`.
+        .vamas) via :meth:`ControllerWrapper.import_spectra`. Multiple spectrum
+        files may be selected at once.
         """
-        filename, selected_filter = QFileDialog.getOpenFileName(
+        filenames, _selected_filter = QFileDialog.getOpenFileNames(
             self,
             "Open or import",
             "",
             "Files (*.json *.txt *.csv *.dat *.vms *.vamas);;Collections (*.json);;"
             "Spectra (*.txt *.csv *.dat *.vms *.vamas);;All files (*)",
         )
-        if not filename:
+        if not filenames:
             return
 
-        suffix = Path(filename).suffix.lower()
-        if "Spectra" in selected_filter or suffix in {
-            ".txt",
-            ".csv",
-            ".dat",
-            ".vms",
-            ".vamas",
-        }:
-            self._controller.import_spectra(filename)
-        else:
+        spectrum_suffixes = {".txt", ".csv", ".dat", ".vms", ".vamas"}
+        spectrum_paths = [
+            name for name in filenames if Path(name).suffix.lower() in spectrum_suffixes
+        ]
+        collection_paths = [name for name in filenames if Path(name).suffix.lower() == ".json"]
+
+        if spectrum_paths:
+            self._controller.import_spectra(spectrum_paths)
+        elif len(collection_paths) == 1:
             if not self._confirm_discard_changes():
                 return
-            self._controller.load_collection(filename)
+            self._controller.load_collection(collection_paths[0])
+        else:
+            self._show_info(
+                "Nothing to open",
+                "Select spectrum files to import, or a single JSON collection to open.",
+            )
+            return
 
         self._update_window_title()
         self._update_status_bar()
