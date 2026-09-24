@@ -1,5 +1,7 @@
 """Dialog for CSV export options."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
@@ -13,6 +15,8 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QWidget,
 )
+
+from .file_dialogs import ensure_suffix_from_filter
 
 if TYPE_CHECKING:
     from .controller import ControllerWrapper
@@ -105,7 +109,7 @@ class ExportOptionsDialog(QDialog):
 
 
 def export_spectra(
-    controller: "ControllerWrapper",
+    controller: ControllerWrapper,
     spectra_ids: list[str],
     *,
     parent: QWidget | None = None,
@@ -142,7 +146,7 @@ def export_spectra(
 
 
 def export_peaks(
-    controller: "ControllerWrapper",
+    controller: ControllerWrapper,
     spectrum_ids: list[str],
     *,
     parent: QWidget | None = None,
@@ -187,7 +191,7 @@ def _select_export_targets(
     """Ask for output file/dir depending on number of selected spectra."""
     if len(spectrum_ids) == 1:
         title = "Export CSV" if suffix == "" else "Export peak parameters CSV"
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, selected_filter = QFileDialog.getSaveFileName(
             parent,
             title,
             "",
@@ -195,7 +199,8 @@ def _select_export_targets(
         )
         if not filename:
             return None
-        return [(spectrum_ids[0], filename)]
+        path = ensure_suffix_from_filter(filename, selected_filter, fallback=".csv")
+        return [(spectrum_ids[0], path)]
 
     directory = QFileDialog.getExistingDirectory(parent, "Select output directory")
     if not directory:

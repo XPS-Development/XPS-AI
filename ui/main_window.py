@@ -1,7 +1,6 @@
 """Main window: spectrum tree, plot area, properties, and menus."""
 
 import sys
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
@@ -18,6 +17,7 @@ from .assets import APP_NAME, load_app_icon
 from .context_menus import optimize_from_selection
 from .controller import ControllerWrapper
 from .export_options_dialog import export_peaks, export_spectra
+from .file_dialogs import ensure_suffix_from_filter, split_open_paths
 from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties_panel import PropertiesPanel
@@ -282,20 +282,17 @@ class MainWindow(QMainWindow):
             self,
             "Open or import",
             "",
-            "Files (*.json *.txt *.csv *.dat *.vms *.vamas);;Collections (*.json);;"
+            "Files (*.json *.json.gz *.txt *.csv *.dat *.vms *.vamas);;"
+            "Collections (*.json *.json.gz);;"
             "Spectra (*.txt *.csv *.dat *.vms *.vamas);;All files (*)",
         )
         if not filenames:
             return
 
-        spectrum_suffixes = {".txt", ".csv", ".dat", ".vms", ".vamas"}
-        spectrum_paths = [
-            name for name in filenames if Path(name).suffix.lower() in spectrum_suffixes
-        ]
-        collection_paths = [name for name in filenames if Path(name).suffix.lower() == ".json"]
+        spectrum_paths, collection_paths = split_open_paths(filenames)
 
         if spectrum_paths:
-            self._controller.import_spectra(spectrum_paths)
+            self._controller.import_spectra([str(p) for p in spectrum_paths])
         elif len(collection_paths) == 1:
             if not self._confirm_discard_changes():
                 return
@@ -504,23 +501,29 @@ class MainWindow(QMainWindow):
         bool
             True if the user picked a path and the document was saved.
         """
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save collection as",
             "",
-            "JSON files (*.json);;All files (*)",
+            "JSON files (*.json);;Gzip JSON (*.json.gz);;All files (*)",
         )
         if not filename:
             return False
 
-        self._controller.dump_collection(filename)
+        use_gzip = self._controller.orchestrator.params.default_serialization_use_gzip
+        fallback = ".json.gz" if use_gzip else ".json"
+        path = ensure_suffix_from_filter(filename, selected_filter, fallback=fallback)
+        # Filter may yield ".gz" from "*.json.gz"; normalize to the compound suffix.
+        if path.suffix.lower() == ".gz" and not path.name.lower().endswith(".json.gz"):
+            path = path.with_suffix(".json.gz")
+        self._controller.dump_collection(path)
         self._update_window_title()
         self._update_status_bar()
         return True
 
     def _update_window_title(self) -> None:
         """Set the window title from save path and dirty state."""
-        path: Path | None = self._controller.get_default_save_path()
+        path = self._controller.get_default_save_path()
 
         if path is None:
             name = "Untitled"

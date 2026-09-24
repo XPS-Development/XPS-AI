@@ -23,6 +23,46 @@ def _document(collection, params: AppParameters | None = None) -> DocumentUseCas
     )
 
 
+def test_dump_collection_appends_json_suffix_when_missing(simple_collection, tmp_path) -> None:
+    """Bare save paths get a gzip/json extension matching serialization settings."""
+    params = AppParameters(default_serialization_use_gzip=True)
+    doc = _document(simple_collection, params)
+    bare = tmp_path / "collection"
+
+    written = doc.dump_collection(bare)
+
+    assert written == tmp_path / "collection.json.gz"
+    assert written.exists()
+    assert params.default_serialization_path == written
+
+
+def test_dump_collection_appends_json_when_gzip_disabled(simple_collection, tmp_path) -> None:
+    """Plain JSON saves use ``.json`` when gzip is off."""
+    params = AppParameters(default_serialization_use_gzip=False)
+    doc = _document(simple_collection, params)
+
+    written = doc.dump_collection(tmp_path / "plain")
+
+    assert written == tmp_path / "plain.json"
+    assert written.exists()
+
+
+def test_load_collection_reads_gzip_without_json_suffix(
+    simple_collection, spectrum_id: str, tmp_path
+) -> None:
+    """Gzip payloads without ``.json`` still load (legacy Linux bare saves)."""
+    from core.collection import CoreCollection
+    from core.io.serialization import dump
+
+    bare = tmp_path / "legacy_save"
+    dump(simple_collection, bare, use_gzip=True)
+
+    empty = CoreCollection()
+    loaded = _document(empty, AppParameters())
+    loaded.load_collection(bare, mode="replace")
+    assert spectrum_id in empty.objects_index
+
+
 def test_dump_and_load_roundtrip(simple_collection, spectrum_id: str, tmp_path) -> None:
     """dump_collection writes a file that load_collection can restore."""
     from core.collection import CoreCollection
