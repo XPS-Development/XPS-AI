@@ -228,25 +228,35 @@ class MainWindow(QMainWindow):
         self._status_bar = status_bar
 
     def _connect_controller_signals(self) -> None:
-        """Connect controller wrapper signals to window slots."""
+        """Connect controller wrapper signals to window slots.
+
+        UI refresh slots use :attr:`Qt.ConnectionType.QueuedConnection` so
+        failures inside plot/properties/hierarchy redraw go through
+        ``QApplication.notify`` (copyable error dialog) instead of being
+        swallowed on a same-thread DirectConnection emit.
+        """
+        queued = Qt.ConnectionType.QueuedConnection
+
         self._controller.undoRedoStateChanged.connect(self._on_undo_redo_state_changed)
-        self._controller.documentStateChanged.connect(self._on_document_state_changed)
-        self._controller.selectionChanged.connect(self._on_selection_changed)
+        self._controller.documentStateChanged.connect(self._on_document_state_changed, queued)
+        self._controller.selectionChanged.connect(self._on_selection_changed, queued)
 
         if self._spectrum_tree_panel is not None:
-            self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
+            self._controller.spectrumHierarchyChanged.connect(
+                self._spectrum_tree_panel.refresh, queued
+            )
             # Structure dots depend on regions/peaks created by auto-fit / optimize.
             self._controller.propertiesNeedsRefresh.connect(
-                self._spectrum_tree_panel.tree.refresh_structure_status
+                self._spectrum_tree_panel.tree.refresh_structure_status, queued
             )
         if self._plot_area is not None:
-            self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
-            self._controller.selectionChanged.connect(self._plot_area.refresh)
+            self._controller.plotNeedsRefresh.connect(self._plot_area.refresh, queued)
+            self._controller.selectionChanged.connect(self._plot_area.refresh, queued)
             self._plot_area.editModeChanged.connect(self._on_plot_edit_mode_changed)
         if self._properties_panel is not None:
-            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
+            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh, queued)
             self._controller.selectionChanged.connect(
-                self._properties_panel.on_controller_selection_changed
+                self._properties_panel.on_controller_selection_changed, queued
             )
 
     # ------------------------------------------------------------------
