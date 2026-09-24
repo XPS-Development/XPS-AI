@@ -10,7 +10,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
-from ui.theme import EditorStyle, install_theme, make_translucent_popup
+from ui.theme import (
+    CHECKBOX_SIZE,
+    EditorStyle,
+    install_theme,
+    make_translucent_popup,
+    paint_rounded_checkbox,
+)
 
 
 @pytest.fixture(scope="module")
@@ -73,7 +79,7 @@ def test_make_translucent_popup_is_idempotent(qapp: QApplication) -> None:
 
 
 def test_install_theme_sets_fusion_light_and_rounds_menus(qapp: QApplication) -> None:
-    """``install_theme`` installs Fusion, light scheme, stylesheet, and menu polish."""
+    """``install_theme`` installs Fusion, light theme, stylesheet, and menu polish."""
     app = qapp
     prev_style_name = app.style().name()
     try:
@@ -82,6 +88,7 @@ def test_install_theme_sets_fusion_light_and_rounds_menus(qapp: QApplication) ->
         assert app.palette().color(QPalette.ColorRole.Window).lightness() > 128
         assert app.styleSheet() != ""
         assert "QMessageBox" in app.styleSheet()
+        assert "QCheckBox::indicator" in app.styleSheet()
 
         menu = QMenu()
         submenu = menu.addMenu("x")
@@ -95,3 +102,35 @@ def test_install_theme_sets_fusion_light_and_rounds_menus(qapp: QApplication) ->
         app.setStyle(prev_style_name or "Fusion")
         app.setPalette(app.style().standardPalette())
         app.styleHints().unsetColorScheme()
+
+
+def test_editor_style_checkbox_metrics_and_paint(qapp: QApplication) -> None:
+    """Rounded checkbox indicators use a fixed size and paint without error."""
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtWidgets import QStyle, QStyleOptionButton
+
+    del qapp
+    style = EditorStyle()
+    assert style.pixelMetric(QStyle.PixelMetric.PM_IndicatorWidth) == CHECKBOX_SIZE
+    assert style.pixelMetric(QStyle.PixelMetric.PM_IndicatorHeight) == CHECKBOX_SIZE
+
+    option = QStyleOptionButton()
+    option.rect = QRect(0, 0, CHECKBOX_SIZE, CHECKBOX_SIZE)
+    option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_On
+    image = QImage(CHECKBOX_SIZE, CHECKBOX_SIZE, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(0)
+    painter = QPainter(image)
+    paint_rounded_checkbox(painter, option)
+    style.drawPrimitive(
+        QStyle.PrimitiveElement.PE_IndicatorCheckBox,
+        option,
+        painter,
+        None,
+    )
+    painter.end()
+    assert any(
+        image.pixelColor(x, y).alpha() > 0
+        for x in range(CHECKBOX_SIZE)
+        for y in range(CHECKBOX_SIZE)
+    )
