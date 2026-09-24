@@ -566,6 +566,10 @@ class AppOrchestrator:
         """Update the index slice of an existing region; executed as a command."""
         self.execute(self._editing.update_region_slice(region_id, start, stop, mode=mode))
 
+    def split_region(self, region_id: str, x: float) -> None:
+        """Split a region at axis position ``x`` into two regions; one undo step."""
+        self.execute_optional(self._editing.split_region(region_id, x))
+
     def replace_peak_model(
         self,
         peak_id: str,
@@ -628,12 +632,17 @@ class AppOrchestrator:
             )
         )
 
+    def create_cursor_peak(self, region_id: str, cen: float, height: float) -> None:
+        """Create a pseudo-Voigt peak from a plot click; executed as a command."""
+        self.execute(self._editing.create_cursor_peak(region_id, cen, height))
+
     def create_peak(
         self,
         region_id: str,
         model_name: str,
         parameters: dict[str, float] | None = None,
         peak_id: str | None = None,
+        peak_index: int | None = None,
     ) -> None:
         """Create a new peak component; executed as a command."""
         self.execute(
@@ -642,6 +651,7 @@ class AppOrchestrator:
                 model_name,
                 parameters=parameters,
                 peak_id=peak_id,
+                peak_index=peak_index,
             )
         )
 

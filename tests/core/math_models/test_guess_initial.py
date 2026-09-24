@@ -6,6 +6,7 @@ import pytest
 from core.math_models import ModelRegistry
 from core.math_models.guess_helpers import (
     amp_from_height,
+    amplitude_from_peak_height,
     edge_intensities,
     half_max_sigma,
     peak_index_from_residuals,
@@ -37,6 +38,18 @@ def test_amp_from_height() -> None:
     amp = amp_from_height(y, max_idx, sig, frac)
     assert amp > 0
     assert np.isfinite(amp)
+
+
+def test_amplitude_from_peak_height_matches_center() -> None:
+    """Converted amplitude evaluates to the requested height at the center."""
+    from core.math_models.model_funcs import pvoigt
+
+    height = 4.0
+    sig = 1.0
+    frac = 0.5
+    amp = amplitude_from_peak_height(height, sig, frac)
+    center = pvoigt(np.array([2.0]), amp, 2.0, sig, frac)
+    assert float(center[0]) == pytest.approx(height)
 
 
 def test_edge_intensities() -> None:

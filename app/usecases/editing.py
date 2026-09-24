@@ -8,21 +8,27 @@ Parameter guessing uses model ``guess_initial`` in core. Does not execute comman
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
+from uuid import uuid4
+
+import numpy as np
 
 from app.command.changes import (
     BaseChange,
     CompositeChange,
     CreateBackground,
     CreatePeak,
+    CreateRegion,
+    RemoveObject,
     RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
     UpdateMultipleParameterValues,
     UpdateRegionSlice,
 )
-from core.evaluation import region_bundle
+from core.evaluation import component_y, region_bundle
 from core.math_models import ModelRegistry
-from core.math_models.guess_helpers import peak_index_from_residuals
+from core.math_models.guess_helpers import amplitude_from_peak_height, peak_index_from_residuals
+from core.numerics import find_closest_index
 
 if TYPE_CHECKING:
     from app.parameters import AppParameters
@@ -62,6 +68,7 @@ class EditingUseCases:
         model_name: str,
         parameters: dict[str, float] | None = None,
         peak_id: str | None = None,
+        peak_index: int | None = None,
     ) -> BaseChange:
         """
         Build a change that creates a peak, optionally guessing parameters.
@@ -76,7 +83,10 @@ class EditingUseCases:
             Explicit parameter values. If None and automatic methods are on,
             parameters are guessed from residuals via the model.
         peak_id
-            Optional explicit peak identifier (ignored on the automatic path).
+            Optional explicit peak identifier.
+        peak_index
+            Optional region-local channel index for ``guess_initial``. When
+            omitted, the residual maximum is used.
 
         Returns
         -------
@@ -85,13 +95,158 @@ class EditingUseCases:
         """
         if self._params.automatic_methods and parameters is None:
             region, components = self._query.get_region_dto_repr(region_id, normalized=False)
-            parameters = self._guess_peak_parameters(region, components, model_name)
+            parameters = self._guess_peak_parameters(
+                region,
+                components,
+                model_name,
+                peak_index=peak_index,
+            )
         return CreatePeak(
             region_id=region_id,
             model_name=model_name,
             parameters=parameters,
             peak_id=peak_id,
         )
+
+    def create_cursor_peak(self, region_id: str, cen: float, height: float) -> BaseChange:
+        """
+        Build a pseudo-Voigt peak placed at a plot click.
+
+        ``cen`` is the click energy. ``height`` is the click intensity; the
+        background at ``cen`` is subtracted so the drawn peak (background plus
+        component) meets that intensity. Amplitude is the pseudo-Voigt value
+        that produces the remaining height. Width is fixed at 1.
+
+        Parameters
+        ----------
+        region_id
+            Parent region identifier.
+        cen
+            Peak center in axis units.
+        height
+            Desired intensity of the peak top, including background.
+
+        Returns
+        -------
+        CreatePeak
+            Peak with ``sig=1``, ``frac=0.5``, and amplitude from ``height``.
+        """
+        sig = 1.0
+        frac = 0.5
+        baseline = self._background_at(region_id, cen)
+        peak_height = max(float(height) - baseline, 0.0)
+        return CreatePeak(
+            region_id=region_id,
+            model_name="pseudo-voigt",
+            parameters={
+                "amp": amplitude_from_peak_height(peak_height, sig, frac),
+                "cen": float(cen),
+                "sig": sig,
+                "frac": frac,
+            },
+        )
+
+    def _background_at(self, region_id: str, x: float) -> float:
+        """Background intensity at ``x``, or 0 when the region has none."""
+        if self._query.get_background_id(region_id) is None:
+            return 0.0
+        region, components = self._query.get_region_dto_repr(region_id, normalized=False)
+        background = next((c for c in components if c.kind == "background"), None)
+        if background is None or len(region.x) == 0:
+            return 0.0
+        y_bg = component_y(background, region.x, region.y)
+        order = np.argsort(region.x)
+        return float(np.interp(float(x), region.x[order], y_bg[order]))
+
+    def split_region(self, region_id: str, x: float) -> BaseChange | None:
+        """
+        Build a change that splits a region at the nearest interior channel.
+
+        The left piece keeps ``region_id`` with slice ``[start, index)``. A new
+        region owns ``[index, stop)``. Peaks with ``cen < x[index]`` stay on the
+        left; the rest are re-created under the right region with the same ids.
+        An existing background is re-guessed on the left (when automatic methods
+        are on) and duplicated onto the right with fresh intensities.
+
+        Parameters
+        ----------
+        region_id
+            Region to split.
+        x
+            Split position in spectrum axis units.
+
+        Returns
+        -------
+        BaseChange or None
+            ``CompositeChange`` for a valid split, or ``None`` when the region
+            is too narrow or ``x`` does not map inside it.
+        """
+        spectrum_id = self._query.get_parent_id(region_id)
+        spectrum = self._query.get_spectrum_dto(spectrum_id, normalized=False)
+        start, stop = self._query.get_region_slice(region_id, mode="index")
+        if stop - start < 2:
+            return None
+
+        index = find_closest_index(x, spectrum.x)
+        # Both sides need at least one channel: start < index < stop.
+        if index <= start or index >= stop:
+            return None
+
+        split_x = float(spectrum.x[index])
+        changes: list[BaseChange] = []
+
+        left_slice = self.update_region_slice(region_id, start, index, mode="index")
+        if isinstance(left_slice, CompositeChange):
+            changes.extend(left_slice.changes)
+        else:
+            changes.append(left_slice)
+
+        right_region_id = f"r{uuid4().hex}"
+        changes.append(
+            CreateRegion(
+                spectrum_id=spectrum_id,
+                start=index,
+                stop=stop,
+                region_id=right_region_id,
+                mode="index",
+            )
+        )
+
+        background_id = self._query.get_background_id(region_id)
+        if background_id is not None:
+            background_dto = self._query.get_component_dto(background_id, normalized=False)
+            right_bg_params = self._guess_background_parameters(
+                background_dto.model.name,
+                spectrum,
+                (index, stop),
+                slice_mode="index",
+            )
+            changes.append(
+                CreateBackground(
+                    region_id=right_region_id,
+                    model_name=background_dto.model.name,
+                    parameters=right_bg_params,
+                )
+            )
+
+        for peak_id in self._query.get_peaks_ids(region_id):
+            peak_dto = self._query.get_component_dto(peak_id, normalized=False)
+            cen = peak_dto.parameters["cen"].value
+            if cen < split_x:
+                continue
+            parameters = {name: param.value for name, param in peak_dto.parameters.items()}
+            changes.append(RemoveObject(obj_id=peak_id))
+            changes.append(
+                CreatePeak(
+                    region_id=right_region_id,
+                    model_name=peak_dto.model.name,
+                    parameters=parameters,
+                    peak_id=peak_id,
+                    name=peak_dto.name,
+                )
+            )
+
+        return CompositeChange(changes=changes)
 
     def create_background(
         self,
@@ -300,14 +455,21 @@ class EditingUseCases:
         region: RegionDTO,
         components: tuple[ComponentDTO, ...],
         model_name: str,
+        peak_index: int | None = None,
     ) -> dict[str, float]:
-        """Guess peak parameters from residuals via model ``guess_initial``."""
+        """Guess peak parameters via model ``guess_initial`` at ``peak_index``."""
         region_eval = region_bundle(region, components)
-        peak_index = peak_index_from_residuals(region_eval.residuals)
+        if peak_index is None:
+            resolved_index = peak_index_from_residuals(region_eval.residuals)
+        else:
+            n = len(region_eval.x)
+            if n == 0:
+                raise ValueError("Cannot guess peak parameters on an empty region")
+            resolved_index = max(0, min(int(peak_index), n - 1))
         return ModelRegistry.get(model_name).guess_initial(
             region_eval.x,
             region_eval.y,
-            peak_index=peak_index,
+            peak_index=resolved_index,
         )
 
     @staticmethod
