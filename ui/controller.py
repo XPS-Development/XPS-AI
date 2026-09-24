@@ -12,7 +12,7 @@ from app.parameters import AppParameters
 from core.collection import CoreCollection
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from app.command.changes import ParameterField
@@ -157,6 +157,33 @@ class ControllerWrapper(QObject):
     def import_spectra(self, path: str | Path | Sequence[str | Path]) -> None:
         """Import spectra from one or more files and emit signals."""
         self._mutate(self._orchestrator.import_spectra, path)
+
+    def copy_decomposition(
+        self,
+        source_spectrum_id: str,
+        target_spectrum_ids: Sequence[str],
+        link_flags: Mapping[tuple[str, str], bool],
+        *,
+        rescale_intensities: bool = True,
+        overwrite_targets: set[str] | frozenset[str] | None = None,
+        optimize_after: bool = False,
+    ) -> list[str]:
+        """Copy a spectrum decomposition onto targets and emit signals."""
+        result: list[str] = []
+
+        def _run() -> None:
+            nonlocal result
+            result = self._orchestrator.copy_decomposition(
+                source_spectrum_id,
+                target_spectrum_ids,
+                link_flags,
+                rescale_intensities=rescale_intensities,
+                overwrite_targets=overwrite_targets,
+                optimize_after=optimize_after,
+            )
+
+        self._mutate(_run)
+        return result
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """Run the segmenter pipeline and emit signals."""

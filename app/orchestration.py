@@ -5,7 +5,7 @@ Aggregates app services and the command/change pipeline into a single entry poin
 for running services, applying changes (create/update/metadata/remove), and undo/redo.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -42,6 +42,7 @@ from .query_service import QueryService
 from .serialization import SerializationService
 from .usecases import (
     AnalysisUseCases,
+    CopyDecompositionUseCases,
     DocumentUseCases,
     EditingUseCases,
     ExportUseCases,
@@ -94,6 +95,7 @@ class AppOrchestrator:
         self._serialization = SerializationService()
         self._csv_export = CSVExportService()
         self._editing = EditingUseCases(self._query, params)
+        self._copy = CopyDecompositionUseCases(self._query)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
         self._export = ExportUseCases(self._query, self._csv_export)
@@ -287,6 +289,57 @@ class AppOrchestrator:
             )
             changes.extend(change.changes)
         self.execute(CompositeChange(changes=changes))
+
+    def copy_decomposition(
+        self,
+        source_spectrum_id: str,
+        target_spectrum_ids: Sequence[str],
+        link_flags: Mapping[tuple[str, str], bool],
+        *,
+        rescale_intensities: bool = True,
+        overwrite_targets: set[str] | frozenset[str] | None = None,
+        optimize_after: bool = False,
+    ) -> list[str]:
+        """
+        Copy the source spectrum's regions/peaks onto selected targets.
+
+        Each target is one undoable composite. When ``optimize_after`` is True,
+        successfully updated targets are optimized afterward.
+
+        Parameters
+        ----------
+        source_spectrum_id
+            Template spectrum.
+        target_spectrum_ids
+            Destinations.
+        link_flags
+            ``(source_component_id, param_name) -> link_to_source``.
+        rescale_intensities
+            Scale intensity parameters between spectrum norms.
+        overwrite_targets
+            Targets whose existing regions are removed first.
+        optimize_after
+            Run :meth:`optimize_regions` on copied targets.
+
+        Returns
+        -------
+        list of str
+            Target spectrum ids that received a copy.
+        """
+        changes = self._copy.copy_decomposition(
+            source_spectrum_id,
+            target_spectrum_ids,
+            link_flags,
+            rescale_intensities=rescale_intensities,
+            overwrite_targets=overwrite_targets,
+        )
+        applied: list[str] = []
+        for target_id, change in changes:
+            self.execute(change)
+            applied.append(target_id)
+        if optimize_after and applied:
+            self.optimize_regions(spectrum_ids=applied)
+        return applied
 
     def load_nn_model(self, model_path: str | Path) -> None:
         """
