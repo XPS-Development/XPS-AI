@@ -662,6 +662,11 @@ class PlotAreaWidget(QWidget):
         if spectrum_id is None:
             self.clear_plot()
             return
+        if not self._controller.query.check_object_exists(spectrum_id):
+            # Stale selection after delete/undo — clear before redrawing.
+            self._controller.set_selection(None)
+            self.clear_plot()
+            return
 
         plot_data = self._controller.query.get_spectrum_plot_data(spectrum_id, normalized=False)
 

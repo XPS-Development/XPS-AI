@@ -484,7 +484,12 @@ class ControllerWrapper(QObject):
 
     def remove_object(self, obj_id: str) -> None:
         """Remove an object and its descendants and emit signals."""
-        self._mutate(self._orchestrator.remove_object, obj_id)
+
+        def _run() -> None:
+            self._orchestrator.remove_object(obj_id)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_metadata(self, obj_id: str) -> None:
         """Remove metadata for an object and emit signals."""
@@ -492,15 +497,30 @@ class ControllerWrapper(QObject):
 
     def full_remove_object(self, obj_id: str) -> None:
         """Remove an object, all descendants, and their metadata and emit signals."""
-        self._mutate(self._orchestrator.full_remove_object, obj_id)
+
+        def _run() -> None:
+            self._orchestrator.full_remove_object(obj_id)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_group(self, file_label: str, group_label: str) -> None:
         """Remove all spectra belonging to a given file/group combination."""
-        self._mutate(self._orchestrator.remove_group, file_label, group_label)
+
+        def _run() -> None:
+            self._orchestrator.remove_group(file_label, group_label)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_file(self, file_label: str) -> None:
         """Remove all spectra associated with a given file label."""
-        self._mutate(self._orchestrator.remove_file, file_label)
+
+        def _run() -> None:
+            self._orchestrator.remove_file(file_label)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def dump_collection(
         self,
@@ -628,7 +648,24 @@ class ControllerWrapper(QObject):
 
     def _emit_ui_for_command(self, cmd: Command) -> None:
         """Emit controller signals appropriate for the given undo/redo command."""
+        self._ensure_selection_valid()
         self._emit_refresh(cmd.combined_ui_refresh())
+
+    def _ensure_selection_valid(self) -> None:
+        """Clear selection fields that no longer exist in the collection."""
+        spectrum_id = self._selected_spectrum_id
+        region_id = self._selected_region_id
+        component_id = self._selected_component_id
+        query = self.query
+
+        if spectrum_id is not None and not query.check_object_exists(spectrum_id):
+            self.set_selection(None)
+            return
+        if region_id is not None and not query.check_object_exists(region_id):
+            self.set_selection(spectrum_id, None)
+            return
+        if component_id is not None and not query.check_object_exists(component_id):
+            self.set_selection(spectrum_id, region_id, None)
 
     def _emit_undo_redo_state(self) -> None:
         """Emit the current undo/redo capability state."""

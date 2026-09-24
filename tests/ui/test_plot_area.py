@@ -100,3 +100,25 @@ def test_plot_area_refresh_clears_when_no_selection(
 
     controller.query.get_spectrum_plot_data.assert_called_once()
     assert widget._last_plot_data is None
+
+
+def test_plot_area_refresh_handles_stale_selection(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+) -> None:
+    """refresh() clears the plot if the selected spectrum was already removed."""
+    del qapp
+    controller = ControllerWrapper(collection=simple_collection)
+    controller.set_selection(spectrum_id)
+    widget = PlotAreaWidget(controller)
+    widget.refresh()
+    assert widget._last_plot_data is not None
+
+    # Simulate a deleted spectrum with a stale controller selection.
+    controller._selected_spectrum_id = spectrum_id
+    controller.orchestrator.full_remove_object(spectrum_id)
+    widget.refresh()
+
+    assert controller.selected_spectrum_id is None
+    assert widget._last_plot_data is None

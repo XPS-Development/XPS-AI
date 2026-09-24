@@ -800,7 +800,7 @@ class PropertiesModel(QAbstractItemModel):
         self._root_item.children.clear()
 
         spectrum_id = self._controller.selected_spectrum_id
-        if spectrum_id is None:
+        if spectrum_id is None or not self._controller.query.check_object_exists(spectrum_id):
             self._root_item.append_child(
                 PropertyItem(name="No spectrum selected", parent=self._root_item)
             )
