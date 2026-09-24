@@ -61,7 +61,6 @@ class MainWindow(QMainWindow):
         self._action_optimize: QAction | None = None
         self._action_split_region: QAction | None = None
         self._action_add_peak_at_point: QAction | None = None
-        self._action_auto_fit: QAction | None = None
         self._action_load_nn_model: QAction | None = None
         self._action_app_parameters: QAction | None = None
 
@@ -122,7 +121,6 @@ class MainWindow(QMainWindow):
         self._action_optimize = QAction("Optimize", self)
         self._action_optimize.setShortcut(QKeySequence("O"))
 
-        self._action_auto_fit = QAction("Auto fit", self)
         self._action_load_nn_model = QAction("Load NN model…", self)
         self._action_app_parameters = QAction("Application parameters…", self)
 
@@ -146,7 +144,6 @@ class MainWindow(QMainWindow):
         self._action_add_peak_at_point.triggered.connect(self._on_add_peak_at_point_triggered)
         self._action_optimize.triggered.connect(self._on_optimize_shortcut)
 
-        self._action_auto_fit.triggered.connect(self._on_auto_fit_triggered)
         self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
         self._action_app_parameters.triggered.connect(self._on_app_parameters_triggered)
 
@@ -181,17 +178,13 @@ class MainWindow(QMainWindow):
             edit_menu.addAction(self._action_undo)
         if self._action_redo is not None:
             edit_menu.addAction(self._action_redo)
-        edit_menu.addSeparator()
-        if self._action_add_peak_at_point is not None:
-            edit_menu.addAction(self._action_add_peak_at_point)
-        if self._action_optimize is not None:
-            edit_menu.addAction(self._action_optimize)
-        if self._action_split_region is not None:
-            edit_menu.addAction(self._action_split_region)
 
-        run_menu = menu_bar.addMenu("Run")
-        if self._action_auto_fit is not None:
-            run_menu.addAction(self._action_auto_fit)
+        if self._action_add_peak_at_point is not None:
+            self.addAction(self._action_add_peak_at_point)
+        if self._action_optimize is not None:
+            self.addAction(self._action_optimize)
+        if self._action_split_region is not None:
+            self.addAction(self._action_split_region)
 
         options_menu = menu_bar.addMenu("Options")
         if self._action_load_nn_model is not None:
@@ -374,7 +367,7 @@ class MainWindow(QMainWindow):
         self._plot_area.set_edit_mode("add_peak" if checked else None)
 
     def _on_plot_edit_mode_changed(self, mode: object) -> None:
-        """Keep Edit-menu checkable actions in sync with the plot edit mode."""
+        """Keep hidden shortcut actions in sync with the plot edit mode."""
         if self._action_split_region is not None:
             self._action_split_region.blockSignals(True)
             self._action_split_region.setChecked(mode == "split_region")
@@ -383,17 +376,6 @@ class MainWindow(QMainWindow):
             self._action_add_peak_at_point.blockSignals(True)
             self._action_add_peak_at_point.setChecked(mode == "add_peak")
             self._action_add_peak_at_point.blockSignals(False)
-
-    def _on_auto_fit_triggered(self) -> None:
-        """Run segmenter then optimization for all selected spectra."""
-        spectrum_ids: list[str] = []
-        if self._spectrum_tree_panel is not None:
-            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
-        if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
-            return
-
-        self._controller.auto_fit(spectrum_ids)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
