@@ -12,16 +12,19 @@ import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
     QApplication,
     QMenu,
     QProxyStyle,
     QStyle,
+    QStyleOption,
+    QStyleOptionMenuItem,
     QWidget,
 )
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QPalette
+    from PySide6.QtGui import QPainter
 
 # Side panels sit slightly off-white; the plot stays pure white.
 PANEL_BG = "#f7f7f7"
@@ -149,7 +152,7 @@ QMenu {{
 QMenu::item {{
     background: transparent;
     color: {TEXT};
-    padding: 6px 28px 6px 12px;
+    padding: 6px 36px 6px 12px;
     border-radius: {ITEM_RADIUS}px;
     margin: 1px 2px;
 }}
@@ -473,6 +476,44 @@ class EditorStyle(QProxyStyle):
         if isinstance(arg, QWidget) and _wants_rounded_popup(arg):
             make_translucent_popup(arg)
         return super().polish(arg)
+
+    def drawControl(
+        self,
+        element: QStyle.ControlElement,
+        option: QStyleOption,
+        painter: QPainter,
+        widget: QWidget | None = None,
+    ) -> None:
+        """Draw menu shortcuts in a column on the right edge of the item."""
+        if element == QStyle.ControlElement.CE_MenuItem and isinstance(
+            option, QStyleOptionMenuItem
+        ):
+            label, sep, shortcut = option.text.partition("\t")
+            if sep and shortcut:
+                opt = QStyleOptionMenuItem(option)
+                opt.text = label
+                super().drawControl(element, opt, painter, widget)
+                self._draw_menu_shortcut(opt, painter, shortcut)
+                return
+        super().drawControl(element, option, painter, widget)
+
+    @staticmethod
+    def _draw_menu_shortcut(
+        option: QStyleOptionMenuItem,
+        painter: QPainter,
+        shortcut: str,
+    ) -> None:
+        """Paint ``shortcut`` vertically centered on the right of ``option``."""
+        enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
+        role = QPalette.ColorRole.Text if enabled else QPalette.ColorRole.PlaceholderText
+        painter.save()
+        painter.setPen(option.palette.color(role))
+        painter.drawText(
+            option.rect.adjusted(12, 0, -12, 0),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+            shortcut,
+        )
+        painter.restore()
 
 
 def build_palette(style: QStyle) -> QPalette:
