@@ -1,4 +1,4 @@
-"""Tests for expression id token helpers and the expr editor popup."""
+"""Tests for the expression editor popup."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QApplication
 
 from ui.component_colors import PEAK_COLORS
 from ui.expr_editor_popup import ExprEditorPopup, ExprPickerModel
-from ui.expr_tokens import shortest_unique_prefix
 from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
 
@@ -23,28 +22,6 @@ def qapp() -> QApplication:
     if app is None:
         app = QApplication(sys.argv)
     return cast(QApplication, app)
-
-
-def test_shortest_unique_prefix_prefers_min_len() -> None:
-    """Unique ids use at least ``min_len`` characters when available."""
-    ids = ["pabcd123", "qxyz999"]
-    assert shortest_unique_prefix("pabcd123", ids, min_len=5) == "pabcd"
-    assert shortest_unique_prefix("qxyz999", ids, min_len=5) == "qxyz9"
-
-
-def test_shortest_unique_prefix_lengthens_on_collision() -> None:
-    """Shared prefixes grow until the match is unique."""
-    ids = ["pabcd111", "pabcd222"]
-    assert shortest_unique_prefix("pabcd111", ids, min_len=5) == "pabcd1"
-    assert shortest_unique_prefix("pabcd222", ids, min_len=5) == "pabcd2"
-
-
-def test_shortest_unique_prefix_falls_back_to_full_id() -> None:
-    """When every proper prefix is shared, return the full id."""
-    # Single known id: prefer min_len then grow only if needed.
-    assert shortest_unique_prefix("sameid", ["sameid"], min_len=5) == "samei"
-    # Two distinct ids that share all but the last character.
-    assert shortest_unique_prefix("aaaax", ["aaaax", "aaaay"], min_len=5) == "aaaax"
 
 
 def _build_controller() -> MagicMock:

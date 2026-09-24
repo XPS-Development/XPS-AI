@@ -36,6 +36,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.fitting.expressions import shortest_unique_prefix
+
 from . import theme
 from .assets import icon_path
 from .component_colors import (
@@ -44,7 +46,6 @@ from .component_colors import (
     STATUS_COLOR_REGIONS,
     color_for_component,
 )
-from .expr_tokens import shortest_unique_prefix
 from .name_id_delegate import (
     ComponentColorRole,
     NameWithIdDelegate,
