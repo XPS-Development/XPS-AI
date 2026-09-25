@@ -65,6 +65,7 @@ def test_component_initializes_parameters_from_schema():
     assert isinstance(c.parameters["amp"], RuntimeParameter)
     assert c.parameters["amp"].value == 1
     assert c.parameters["sig"].lower == 0
+    assert c.parameters["sig"].upper == 8
 
 
 def test_component_overrides_default_parameters():

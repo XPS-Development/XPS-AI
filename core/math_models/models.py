@@ -23,6 +23,9 @@ from .soft_ranges import (
     soft_window_around,
 )
 
+# Hard upper bound for peak width. Also the soft-slider ceiling.
+SIG_UPPER = 8.0
+
 
 def _bg_slice_kwargs(
     kwargs: dict[str, float | int | str],
@@ -47,7 +50,7 @@ class PseudoVoigtPeakModel(BasePeakModel):
     parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec(name="amp", default=1, lower=0),
         ParameterSpec(name="cen", default=0),
-        ParameterSpec(name="sig", default=1, lower=0),
+        ParameterSpec(name="sig", default=1, lower=0, upper=SIG_UPPER),
         ParameterSpec(name="frac", default=1, lower=0, upper=1),
     )
     normalization_target_parameters: ClassVar[tuple[str, ...]] = ("amp",)
@@ -75,7 +78,7 @@ class PseudoVoigtPeakModel(BasePeakModel):
             raise TypeError("pseudo-voigt guess_initial requires 'peak_index'")
         peak_index = int(kwargs["peak_index"])
         frac = float(kwargs.get("frac", 0.5))
-        sig = half_max_sigma(x, y, peak_index)
+        sig = min(half_max_sigma(x, y, peak_index), SIG_UPPER)
         amp = amp_from_height(y, peak_index, sig, frac)
         return {"amp": amp, "cen": float(x[peak_index]), "sig": sig, "frac": frac}
 
@@ -91,10 +94,13 @@ class PseudoVoigtPeakModel(BasePeakModel):
         y_max: float | None = None,
     ) -> tuple[float, float]:
         """Soft slider ranges for amp/cen/sig/frac."""
+        key = name.lower()
+        if key == "sig":
+            capped_upper = SIG_UPPER if not math.isfinite(upper) else min(float(upper), SIG_UPPER)
+            return clip_soft_range(0.1, SIG_UPPER, lower, capped_upper)
         hard = prefer_finite_hard_bounds(lower, upper)
         if hard is not None:
             return hard
-        key = name.lower()
         v = float(value) if math.isfinite(value) else 0.0
         if key == "frac":
             return (0.0, 1.0)
@@ -106,8 +112,6 @@ class PseudoVoigtPeakModel(BasePeakModel):
                 return (lo, hi)
             span = max(abs(v) * 0.1, 5.0)
             return soft_window_around(v, span=span, lower=lower, upper=upper)
-        if key == "sig":
-            return clip_soft_range(0.1, 30.0, lower, upper)
         if key == "amp":
             return intensity_soft_range(v, lower, upper, y_max=y_max, non_negative=True)
         return ParametricModel.soft_parameter_range(
@@ -122,7 +126,7 @@ class AsymPseudoVoigtPeakModel(BasePeakModel):
     parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec(name="amp", default=1, lower=0),
         ParameterSpec(name="cen", default=0),
-        ParameterSpec(name="sig", default=1, lower=0),
+        ParameterSpec(name="sig", default=1, lower=0, upper=SIG_UPPER),
         ParameterSpec(name="frac", default=1, lower=0, upper=1),
         ParameterSpec(name="asym", default=0, lower=-0.9, upper=0.9),
     )
@@ -177,7 +181,7 @@ class TailPseudoVoigtPeakModel(BasePeakModel):
     parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
         ParameterSpec(name="amp", default=1, lower=0),
         ParameterSpec(name="cen", default=0),
-        ParameterSpec(name="sig", default=1, lower=0),
+        ParameterSpec(name="sig", default=1, lower=0, upper=SIG_UPPER),
         ParameterSpec(name="frac", default=1, lower=0, upper=1),
         ParameterSpec(name="tscale", default=0, lower=0, upper=1),
         ParameterSpec(name="tlen", default=1, lower=0),
