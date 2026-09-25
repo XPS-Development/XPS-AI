@@ -84,7 +84,15 @@ def test_tail_pseudo_voigt_adds_high_x_wing_only():
     assert np.allclose(tailed[x <= 0], core[x <= 0])
     assert np.all(tailed[x > 0] >= core[x > 0] - 1e-12)
     assert tailed[x > 2].sum() > core[x > 2].sum()
-    assert TailPseudoVoigtPeakModel().area({"amp": 1.0}) is None
+    core_area = TailPseudoVoigtPeakModel().area(
+        {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.3, "tscale": 0.0, "tlen": 2.0}
+    )
+    tailed_area = TailPseudoVoigtPeakModel().area(
+        {"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.3, "tscale": 0.8, "tlen": 2.0}
+    )
+    assert core_area == 1.0
+    assert tailed_area is not None
+    assert tailed_area > 1.0
 
 
 def test_constant_background():

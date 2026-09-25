@@ -187,9 +187,26 @@ class TailPseudoVoigtPeakModel(BasePeakModel):
     use_offset: ClassVar[bool] = False
 
     def area(self, parameters: Mapping[str, float]) -> float | None:
-        """Return None; the tail adds area beyond ``amp``."""
-        del parameters
-        return None
+        """
+        Return the integrated profile, including the exponential tail.
+
+        With the tail off this is ``amp``. Otherwise the curve is integrated
+        on a window wide enough to cover the core and the tail.
+        """
+        amp = parameters.get("amp")
+        if amp is None or not math.isfinite(float(amp)):
+            return None
+        sig = float(parameters.get("sig", 1.0))
+        tscale = float(parameters.get("tscale", 0.0))
+        tlen = float(parameters.get("tlen", sig))
+        if tscale == 0.0 or tlen <= 0.0 or sig <= 0.0:
+            return float(amp)
+        cen = float(parameters.get("cen", 0.0))
+        frac = float(parameters.get("frac", 0.0))
+        half = max(sig, tlen) * 40.0
+        x = np.linspace(cen - half, cen + half, 4001)
+        y = tail_pvoigt(x, float(amp), cen, sig, frac, tscale, tlen)
+        return float(np.trapezoid(y, x))
 
     @staticmethod
     def evaluate(
