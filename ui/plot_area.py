@@ -510,6 +510,7 @@ class PlotAreaWidget(QWidget):
 
         scene = cast(_SceneWithMouseSignal, self._main_plot.scene())
         scene.sigMouseMoved.connect(self._on_main_plot_mouse_moved)
+        self._sync_x_axis_direction()
 
     @property
     def edit_mode(self) -> PlotEditMode | None:
@@ -661,6 +662,7 @@ class PlotAreaWidget(QWidget):
         is selected, clears the plot area.
         """
         spectrum_id = self._controller.selected_spectrum_id
+        self._sync_x_axis_direction()
         if spectrum_id is None:
             self.clear_plot()
             return
@@ -758,6 +760,17 @@ class PlotAreaWidget(QWidget):
         """Toggle the chi-squared subplot visibility from application parameters."""
         params = self._controller.get_app_parameters()
         self._res_plot.setVisible(bool(getattr(params, "show_residuals_plot", True)))
+
+    def _sync_x_axis_direction(self) -> None:
+        """Invert both X axes when ``AppParameters.invert_x_axis`` is set.
+
+        The chi-squared plot is X-linked, but inversion is per view, so both
+        view boxes are updated.
+        """
+        params = self._controller.get_app_parameters()
+        inverted = bool(getattr(params, "invert_x_axis", True))
+        self._main_plot.getViewBox().invertX(inverted)
+        self._res_plot.getViewBox().invertX(inverted)
 
     def _sync_rois_for_spectrum(self, *, spectrum_id: str) -> None:
         """

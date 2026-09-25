@@ -53,3 +53,8 @@ def test_model_and_serialization_mode_are_dropdowns(qapp: QApplication) -> None:
     dialog.apply_to_params(params)
     assert params.default_peak_model == "pseudo-voigt"
     assert params.default_serialization_mode == "replace"
+    assert params.invert_x_axis is True
+
+    dialog._invert_x_axis_cb.setChecked(False)
+    dialog.apply_to_params(params)
+    assert params.invert_x_axis is False

@@ -22,6 +22,28 @@ def qapp() -> QApplication:
     return cast(QApplication, app)
 
 
+def test_refresh_inverts_x_axis_from_parameters(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+) -> None:
+    """The X axis follows ``AppParameters.invert_x_axis`` on both plots."""
+    del qapp
+    controller = ControllerWrapper(collection=simple_collection)
+    controller.set_selection(spectrum_id)
+    widget = PlotAreaWidget(controller)
+
+    controller.orchestrator.params.invert_x_axis = True
+    widget.refresh()
+    assert widget._main_plot.getViewBox().xInverted() is True
+    assert widget._res_plot.getViewBox().xInverted() is True
+
+    controller.orchestrator.params.invert_x_axis = False
+    widget.refresh()
+    assert widget._main_plot.getViewBox().xInverted() is False
+    assert widget._res_plot.getViewBox().xInverted() is False
+
+
 def test_plot_area_refresh_uses_query_service(
     qapp: QApplication,
     simple_collection,
