@@ -455,6 +455,8 @@ class PlotAreaWidget(QWidget):
         self._cursor_label: QLabel | None = None
         self._last_plot_data: SpectrumPlotData | None = None
         self._last_spectrum_id: str | None = None
+        self._drawn_curve_items: list[pg.PlotDataItem] = []
+        self._drawn_curve_key: tuple[Any, ...] | None = None
         self._edit_mode: PlotEditMode | None = None
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -742,6 +744,8 @@ class PlotAreaWidget(QWidget):
         self._clear_rois()
         self._last_plot_data = None
         self._last_spectrum_id = None
+        self._drawn_curve_items = []
+        self._drawn_curve_key = None
 
     def _clear_rois(self) -> None:
         """Detach every ``InteractiveRegion`` from the main plot."""
@@ -889,8 +893,11 @@ class PlotAreaWidget(QWidget):
         plot_data : SpectrumPlotData
             Display-ready curves from the application query layer.
         """
+        if self._try_update_drawn_curves(plot_data):
+            return
         self._main_plot.clear()
         self._res_plot.clear()
+        self._drawn_curve_items = []
 
         # Re-add ROIs after clearing to keep them visible, but only once per redraw.
         self._roi_region_ids_in_plot.clear()
@@ -901,7 +908,8 @@ class PlotAreaWidget(QWidget):
         for curve in plot_data.curves:
             if curve.kind == "residual":
                 if self._res_plot.isVisible():
-                    self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                    item = self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                    self._drawn_curve_items.append(item)
                 continue
 
             if curve.kind == "raw":
@@ -917,10 +925,12 @@ class PlotAreaWidget(QWidget):
                 item.setZValue(0)
                 # Points accept left-clicks by default and swallow the edit mode.
                 self._pass_clicks_during_edit(item.scatter)
+                self._drawn_curve_items.append(item)
                 continue
 
             pen = self._pen_for_curve(curve)
             item = self._main_plot.plot(curve.x, curve.y, pen=pen)
+            self._drawn_curve_items.append(item)
             if curve.kind == "model":
                 item.setZValue(30)
                 continue
@@ -946,6 +956,8 @@ class PlotAreaWidget(QWidget):
                     lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
                 )
 
+        self._drawn_curve_key = self._curve_draw_key(plot_data)
+
         if self._res_plot.isVisible():
             if plot_data.residual_y_range is not None:
                 self._res_plot.setYRange(*plot_data.residual_y_range)
@@ -953,6 +965,39 @@ class PlotAreaWidget(QWidget):
                 self._res_plot.setYRange(-1, 1)
 
         self._align_plot_axes()
+
+    def _curve_draw_key(self, plot_data: SpectrumPlotData) -> tuple[Any, ...]:
+        """Identity of the current curves, ignoring y so a slider drag can reuse items."""
+        curves = tuple(
+            (curve.kind, curve.component_id, curve.peak_index, int(curve.x.shape[0]))
+            for curve in plot_data.curves
+            if curve.kind != "residual" or self._res_plot.isVisible()
+        )
+        return (self._controller.selected_component_id, curves)
+
+    def _try_update_drawn_curves(self, plot_data: SpectrumPlotData) -> bool:
+        """
+        Write new y values into existing curve items.
+
+        Returns False when the curve set changed and a full rebuild is required.
+        """
+        if not self._drawn_curve_items or self._drawn_curve_key != self._curve_draw_key(plot_data):
+            return False
+        curves = [
+            curve
+            for curve in plot_data.curves
+            if curve.kind != "residual" or self._res_plot.isVisible()
+        ]
+        if len(curves) != len(self._drawn_curve_items):
+            return False
+        for item, curve in zip(self._drawn_curve_items, curves, strict=True):
+            item.setData(curve.x, curve.y)
+        if self._res_plot.isVisible():
+            if plot_data.residual_y_range is not None:
+                self._res_plot.setYRange(*plot_data.residual_y_range)
+            else:
+                self._res_plot.setYRange(-1, 1)
+        return True
 
     def _pass_clicks_during_edit(self, item: Any) -> None:
         """Let left-clicks through while an edit mode is active."""

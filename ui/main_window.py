@@ -2,7 +2,7 @@
 
 import sys
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -69,6 +69,9 @@ class MainWindow(QMainWindow):
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
         self._properties_panel: PropertiesPanel | None = None
+        self._plot_refresh_timer = QTimer(self)
+        self._plot_refresh_timer.setSingleShot(True)
+        self._plot_refresh_timer.setInterval(16)
 
         self._create_actions()
         self._create_menus()
@@ -250,7 +253,9 @@ class MainWindow(QMainWindow):
                 self._spectrum_tree_panel.tree.refresh_structure_status, queued
             )
         if self._plot_area is not None:
-            self._controller.plotNeedsRefresh.connect(self._plot_area.refresh, queued)
+            self._plot_refresh_timer.timeout.connect(self._plot_area.refresh)
+            # Coalesce slider previews: many plotNeedsRefresh signals become one redraw.
+            self._controller.plotNeedsRefresh.connect(self._schedule_plot_refresh)
             self._controller.selectionChanged.connect(self._plot_area.refresh, queued)
             self._plot_area.editModeChanged.connect(self._on_plot_edit_mode_changed)
         if self._properties_panel is not None:
@@ -258,6 +263,11 @@ class MainWindow(QMainWindow):
             self._controller.selectionChanged.connect(
                 self._properties_panel.on_controller_selection_changed, queued
             )
+
+    def _schedule_plot_refresh(self) -> None:
+        """Queue a single plot redraw; further requests wait until it has run."""
+        if not self._plot_refresh_timer.isActive():
+            self._plot_refresh_timer.start()
 
     # ------------------------------------------------------------------
     # Slots for actions

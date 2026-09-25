@@ -51,6 +51,25 @@ def test_plot_area_refresh_uses_query_service(
         normalized=False,
     )
     assert widget._last_plot_data is plot_data
+    first_items = list(widget._main_plot.listDataItems())
+
+    updated = SpectrumPlotData(
+        curves=(
+            PlotCurve(
+                x=np.array([0.0, 1.0]),
+                y=np.array([3.0, 4.0]),
+                kind="raw",
+            ),
+        ),
+        residual_y_range=(-1.0, 1.0),
+    )
+    controller.query.get_spectrum_plot_data = MagicMock(return_value=updated)
+    widget.refresh()
+
+    second_items = list(widget._main_plot.listDataItems())
+    assert second_items == first_items
+    _x, y = second_items[0].getData()
+    assert np.allclose(y, [3.0, 4.0])
 
 
 def test_overlay_labels_stay_inside_the_data_area(
