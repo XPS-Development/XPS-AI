@@ -12,10 +12,12 @@ from core.math_models.guess_helpers import (
     peak_index_from_residuals,
 )
 from core.math_models.models import (
+    AsymPseudoVoigtPeakModel,
     ConstantBackgroundModel,
     LinearBackgroundModel,
     PseudoVoigtPeakModel,
     ShirleyBackgroundModel,
+    TailPseudoVoigtPeakModel,
 )
 
 
@@ -112,6 +114,8 @@ def test_pseudo_voigt_guess_initial_from_residuals_like_data() -> None:
     ("model_cls", "kwargs"),
     [
         (PseudoVoigtPeakModel, {"peak_index": 50}),
+        (AsymPseudoVoigtPeakModel, {"peak_index": 50}),
+        (TailPseudoVoigtPeakModel, {"peak_index": 50}),
         (ConstantBackgroundModel, {"start": 10, "stop": 90}),
         (LinearBackgroundModel, {"start": 10, "stop": 90}),
         (ShirleyBackgroundModel, {"start": 10, "stop": 90}),

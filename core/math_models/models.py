@@ -1,6 +1,7 @@
 """Concrete peak and background models registered with :class:`ModelRegistry`."""
 
 import math
+from collections.abc import Mapping
 from typing import ClassVar, Literal, cast
 
 import numpy as np
@@ -8,7 +9,13 @@ from numpy.typing import NDArray
 
 from .base_models import BaseBackgroundModel, BasePeakModel, ParameterSpec, ParametricModel
 from .guess_helpers import amp_from_height, edge_intensities, half_max_sigma
-from .model_funcs import linear_background, pvoigt, static_shirley_background
+from .model_funcs import (
+    asym_pvoigt,
+    linear_background,
+    pvoigt,
+    static_shirley_background,
+    tail_pvoigt,
+)
 from .soft_ranges import (
     clip_soft_range,
     intensity_soft_range,
@@ -104,6 +111,129 @@ class PseudoVoigtPeakModel(BasePeakModel):
         if key == "amp":
             return intensity_soft_range(v, lower, upper, y_max=y_max, non_negative=True)
         return ParametricModel.soft_parameter_range(
+            name, value, lower, upper, x_min=x_min, x_max=x_max, y_max=y_max
+        )
+
+
+class AsymPseudoVoigtPeakModel(BasePeakModel):
+    """Pseudo-Voigt skewed by a log warp of the energy axis."""
+
+    name: ClassVar[str] = "asym-pseudo-voigt"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
+        ParameterSpec(name="amp", default=1, lower=0),
+        ParameterSpec(name="cen", default=0),
+        ParameterSpec(name="sig", default=1, lower=0),
+        ParameterSpec(name="frac", default=1, lower=0, upper=1),
+        ParameterSpec(name="asym", default=0, lower=-0.9, upper=0.9),
+    )
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("amp",)
+    use_scale: ClassVar[bool] = True
+    use_offset: ClassVar[bool] = False
+
+    @staticmethod
+    def evaluate(
+        x: NDArray,
+        y: NDArray | None,
+        **kwargs: float,
+    ) -> NDArray:
+        """Return the axis-warped pseudo-Voigt intensity at ``x``."""
+        return asym_pvoigt(
+            x,
+            kwargs["amp"],
+            kwargs["cen"],
+            kwargs["sig"],
+            kwargs["frac"],
+            kwargs["asym"],
+        )
+
+    @staticmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """Guess a symmetric pseudo-Voigt and set ``asym`` to 0."""
+        guessed = PseudoVoigtPeakModel.guess_initial(x, y, **kwargs)
+        guessed["asym"] = 0.0
+        return guessed
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider ranges; ``asym`` uses its hard bounds."""
+        return PseudoVoigtPeakModel.soft_parameter_range(
+            name, value, lower, upper, x_min=x_min, x_max=x_max, y_max=y_max
+        )
+
+
+class TailPseudoVoigtPeakModel(BasePeakModel):
+    """Pseudo-Voigt with an exponential tail toward higher x."""
+
+    name: ClassVar[str] = "tail-pseudo-voigt"
+    parameter_schema: ClassVar[tuple[ParameterSpec, ...]] = (
+        ParameterSpec(name="amp", default=1, lower=0),
+        ParameterSpec(name="cen", default=0),
+        ParameterSpec(name="sig", default=1, lower=0),
+        ParameterSpec(name="frac", default=1, lower=0, upper=1),
+        ParameterSpec(name="tscale", default=0, lower=0, upper=1),
+        ParameterSpec(name="tlen", default=1, lower=0),
+    )
+    normalization_target_parameters: ClassVar[tuple[str, ...]] = ("amp",)
+    use_scale: ClassVar[bool] = True
+    use_offset: ClassVar[bool] = False
+
+    def area(self, parameters: Mapping[str, float]) -> float | None:
+        """Return None; the tail adds area beyond ``amp``."""
+        del parameters
+        return None
+
+    @staticmethod
+    def evaluate(
+        x: NDArray,
+        y: NDArray | None,
+        **kwargs: float,
+    ) -> NDArray:
+        """Return the tailed pseudo-Voigt intensity at ``x``."""
+        return tail_pvoigt(
+            x,
+            kwargs["amp"],
+            kwargs["cen"],
+            kwargs["sig"],
+            kwargs["frac"],
+            kwargs["tscale"],
+            kwargs["tlen"],
+        )
+
+    @staticmethod
+    def guess_initial(x: NDArray, y: NDArray, **kwargs: float | int | str) -> dict[str, float]:
+        """Guess a symmetric pseudo-Voigt with the tail turned off."""
+        guessed = PseudoVoigtPeakModel.guess_initial(x, y, **kwargs)
+        guessed["tscale"] = 0.0
+        guessed["tlen"] = guessed["sig"]
+        return guessed
+
+    @staticmethod
+    def soft_parameter_range(
+        name: str,
+        value: float,
+        lower: float,
+        upper: float,
+        *,
+        x_min: float | None = None,
+        x_max: float | None = None,
+        y_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Soft slider ranges; ``tlen`` follows the ``sig`` window."""
+        key = name.lower()
+        if key == "tlen":
+            return PseudoVoigtPeakModel.soft_parameter_range(
+                "sig", value, lower, upper, x_min=x_min, x_max=x_max, y_max=y_max
+            )
+        return PseudoVoigtPeakModel.soft_parameter_range(
             name, value, lower, upper, x_min=x_min, x_max=x_max, y_max=y_max
         )
 

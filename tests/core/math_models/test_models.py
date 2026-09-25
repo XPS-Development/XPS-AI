@@ -1,11 +1,14 @@
 import numpy as np
 from scipy import stats
 
+from core.math_models.model_funcs import pvoigt
 from core.math_models.models import (
+    AsymPseudoVoigtPeakModel,
     ConstantBackgroundModel,
     LinearBackgroundModel,
     PseudoVoigtPeakModel,
     ShirleyBackgroundModel,
+    TailPseudoVoigtPeakModel,
 )
 from core.math_models.normalization import NormalizationContext
 
@@ -48,6 +51,40 @@ def test_pseudo_voigt_evaluate_shape_normalization():
     test_norm_y = model.evaluate(x, y, **norm_parameters)
     assert norm_y.shape == test_norm_y.shape
     assert np.allclose(norm_y, test_norm_y, atol=1e-2)
+
+
+def test_asym_pseudo_voigt_matches_symmetric_at_zero_and_keeps_area():
+    x = np.linspace(-8, 8, 4001)
+    y = np.zeros_like(x)
+    symmetric = pvoigt(x, 2.0, 0.0, 1.0, 0.0)
+    warped = AsymPseudoVoigtPeakModel.evaluate(x, y, amp=2.0, cen=0.0, sig=1.0, frac=0.0, asym=0.0)
+    assert np.allclose(warped, symmetric)
+
+    # Pole for asym=0.05, sig=1 sits at dx = 10, outside this window.
+    skewed = AsymPseudoVoigtPeakModel.evaluate(x, y, amp=2.0, cen=0.0, sig=1.0, frac=0.0, asym=0.05)
+    area = float(np.trapezoid(skewed, x))
+    assert abs(area - 2.0) / 2.0 < 1e-3
+    # Positive asym broadens x > center (higher binding energy when x is BE).
+    assert skewed[np.argmin(np.abs(x - 2.0))] > symmetric[np.argmin(np.abs(x - 2.0))]
+    assert skewed[np.argmin(np.abs(x + 2.0))] < symmetric[np.argmin(np.abs(x + 2.0))]
+
+
+def test_tail_pseudo_voigt_adds_high_x_wing_only():
+    x = np.linspace(-8, 12, 2001)
+    y = np.zeros_like(x)
+    core = pvoigt(x, 1.0, 0.0, 1.0, 0.3)
+    off = TailPseudoVoigtPeakModel.evaluate(
+        x, y, amp=1.0, cen=0.0, sig=1.0, frac=0.3, tscale=0.0, tlen=2.0
+    )
+    assert np.allclose(off, core)
+
+    tailed = TailPseudoVoigtPeakModel.evaluate(
+        x, y, amp=1.0, cen=0.0, sig=1.0, frac=0.3, tscale=0.8, tlen=2.0
+    )
+    assert np.allclose(tailed[x <= 0], core[x <= 0])
+    assert np.all(tailed[x > 0] >= core[x > 0] - 1e-12)
+    assert tailed[x > 2].sum() > core[x > 2].sum()
+    assert TailPseudoVoigtPeakModel().area({"amp": 1.0}) is None
 
 
 def test_constant_background():
