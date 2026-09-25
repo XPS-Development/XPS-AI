@@ -370,6 +370,7 @@ def test_split_region_keeps_left_peak_when_cen_is_left_of_split(
     )
     _start, stop = editing._query.get_region_slice(region_id, mode="index")
     # Split well to the right of cen=0 so the peak stays left.
+    assert isinstance(stop, int)
     split_index = stop - 2
     split_x = float(spectrum.x[split_index])
 

@@ -73,9 +73,10 @@ def test_overlay_labels_stay_inside_the_data_area(
     assert widget._chi_label.x() >= chi_rect.left()
     assert widget._chi_label.x() + widget._chi_label.width() <= chi_rect.right() + 1
 
-    widget._cursor_label.setText("x: 301.6  y: 123456.7")
-    widget._position_cursor_label()
     cursor = widget._cursor_label
+    assert cursor is not None
+    cursor.setText("x: 301.6  y: 123456.7")
+    widget._position_cursor_label()
     data_rect = widget._viewbox_rect(widget._main_plot)
     assert cursor.x() >= data_rect.left()
     assert cursor.x() + cursor.width() <= data_rect.right() + 1

@@ -9,12 +9,10 @@ from ui.file_dialogs import ensure_suffix_from_filter, split_open_paths
 
 def test_ensure_suffix_appends_from_filter_when_missing() -> None:
     """Linux-style bare names pick up the selected filter extension."""
-    assert ensure_suffix_from_filter("collection", "JSON files (*.json)") == Path(
-        "collection.json"
+    assert ensure_suffix_from_filter("collection", "JSON files (*.json)") == Path("collection.json")
+    assert ensure_suffix_from_filter("/tmp/out", "CSV files (*.csv);;Text files (*.txt)") == Path(
+        "/tmp/out.csv"
     )
-    assert ensure_suffix_from_filter(
-        "/tmp/out", "CSV files (*.csv);;Text files (*.txt)"
-    ) == Path("/tmp/out.csv")
     assert ensure_suffix_from_filter("doc", "Gzip JSON (*.json.gz)") == Path("doc.json.gz")
 
 
@@ -26,12 +24,12 @@ def test_ensure_suffix_keeps_existing_extension() -> None:
 
 def test_ensure_suffix_uses_fallback_for_all_files_filter() -> None:
     """All-files filter has no pattern; fallback extension is applied."""
-    assert ensure_suffix_from_filter(
-        "untitled", "All files (*)", fallback=".json"
-    ) == Path("untitled.json")
-    assert ensure_suffix_from_filter(
-        "untitled", "All files (*)", fallback=".json.gz"
-    ) == Path("untitled.json.gz")
+    assert ensure_suffix_from_filter("untitled", "All files (*)", fallback=".json") == Path(
+        "untitled.json"
+    )
+    assert ensure_suffix_from_filter("untitled", "All files (*)", fallback=".json.gz") == Path(
+        "untitled.json.gz"
+    )
     assert ensure_suffix_from_filter("bare", "All files (*)") == Path("bare")
 
 

@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from app.command.changes import (
+    BaseChange,
+    CompositeChange,
     CreatePeak,
     FullRemoveObject,
     UpdateParameter,
@@ -82,8 +84,39 @@ def _two_peak_source_and_targets() -> CoreCollection:
     return collection
 
 
-def _expr_updates(changes: list) -> list[UpdateParameter]:
-    return [c for c in changes if isinstance(c, UpdateParameter) and c.parameter_field == "expr"]
+def _composite(change: BaseChange) -> CompositeChange:
+    assert isinstance(change, CompositeChange)
+    return change
+
+
+def _peaks(change: BaseChange) -> list[CreatePeak]:
+    return [item for item in _composite(change).changes if isinstance(item, CreatePeak)]
+
+
+def _peak_id_at_cen(change: BaseChange, cen: float) -> str:
+    for peak in _peaks(change):
+        params = peak.parameters
+        peak_id = peak.peak_id
+        if params is not None and peak_id is not None and params["cen"] == cen:
+            return peak_id
+    raise AssertionError(f"no copied peak at cen={cen}")
+
+
+def _peak_params_at_cen(change: BaseChange, cen: float) -> dict[str, float]:
+    for peak in _peaks(change):
+        params = peak.parameters
+        if params is not None and params["cen"] == cen:
+            return params
+    raise AssertionError(f"no copied peak at cen={cen}")
+
+
+def _expr_map(change: BaseChange) -> dict[tuple[str, str], str | bool | float | None]:
+    updates = [
+        item
+        for item in _composite(change).changes
+        if isinstance(item, UpdateParameter) and item.parameter_field == "expr"
+    ]
+    return {(item.component_id, item.name): item.new_value for item in updates}
 
 
 def test_link_off_rewrites_sibling_expr_onto_new_ids() -> None:
@@ -96,14 +129,12 @@ def test_link_off_rewrites_sibling_expr_onto_new_ids() -> None:
         rescale_intensities=False,
     )
     assert len(results) == 1
-    _target_id, composite = results[0]
-    creates = [c for c in composite.changes if isinstance(c, CreatePeak)]
-    assert len(creates) == 2
-    id_by_source_cen = {c.parameters["cen"]: c.peak_id for c in creates}  # type: ignore[index]
-    new_p1 = id_by_source_cen[0.0]
-    new_p2 = id_by_source_cen[1.0]
+    change = results[0][1]
+    assert len(_peaks(change)) == 2
+    new_p1 = _peak_id_at_cen(change, 0.0)
+    new_p2 = _peak_id_at_cen(change, 1.0)
 
-    exprs = {(u.component_id, u.name): u.new_value for u in _expr_updates(list(composite.changes))}
+    exprs = _expr_map(change)
     assert exprs[(new_p2, "amp")] == new_p1
     assert (new_p1, "amp") not in exprs
 
@@ -118,13 +149,11 @@ def test_link_on_points_expr_at_source_component() -> None:
         rescale_intensities=False,
     )
     assert len(results) == 1
-    _target_id, composite = results[0]
-    creates = [c for c in composite.changes if isinstance(c, CreatePeak)]
-    new_p2 = next(c.peak_id for c in creates if c.parameters and c.parameters["cen"] == 1.0)
+    change = results[0][1]
+    new_p2 = _peak_id_at_cen(change, 1.0)
 
-    exprs = {(u.component_id, u.name): u.new_value for u in _expr_updates(list(composite.changes))}
     # Linked amp tracks the source peak itself (not the sibling rewrite).
-    assert exprs[(new_p2, "amp")] == "p2"
+    assert _expr_map(change)[(new_p2, "amp")] == "p2"
 
 
 def test_rescale_amp_by_norm_scale_ratio() -> None:
@@ -148,12 +177,10 @@ def test_rescale_amp_by_norm_scale_ratio() -> None:
         link_flags={},
         rescale_intensities=True,
     )
-    creates = [c for c in results[0][1].changes if isinstance(c, CreatePeak)]
-    p1_copy = next(c for c in creates if c.parameters and c.parameters["cen"] == 0.0)
-    assert p1_copy.parameters is not None
-    assert p1_copy.parameters["amp"] == pytest.approx(expected_amp)
-    assert p1_copy.parameters["cen"] == pytest.approx(0.0)
-    assert p1_copy.parameters["sig"] == pytest.approx(1.0)
+    params = _peak_params_at_cen(results[0][1], 0.0)
+    assert params["amp"] == pytest.approx(expected_amp)
+    assert params["cen"] == pytest.approx(0.0)
+    assert params["sig"] == pytest.approx(1.0)
 
 
 def test_rescale_off_keeps_raw_amp() -> None:
@@ -165,10 +192,8 @@ def test_rescale_off_keeps_raw_amp() -> None:
         link_flags={},
         rescale_intensities=False,
     )
-    creates = [c for c in results[0][1].changes if isinstance(c, CreatePeak)]
-    p1_copy = next(c for c in creates if c.parameters and c.parameters["cen"] == 0.0)
-    assert p1_copy.parameters is not None
-    assert p1_copy.parameters["amp"] == pytest.approx(2.0)
+    params = _peak_params_at_cen(results[0][1], 0.0)
+    assert params["amp"] == pytest.approx(2.0)
 
 
 def test_skip_targets_with_regions_unless_overwrite() -> None:
@@ -183,11 +208,11 @@ def test_skip_targets_with_regions_unless_overwrite() -> None:
         "s1", ["s3"], link_flags={}, overwrite_targets={"s3"}, rescale_intensities=False
     )
     assert len(overwritten) == 1
-    target_id, composite = overwritten[0]
+    target_id, change = overwritten[0]
     assert target_id == "s3"
-    removes = [c for c in composite.changes if isinstance(c, FullRemoveObject)]
-    assert any(c.obj_id == "r3" for c in removes)
-    assert any(isinstance(c, CreatePeak) for c in composite.changes)
+    removed = [item for item in _composite(change).changes if isinstance(item, FullRemoveObject)]
+    assert any(item.obj_id == "r3" for item in removed)
+    assert _peaks(change)
 
 
 def test_empty_source_returns_no_changes() -> None:

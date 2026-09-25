@@ -63,7 +63,7 @@ def link_model(qapp: QApplication) -> LinkTreeModel:
     return LinkTreeModel(controller, source_spectrum_id="s1")
 
 
-def _link_index(model: LinkTreeModel, *rows: int) -> object:
+def _link_index(model: LinkTreeModel, *rows: int) -> QModelIndex:
     """Return column-1 (Link) index for a path of column-0 rows."""
     parent = QModelIndex()
     name_index = QModelIndex()
@@ -113,4 +113,6 @@ def test_link_tree_shows_short_id_and_component_color(link_model: LinkTreeModel)
     component = link_model.index(0, 0, region)
     assert link_model.data(component, ObjectIdPrefixRole) == "p1abc"
     assert link_model.data(component, ComponentColorRole) == PEAK_COLORS[0]
-    assert link_model.headerData(1, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Link"
+    assert (
+        link_model.headerData(1, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Link"
+    )
