@@ -41,6 +41,8 @@ def window(
     # Bypass the unsaved-changes prompt during fixture teardown.
     monkeypatch.setattr(win, "_confirm_close", lambda: True)
     win.close()
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 def test_window_title_shows_dirty_marker_for_untitled(window: MainWindow) -> None:

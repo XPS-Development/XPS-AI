@@ -1853,8 +1853,12 @@ class PropertiesView(EditorTreeView):
         self._slider_editor_index: QPersistentModelIndex | None = None
         self._expanded_param_index: QPersistentModelIndex | None = None
         self._suppress_cell_picker = False
+        self._pending_scroll: int | None = None
+        self._scroll_restore_scheduled = False
         self._model = PropertiesModel(controller, self)
         self.setModel(self._model)
+        self._model.modelAboutToBeReset.connect(self._remember_scroll)
+        self._model.modelReset.connect(self._schedule_scroll_restore)
         self._name_delegate = PropertiesNameDelegate(self)
         self.setItemDelegateForColumn(0, self._name_delegate)
         self._value_delegate = PropertiesDelegate(controller, self)
@@ -1909,7 +1913,31 @@ class PropertiesView(EditorTreeView):
                     self._suppress_cell_picker = True
                     event.accept()
                     return
+                if isinstance(item, PropertyItem) and item.kind == ItemKind.PARAMETER_FIELD:
+                    # Select the field before the checkbox toggle refreshes the tree.
+                    self._select_row(name_index)
+                if isinstance(item, PropertyItem) and item.kind in {
+                    ItemKind.PARAMETER_ROW,
+                    ItemKind.REGION_SLICE,
+                }:
+                    value_open = (
+                        self._slider_editor_index is not None
+                        and _as_model_index(self._slider_editor_index) == value_index
+                    )
+                    if not value_open:
+                        self._select_value_row(name_index)
+                        event.accept()
+                        return
+            else:
+                self._clear_open_fields_and_selection()
+                event.accept()
+                return
+        open_menu = self._parameter_menu_click(event)
         super().mousePressEvent(event)
+        if open_menu is not None and open_menu.isValid():
+            # Expand after selection handling so this press cannot land on expr.
+            self._open_parameter_menu(open_menu)
+            self._suppress_cell_picker = True
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Track hover for delete (name) and copy (value) glyphs."""
@@ -1983,6 +2011,27 @@ class PropertiesView(EditorTreeView):
             Backing model used by this view.
         """
         return self._model
+
+    def _remember_scroll(self) -> None:
+        """Keep the first scrollbar offset across a model reset."""
+        if self._pending_scroll is None:
+            self._pending_scroll = self.verticalScrollBar().value()
+
+    def _schedule_scroll_restore(self) -> None:
+        """Restore scroll after the reset's layout and expand pass have finished."""
+        if self._scroll_restore_scheduled:
+            return
+        self._scroll_restore_scheduled = True
+        QTimer.singleShot(0, self._restore_scroll)
+
+    def _restore_scroll(self) -> None:
+        """Put the properties tree back where it was before the rebuild."""
+        self._scroll_restore_scheduled = False
+        value = self._pending_scroll
+        self._pending_scroll = None
+        if value is None:
+            return
+        self.verticalScrollBar().setValue(value)
 
     def refresh(self) -> None:
         """
@@ -2060,8 +2109,149 @@ class PropertiesView(EditorTreeView):
             self.closePersistentEditor(idx)
         self._slider_editor_index = None
 
+    def _select_row(self, index: QModelIndex) -> None:
+        """Select ``index`` and keep its ancestor rows expanded."""
+        parent = index.parent()
+        while parent.isValid():
+            self.expand(parent)
+            parent = parent.parent()
+        self.setCurrentIndex(index)
+        self.selectionModel().select(
+            index,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            | QItemSelectionModel.SelectionFlag.Rows,
+        )
+
+    def _select_value_row(self, name_index: QModelIndex) -> None:
+        """Select a parameter or slice row and open its slider immediately."""
+        item = name_index.internalPointer()
+        if not isinstance(item, PropertyItem):
+            return
+        region_id = item.region_id
+        component_id = item.component_id if item.kind == ItemKind.PARAMETER_ROW else None
+        if item.kind == ItemKind.REGION_SLICE:
+            component_id = None
+        cursor = item.parent
+        while region_id is None and cursor is not None:
+            region_id = cursor.region_id
+            cursor = cursor.parent
+        parent = name_index.parent()
+        while parent.isValid():
+            self.expand(parent)
+            parent = parent.parent()
+        self._updating_from_view = True
+        try:
+            self._controller.set_selection(
+                self._controller.selected_spectrum_id,
+                region_id,
+                component_id,
+            )
+        finally:
+            self._updating_from_view = False
+        self._syncing_selection = True
+        try:
+            self.setCurrentIndex(name_index)
+            self.selectionModel().select(
+                name_index,
+                QItemSelectionModel.SelectionFlag.ClearAndSelect
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
+        finally:
+            self._syncing_selection = False
+        self._sync_parameter_detail_and_slider()
+
+    def _clear_open_fields_and_selection(self) -> None:
+        """Hide open parameter fields and clear the region, peak, and background."""
+        self._collapse_parameter_menus()
+        self._close_parameter_slider_editor()
+        self._updating_from_view = True
+        try:
+            self._controller.set_selection(self._controller.selected_spectrum_id, None, None)
+        finally:
+            self._updating_from_view = False
+        self._syncing_selection = True
+        try:
+            self.selectionModel().clearSelection()
+            self.setCurrentIndex(QModelIndex())
+        finally:
+            self._syncing_selection = False
+        self.doItemsLayout()
+
+    def _parameter_menu_click(self, event: QMouseEvent) -> QModelIndex | None:
+        """Return a parameter row when this press should open its constraint menu.
+
+        The menu opens on a later click of a parameter that already shows its
+        slider. Presses on the slider itself adjust the value and do not count.
+        """
+        if event.button() != Qt.MouseButton.LeftButton:
+            return None
+        pos = event.position().toPoint()
+        index = self.indexAt(pos)
+        if not index.isValid():
+            return None
+        name_index = (
+            index if index.column() == 0 else self._model.index(index.row(), 0, index.parent())
+        )
+        item = name_index.internalPointer()
+        if not isinstance(item, PropertyItem) or item.kind != ItemKind.PARAMETER_ROW:
+            return None
+        value_index = self._model.index(name_index.row(), 1, name_index.parent())
+        if (
+            self._slider_editor_index is None
+            or _as_model_index(self._slider_editor_index) != value_index
+        ):
+            return None
+        editor = self.indexWidget(value_index)
+        if editor is not None and editor.geometry().contains(pos):
+            return None
+        return name_index
+
+    def _collapse_parameter_menus(self, *, keep: QModelIndex | None = None) -> None:
+        """Collapse every parameter constraint menu except ``keep``."""
+        keep_key: tuple[Any, ...] | None = None
+        if keep is not None and keep.isValid():
+            kept = keep.internalPointer()
+            if isinstance(kept, PropertyItem):
+                keep_key = self._stable_key_for_item(kept)
+
+        def walk(parent: QModelIndex) -> None:
+            for row in range(self._model.rowCount(parent)):
+                child = self._model.index(row, 0, parent)
+                raw = child.internalPointer()
+                if not isinstance(raw, PropertyItem):
+                    continue
+                if raw.kind == ItemKind.PARAMETER_ROW:
+                    if keep_key is not None and self._stable_key_for_item(raw) == keep_key:
+                        continue
+                    if self.isExpanded(child):
+                        self.collapse(child)
+                else:
+                    walk(child)
+
+        walk(QModelIndex())
+        if keep_key is None:
+            self._expanded_param_index = None
+
+    def _open_parameter_menu(self, param_index: QModelIndex) -> None:
+        """Show one parameter's constraint rows and hide every other menu."""
+        name_index = (
+            param_index
+            if param_index.column() == 0
+            else self._model.index(param_index.row(), 0, param_index.parent())
+        )
+        if not name_index.isValid():
+            return
+        self._collapse_parameter_menus(keep=name_index)
+        self.expand(name_index)
+        self._expanded_param_index = QPersistentModelIndex(name_index)
+        self.doItemsLayout()
+
     def _sync_parameter_detail_and_slider(self) -> None:
-        """Expand selected parameter's constraints and open the soft-range slider."""
+        """Open the soft-range slider for the selected parameter or slice.
+
+        Constraint rows stay collapsed until a second click on that parameter.
+        Any other parameter menu is closed so only one can stay open.
+        """
         current = self.selectionModel().currentIndex()
         target_index = QModelIndex()
         cursor = current
@@ -2075,29 +2265,19 @@ class PropertiesView(EditorTreeView):
                 break
             cursor = cursor.parent()
 
-        prev_param = (
-            _as_model_index(self._expanded_param_index)
-            if self._expanded_param_index is not None
-            else QModelIndex()
-        )
-
         target_item = target_index.internalPointer() if target_index.isValid() else None
         is_param = (
             isinstance(target_item, PropertyItem) and target_item.kind == ItemKind.PARAMETER_ROW
         )
-
-        if prev_param.isValid() and (not is_param or prev_param != target_index):
-            self.collapse(prev_param)
-            self._expanded_param_index = None
+        if is_param:
+            self._collapse_parameter_menus(keep=target_index)
+        else:
+            self._collapse_parameter_menus()
 
         if not target_index.isValid():
             self._close_parameter_slider_editor()
             self.doItemsLayout()
             return
-
-        if is_param:
-            self.expand(target_index)
-            self._expanded_param_index = QPersistentModelIndex(target_index)
 
         value_index = self._model.index(target_index.row(), 1, target_index.parent())
         if (
@@ -2112,7 +2292,7 @@ class PropertiesView(EditorTreeView):
         self.doItemsLayout()
 
     def _sync_parameter_slider_editor(self) -> None:
-        """Compatibility wrapper: sync detail expand + slider together."""
+        """Compatibility wrapper: open the slider and close other parameter menus."""
         self._sync_parameter_detail_and_slider()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
@@ -2165,10 +2345,50 @@ class PropertiesView(EditorTreeView):
             return
         self.sync_selection_from_controller()
 
+    def _current_row_matches_controller(
+        self,
+        *,
+        component_id: str | None,
+        region_id: str | None,
+    ) -> bool:
+        """Return True when the current row already shows the controller selection.
+
+        Parameter and slice rows count: a queued selection echo must not replace
+        them with the component or region header and close the slider.
+        """
+        current = self.selectionModel().currentIndex()
+        if not current.isValid():
+            return component_id is None and region_id is None
+        raw = current.internalPointer()
+        if not isinstance(raw, PropertyItem):
+            return False
+        walked_region: str | None = None
+        walked_component: str | None = None
+        cursor: PropertyItem | None = raw
+        while cursor is not None:
+            if walked_component is None and cursor.component_id is not None:
+                if cursor.kind in {
+                    ItemKind.COMPONENT,
+                    ItemKind.COMPONENT_MODEL,
+                    ItemKind.PARAMETER_ROW,
+                    ItemKind.PARAMETER_FIELD,
+                }:
+                    walked_component = cursor.component_id
+            if walked_region is None and cursor.region_id is not None:
+                walked_region = cursor.region_id
+            cursor = cursor.parent
+        if component_id is not None:
+            return walked_component == component_id
+        if region_id is not None:
+            return walked_region == region_id and walked_component is None
+        return False
+
     def sync_selection_from_controller(self) -> None:
         """Select the row matching the controller's region/component selection."""
         component_id = self._controller.selected_component_id
         region_id = self._controller.selected_region_id
+        if self._current_row_matches_controller(component_id=component_id, region_id=region_id):
+            return
         target = self._find_index_for_selection(component_id=component_id, region_id=region_id)
         self._syncing_selection = True
         try:

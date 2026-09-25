@@ -107,3 +107,5 @@ def test_expr_popup_insert_and_commit(qapp: QApplication) -> None:
     popup._commit()
     QApplication.processEvents()
     assert committed == ["2 * pabcd"]
+    popup.deleteLater()
+    QApplication.processEvents()
