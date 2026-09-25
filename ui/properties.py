@@ -35,7 +35,7 @@ from core.math_models.soft_ranges import soft_region_bound_range
 
 from . import theme
 from .assets import icon_path
-from .component_colors import color_for_component
+from .component_colors import ID_SUFFIX_HEX, color_for_component
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
 from .controller import ControllerWrapper
 from .expr_editor_popup import ExprEditorPopup
@@ -110,8 +110,9 @@ class PropertyItem:
     name : str
         Display name shown in the first column (without id suffix).
     value : Any, optional
-        For ``REGION_SLICE`` / ``COMPONENT_MODEL``, the bound or model name.
-        For ``PARAMETER_ROW``, the parameter's value (column 1).
+        For ``REGION`` and peak ``COMPONENT`` rows, the read-only fitted area
+        (column 1). For ``REGION_SLICE`` / ``COMPONENT_MODEL``, the bound or
+        model name. For ``PARAMETER_ROW``, the parameter's value (column 1).
     parent : PropertyItem or None, optional
         Parent item in the tree.
     param_lower, param_upper, param_vary, param_expr : optional
@@ -350,6 +351,8 @@ class PropertiesModel(QAbstractItemModel):
                 return _format_value(item.value)
             if item.kind == ItemKind.COMPONENT_MODEL and col == 1:
                 return _format_value(item.value)
+            if _is_area_item(item) and col == 1:
+                return _area_label(item.value)
 
         return None
 
@@ -834,6 +837,7 @@ class PropertiesModel(QAbstractItemModel):
             background_id = query.get_background_id(region_id)
             peaks_ids = list(query.get_peaks_ids(region_id))
             x_min, x_max, y_max = self._region_soft_context(region_id)
+            region_item.value = query.get_region_area(region_id)
 
             if background_id is not None:
                 background_dto = query.get_component_dto(background_id)
@@ -883,6 +887,7 @@ class PropertiesModel(QAbstractItemModel):
                 peak_dto = query.get_component_dto(peak_id)
                 peak_item = PropertyItem(
                     name=peak_dto.name or f"Peak {peak_index}",
+                    value=query.get_peak_area(peak_id),
                     parent=region_item,
                     kind=ItemKind.COMPONENT,
                     region_id=region_id,
@@ -1085,6 +1090,10 @@ class PropertiesDelegate(QStyledItemDelegate):
             self._paint_model_chip(painter, option, index, str(item.value or ""))
             return
 
+        if isinstance(item, PropertyItem) and _is_area_item(item) and index.column() == 1:
+            self._paint_area_label(painter, option, index, show_copy=show_copy)
+            return
+
         if show_copy:
             reserve = _action_reserve_width()
             text_option = QStyleOptionViewItem(option)
@@ -1115,6 +1124,52 @@ class PropertiesDelegate(QStyledItemDelegate):
             return
 
         super().paint(painter, option, index)
+
+    def _paint_area_label(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+        *,
+        show_copy: bool,
+    ) -> None:
+        """Draw ``s = …`` in italic, using the same gray as truncated IDs."""
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        label = opt.text
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is not None:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+
+        if label:
+            painter.save()
+            font = opt.font
+            font.setItalic(True)
+            painter.setFont(font)
+            if opt.state & QStyle.StateFlag.State_Selected:
+                selected = QColor(opt.palette.highlightedText().color())
+                selected.setAlpha(180)
+                painter.setPen(selected)
+            else:
+                painter.setPen(QColor(ID_SUFFIX_HEX))
+            text_rect = opt.rect
+            if style is not None:
+                candidate = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
+                if candidate.isValid():
+                    text_rect = candidate
+            if show_copy:
+                text_rect = text_rect.adjusted(0, 0, -_action_reserve_width(), 0)
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                label,
+            )
+            painter.restore()
+
+        if show_copy:
+            self._paint_copy_icon(painter, option, index)
 
     def _paint_copy_icon(
         self,
@@ -1448,9 +1503,26 @@ _CHECK_ICON = QIcon(str(icon_path("check.svg")))
 _OPTIMIZE_ICON = QIcon(str(icon_path("optimize.svg")))
 
 
+def _area_label(value: Any) -> str:
+    """Return the read-only area caption, or an empty string when unset."""
+    formatted = _format_value(value)
+    if not formatted:
+        return ""
+    return f"s = {formatted}"
+
+
+def _is_area_item(item: PropertyItem) -> bool:
+    """Return True for region and peak rows that show a read-only fitted area."""
+    if item.kind == ItemKind.REGION:
+        return True
+    return item.kind == ItemKind.COMPONENT and item.component_kind == "peak"
+
+
 def _is_copyable_value_item(item: PropertyItem) -> bool:
-    """Return True for value / lower / upper / expr cells that support copy."""
+    """Return True for value / lower / upper / expr / area cells that support copy."""
     if item.kind == ItemKind.PARAMETER_ROW:
+        return True
+    if _is_area_item(item) and item.value is not None:
         return True
     return item.kind == ItemKind.PARAMETER_FIELD and item.parameter_field in {
         "lower",

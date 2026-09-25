@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtCore import QModelIndex, Qt
 
-from ui.properties import ItemKind, PropertiesModel, PropertyItem
+from ui.properties import ItemKind, PropertiesModel, PropertyItem, _is_copyable_value_item
 
 
 @pytest.fixture
@@ -163,3 +163,59 @@ def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> 
     assert model.data(index, ObjectIdRole) == "pabcdef123"
     assert model.data(index, ObjectIdPrefixRole) == "pabcd"
     assert model.data(index, ComponentColorRole) == PEAK_COLORS[0]
+
+
+def test_region_and_peak_area_is_read_only_and_copyable(mock_controller: MagicMock) -> None:
+    """Fitted area sits opposite the name: shown and copyable, not editable."""
+    del mock_controller
+    model = PropertiesModel(MagicMock(selected_spectrum_id=None))
+    model._root_item.children.clear()
+    region = PropertyItem(
+        name="Region 1",
+        value=3.5,
+        parent=model._root_item,
+        kind=ItemKind.REGION,
+        region_id="r1",
+    )
+    peak = PropertyItem(
+        name="Peak 1",
+        value=3.5,
+        parent=region,
+        kind=ItemKind.COMPONENT,
+        component_kind="peak",
+        component_id="p1",
+    )
+    background = PropertyItem(
+        name="Background",
+        parent=region,
+        kind=ItemKind.COMPONENT,
+        component_kind="background",
+        component_id="b1",
+    )
+    region.append_child(peak)
+    region.append_child(background)
+    model._root_item.append_child(region)
+    model.beginResetModel()
+    model.endResetModel()
+
+    region_value = model.index(0, 1, QModelIndex())
+    peak_value = model.index(0, 1, model.index(0, 0, QModelIndex()))
+    background_value = model.index(1, 1, model.index(0, 0, QModelIndex()))
+
+    assert model.data(region_value, Qt.ItemDataRole.DisplayRole) == "s = 3.50"
+    assert model.data(peak_value, Qt.ItemDataRole.DisplayRole) == "s = 3.50"
+    assert model.data(background_value, Qt.ItemDataRole.DisplayRole) is None
+    assert model.data(region_value, Qt.ItemDataRole.ToolTipRole) is None
+
+    editable = Qt.ItemFlag.ItemIsEditable
+    assert editable not in model.flags(region_value)
+    assert editable not in model.flags(peak_value)
+    region_item = region_value.internalPointer()
+    peak_item = peak_value.internalPointer()
+    background_item = background_value.internalPointer()
+    assert isinstance(region_item, PropertyItem)
+    assert isinstance(peak_item, PropertyItem)
+    assert isinstance(background_item, PropertyItem)
+    assert _is_copyable_value_item(region_item) is True
+    assert _is_copyable_value_item(peak_item) is True
+    assert _is_copyable_value_item(background_item) is False

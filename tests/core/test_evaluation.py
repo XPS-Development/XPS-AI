@@ -13,7 +13,9 @@ from core.evaluation import (
     chi_square_contributions,
     component_result,
     component_y,
+    peak_area,
     plot_data_from_evaluation,
+    region_area,
     region_bundle,
     spectrum_bundle,
 )
@@ -34,6 +36,19 @@ def simple_spectrum_bundle(
     dto_service,
 ) -> tuple[SpectrumDTO, tuple[tuple[RegionDTO, tuple[ComponentDTO, ...]], ...]]:
     return dto_service.get_spectrum_repr("s1")
+
+
+def test_peak_and_region_area(
+    simple_component: ComponentDTO,
+    simple_region_bundle: tuple[RegionDTO, tuple[ComponentDTO, ...]],
+) -> None:
+    """Peak area is ``amp``; region area sums peaks and ignores background."""
+    assert peak_area(simple_component) == pytest.approx(1.0)
+    _region, components = simple_region_bundle
+    backgrounds = [c for c in components if c.kind == "background"]
+    assert backgrounds
+    assert peak_area(backgrounds[0]) is None
+    assert region_area(components) == pytest.approx(1.0)
 
 
 def test_component_y(

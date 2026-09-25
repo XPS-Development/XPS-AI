@@ -5,6 +5,7 @@ Provides module-level functions that operate on DTO projections
 (ComponentDTO, RegionDTO, SpectrumDTO) for model evaluation without domain state.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -218,6 +219,53 @@ def component_y(
     eval_fn = get_eval_fn(component)
     params = {name: p.value for name, p in component.parameters.items()}
     return eval_fn(x, y, **params)
+
+
+def peak_area(component: ComponentDTO) -> float | None:
+    """
+    Return the fitted area of a peak component.
+
+    The value comes from :meth:`ParametricModelLike.area`. Backgrounds and
+    models that do not define an area return ``None``.
+
+    Parameters
+    ----------
+    component : ComponentDTO
+        Component whose area is requested.
+
+    Returns
+    -------
+    float or None
+        Fitted peak area, or ``None`` when the component has none.
+    """
+    if component.kind != "peak":
+        return None
+    parameters = {name: float(param.value) for name, param in component.parameters.items()}
+    return component.model.area(parameters)
+
+
+def region_area(components: Iterable[ComponentDTO]) -> float:
+    """
+    Return the sum of fitted peak areas in a region.
+
+    Background components are ignored. A region with no peaks has area 0.
+
+    Parameters
+    ----------
+    components : iterable of ComponentDTO
+        Components belonging to one region.
+
+    Returns
+    -------
+    float
+        Sum of :func:`peak_area` over peak components.
+    """
+    total = 0.0
+    for component in components:
+        area = peak_area(component)
+        if area is not None:
+            total += area
+    return total
 
 
 def component_result(
