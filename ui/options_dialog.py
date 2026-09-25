@@ -24,6 +24,21 @@ from PySide6.QtWidgets import (
 from app.json_utils import parse_json_object
 from app.parameters import AppParameters
 
+_SERIALIZATION_MODES = (("Append", "append"), ("Replace", "replace"))
+
+
+def _fill_combo(combo: QComboBox, choices: list[tuple[str, str]], current: str) -> None:
+    """Fill ``combo`` and select ``current``, keeping an unknown value visible."""
+    combo.clear()
+    for label, data in choices:
+        combo.addItem(label, data)
+    idx = combo.findData(current)
+    if idx < 0 and current:
+        combo.addItem(current, current)
+        idx = combo.findData(current)
+    if idx >= 0:
+        combo.setCurrentIndex(idx)
+
 
 class OptionsDialog(QDialog):
     """
@@ -34,13 +49,21 @@ class OptionsDialog(QDialog):
     AppParameters instance via apply_to_params.
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        peak_model_names: list[str] | None = None,
+        background_model_names: list[str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Application settings")
+        self._peak_model_names = list(peak_model_names or [])
+        self._background_model_names = list(background_model_names or [])
 
         self._automatic_methods_cb = QCheckBox()
-        self._default_peak_model_edit = QLineEdit()
-        self._default_bg_model_edit = QLineEdit()
+        self._default_peak_model_combo = QComboBox()
+        self._default_bg_model_combo = QComboBox()
         self._show_spectrum_id_in_tree_cb = QCheckBox()
         self._show_residuals_plot_cb = QCheckBox()
         self._region_slice_display_mode_combo = QComboBox()
@@ -56,7 +79,7 @@ class OptionsDialog(QDialog):
 
         self._optimization_kwargs_edit = QPlainTextEdit()
 
-        self._serialization_mode_edit = QLineEdit()
+        self._serialization_mode_combo = QComboBox()
         self._serialization_path_edit = QLineEdit()
         self._serialization_indent_sb = QSpinBox()
         self._serialization_use_gzip_cb = QCheckBox()
@@ -88,8 +111,8 @@ class OptionsDialog(QDialog):
         core_group = QGroupBox("Core")
         core_layout = QFormLayout(core_group)
         core_layout.addRow("Automatic methods", self._automatic_methods_cb)
-        core_layout.addRow("Default peak model", self._default_peak_model_edit)
-        core_layout.addRow("Default background model", self._default_bg_model_edit)
+        core_layout.addRow("Default peak model", self._default_peak_model_combo)
+        core_layout.addRow("Default background model", self._default_bg_model_combo)
         core_layout.addRow("Show spectrum ID in tree", self._show_spectrum_id_in_tree_cb)
         core_layout.addRow("Show χ² plot", self._show_residuals_plot_cb)
         core_layout.addRow("Region slice in properties", self._region_slice_display_mode_combo)
@@ -113,7 +136,7 @@ class OptionsDialog(QDialog):
 
         ser_group = QGroupBox("Serialization")
         ser_layout = QFormLayout(ser_group)
-        ser_layout.addRow("Default mode", self._serialization_mode_edit)
+        ser_layout.addRow("Default mode", self._serialization_mode_combo)
         ser_layout.addRow("Default path", self._serialization_path_edit)
         ser_layout.addRow("Indent (0 = None)", self._serialization_indent_sb)
         ser_layout.addRow("Save as gzip", self._serialization_use_gzip_cb)
@@ -150,8 +173,16 @@ class OptionsDialog(QDialog):
             Source parameters.
         """
         self._automatic_methods_cb.setChecked(params.automatic_methods)
-        self._default_peak_model_edit.setText(params.default_peak_model)
-        self._default_bg_model_edit.setText(params.default_background_model)
+        _fill_combo(
+            self._default_peak_model_combo,
+            [(name, name) for name in self._peak_model_names],
+            params.default_peak_model,
+        )
+        _fill_combo(
+            self._default_bg_model_combo,
+            [(name, name) for name in self._background_model_names],
+            params.default_background_model,
+        )
         self._show_spectrum_id_in_tree_cb.setChecked(params.show_spectrum_id_in_tree)
         self._show_residuals_plot_cb.setChecked(params.show_residuals_plot)
         idx = self._region_slice_display_mode_combo.findData(params.region_slice_display_mode)
@@ -171,7 +202,11 @@ class OptionsDialog(QDialog):
             self._dict_to_pretty_json(params.optimization_kwargs)
         )
 
-        self._serialization_mode_edit.setText(str(params.default_serialization_mode))
+        _fill_combo(
+            self._serialization_mode_combo,
+            list(_SERIALIZATION_MODES),
+            str(params.default_serialization_mode),
+        )
         self._serialization_path_edit.setText(str(params.default_serialization_path or ""))
         if params.default_serialization_indent is None:
             self._serialization_indent_sb.setValue(0)
@@ -198,8 +233,8 @@ class OptionsDialog(QDialog):
             If optimization kwargs JSON is invalid.
         """
         params.automatic_methods = self._automatic_methods_cb.isChecked()
-        params.default_peak_model = self._default_peak_model_edit.text()
-        params.default_background_model = self._default_bg_model_edit.text()
+        params.default_peak_model = str(self._default_peak_model_combo.currentData() or "")
+        params.default_background_model = str(self._default_bg_model_combo.currentData() or "")
         params.show_spectrum_id_in_tree = self._show_spectrum_id_in_tree_cb.isChecked()
         params.show_residuals_plot = self._show_residuals_plot_cb.isChecked()
         mode_data = self._region_slice_display_mode_combo.currentData()
@@ -221,10 +256,10 @@ class OptionsDialog(QDialog):
             raise ValueError(err)
         params.optimization_kwargs = kwargs if kwargs is not None else {}
 
-        mode_text = self._serialization_mode_edit.text().strip() or "replace"
-        if mode_text not in ("append", "replace"):
-            raise ValueError("Default serialization mode must be append or replace")
-        params.default_serialization_mode = mode_text
+        mode_data = self._serialization_mode_combo.currentData()
+        params.default_serialization_mode = (
+            mode_data if mode_data in ("append", "replace") else "replace"
+        )
 
         path_text = self._serialization_path_edit.text().strip()
         params.default_serialization_path = Path(path_text) if path_text else None

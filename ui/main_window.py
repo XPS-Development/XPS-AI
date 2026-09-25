@@ -416,7 +416,11 @@ class MainWindow(QMainWindow):
     def _on_app_parameters_triggered(self) -> None:
         """Open the application parameters dialog."""
         params = self._controller.get_app_parameters()
-        dialog = OptionsDialog(self)
+        dialog = OptionsDialog(
+            self,
+            peak_model_names=self._controller.query.get_peak_model_names(),
+            background_model_names=self._controller.query.get_background_model_names(),
+        )
         dialog.load_from_params(params)
 
         if not dialog.exec():
