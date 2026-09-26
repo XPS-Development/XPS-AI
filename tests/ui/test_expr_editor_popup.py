@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
-from ui.component_colors import PEAK_COLORS
+from ui.component_colors import color_for_component
 from ui.expr_editor_popup import ExprEditorPopup, ExprPickerModel
 from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
@@ -73,9 +73,9 @@ def test_expr_picker_model_exposes_status_and_ids(qapp: QApplication) -> None:
 
     peak1 = model.index(1, 0, region_idx)  # background is 0, Peak 1 is 1
     assert model.data(peak1, Qt.ItemDataRole.DisplayRole) == "Peak 1"
-    assert model.data(peak1, ComponentColorRole) == PEAK_COLORS[0]
+    assert model.data(peak1, ComponentColorRole) == color_for_component(component_id="pabcd111")
     peak2 = model.index(2, 0, region_idx)
-    assert model.data(peak2, ComponentColorRole) == PEAK_COLORS[1]
+    assert model.data(peak2, ComponentColorRole) == color_for_component(component_id="p12ef222")
     assert model.insert_token_for("pabcd111") == "pabcd"
     assert "pabcd111" in model.component_ids
 

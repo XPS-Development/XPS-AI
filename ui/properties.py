@@ -127,8 +127,6 @@ class PropertyItem:
     stored_name : str or None, optional
         Optional user label for ``COMPONENT`` rows (edit buffer; may differ
         from the positional ``name`` fallback shown when unset).
-    color_index : int, optional
-        Zero-based peak order used to pick a palette color for peak swatches.
     """
 
     name: str
@@ -150,7 +148,6 @@ class PropertyItem:
     param_expr: Any = None
     parameter_field: Literal["lower", "upper", "expr", "vary"] | None = None
     action: ActionKind | None = None
-    color_index: int = 0
 
     def child(self, row: int) -> Optional["PropertyItem"]:
         """Return the child at the given row index."""
@@ -307,7 +304,7 @@ class PropertiesModel(QAbstractItemModel):
             and item.component_id is not None
         ):
             kind = item.component_kind or "peak"
-            return color_for_component(kind=kind, index=item.color_index)
+            return color_for_component(kind=kind, component_id=item.component_id)
 
         if (
             role == Qt.ItemDataRole.CheckStateRole
@@ -895,7 +892,6 @@ class PropertiesModel(QAbstractItemModel):
                     component_kind="peak",
                     object_id=peak_id,
                     stored_name=peak_dto.name,
-                    color_index=peak_index - 1,
                 )
                 region_item.append_child(peak_item)
                 peak_item.append_child(

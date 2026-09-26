@@ -11,7 +11,7 @@ from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
 from core.dto import ComponentDTO, ParameterDTO
-from ui.component_colors import PEAK_COLORS
+from ui.component_colors import color_for_component
 from ui.copy_decomposition_dialog import LinkTreeModel
 from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
@@ -112,7 +112,9 @@ def test_link_tree_shows_short_id_and_component_color(link_model: LinkTreeModel)
     assert link_model.data(region, ObjectIdPrefixRole) == "r1abc"
     component = link_model.index(0, 0, region)
     assert link_model.data(component, ObjectIdPrefixRole) == "p1abc"
-    assert link_model.data(component, ComponentColorRole) == PEAK_COLORS[0]
+    assert link_model.data(component, ComponentColorRole) == color_for_component(
+        component_id="p1abcd1111"
+    )
     assert (
         link_model.headerData(1, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole) == "Link"
     )

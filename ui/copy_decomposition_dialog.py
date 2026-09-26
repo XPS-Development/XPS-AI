@@ -75,7 +75,6 @@ class _TreeItem:
     param_name: str | None = None
     component_id: str | None = None
     component_kind: str | None = None
-    color_index: int = 0
     search_text: str = ""
     linked: bool = False
     _row: int = 0
@@ -351,7 +350,6 @@ class LinkTreeModel(_BaseTreeModel):
                     bg_dto.name or "Background",
                     bg_dto,
                     component_kind="background",
-                    color_index=0,
                 )
 
             for peak_index, peak_id in enumerate(query.get_peaks_ids(region_id), start=1):
@@ -363,7 +361,6 @@ class LinkTreeModel(_BaseTreeModel):
                     label,
                     peak_dto,
                     component_kind="peak",
-                    color_index=peak_index - 1,
                 )
         self.endResetModel()
 
@@ -375,7 +372,6 @@ class LinkTreeModel(_BaseTreeModel):
         dto: Any,
         *,
         component_kind: str,
-        color_index: int,
     ) -> None:
         component_item = _TreeItem(
             label=label,
@@ -383,7 +379,6 @@ class LinkTreeModel(_BaseTreeModel):
             object_id=component_id,
             component_id=component_id,
             component_kind=component_kind,
-            color_index=color_index,
             search_text=f"{label} {component_id}".lower(),
         )
         region_item.append_child(component_item)
@@ -430,7 +425,7 @@ class LinkTreeModel(_BaseTreeModel):
         if role == ComponentColorRole and item.kind == "component":
             return color_for_component(
                 kind=item.component_kind or "peak",
-                index=item.color_index,
+                component_id=item.component_id,
             )
         if role == ObjectIdPrefixRole and item.object_id is not None:
             if item.kind in {"region", "component"}:

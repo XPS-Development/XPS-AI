@@ -1071,7 +1071,7 @@ class PlotAreaWidget(QWidget):
         if curve.kind == "model":
             return PEN_MODEL
         if curve.kind == "peak":
-            color = color_for_component(kind="peak", index=curve.peak_index or 0)
+            color = color_for_component(kind="peak", component_id=curve.component_id)
             if is_selected:
                 width = _PEAK_WIDTH_SELECTED
             elif has_selection:
