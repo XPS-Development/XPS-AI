@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
     QSplitter,
@@ -22,6 +23,13 @@ from .options_dialog import OptionsDialog
 from .plot_area import PlotAreaWidget
 from .properties_panel import PropertiesPanel
 from .spectrum_tree_panel import SpectrumTreePanel
+
+
+def _short_id(value: str | None) -> str:
+    """Return a five-character id, or an em dash when nothing is selected."""
+    if not value:
+        return "—"
+    return value[:5]
 
 
 class MainWindow(QMainWindow):
@@ -65,6 +73,8 @@ class MainWindow(QMainWindow):
         self._action_app_parameters: QAction | None = None
 
         self._status_bar: QStatusBar | None = None
+        self._path_label: QLabel | None = None
+        self._selection_label: QLabel | None = None
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
@@ -225,10 +235,22 @@ class MainWindow(QMainWindow):
             self._plot_area.refresh()
 
     def _create_status_bar(self) -> None:
-        """Create and attach the status bar."""
+        """Create a status bar whose path and selection labels stay visible.
+
+        Permanent widgets are not cleared when a menu hover calls
+        ``QStatusBar.clearMessage``.
+        """
         status_bar = QStatusBar(self)
+        path_label = QLabel(status_bar)
+        path_label.setObjectName("StatusPathLabel")
+        selection_label = QLabel(status_bar)
+        selection_label.setObjectName("StatusSelectionLabel")
+        status_bar.addWidget(path_label, 1)
+        status_bar.addPermanentWidget(selection_label)
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
+        self._path_label = path_label
+        self._selection_label = selection_label
 
     def _connect_controller_signals(self) -> None:
         """Connect controller wrapper signals to window slots.
@@ -548,24 +570,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_NAME} - {dirty}{name}")
 
     def _update_status_bar(self) -> None:
-        """Refresh the status bar text with path, dirty flag, and selection."""
-        if self._status_bar is None:
+        """Refresh the path and the spectrum, region, and peak id labels."""
+        if self._path_label is None or self._selection_label is None:
             return
 
         path = self._controller.get_default_save_path()
         path_str = path.name if path is not None else "No file"
+        prefix = "* " if self._controller.is_dirty else ""
+        self._path_label.setText(f"{prefix}{path_str}")
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
         component_id = self._controller.selected_component_id
-
-        selection_parts: list[str] = []
-        if spectrum_id is not None:
-            selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
-        if region_id is not None:
-            selection_parts.append(f"Region: {region_id[:5]}")
-        if component_id is not None:
-            selection_parts.append(f"Component: {component_id[:5]}")
 
         extra_selection = ""
         if self._spectrum_tree_panel is not None:
@@ -578,14 +594,16 @@ class MainWindow(QMainWindow):
                 if others > 0:
                     extra_selection = f" (+{others} spectra)"
 
-        selection_str_base = " | ".join(selection_parts) if selection_parts else "No selection"
-        selection_str = f"{selection_str_base}{extra_selection}"
-
-        if self._controller.is_dirty:
-            text = f"* {path_str} | {selection_str}"
-        else:
-            text = f"{path_str} | {selection_str}"
-        self._status_bar.showMessage(text)
+        self._selection_label.setText(
+            " | ".join(
+                (
+                    f"Spectrum: {_short_id(spectrum_id)}",
+                    f"Region: {_short_id(region_id)}",
+                    f"Peak: {_short_id(component_id)}",
+                )
+            )
+            + extra_selection
+        )
 
     def _confirm_discard_changes(self) -> bool:
         """

@@ -213,6 +213,14 @@ QStatusBar {{
     border-top: 1px solid {STATUS_BORDER};
     color: {TEXT_MUTED};
 }}
+QStatusBar::item {{
+    border: none;
+}}
+QStatusBar QLabel#StatusPathLabel,
+QStatusBar QLabel#StatusSelectionLabel {{
+    color: {TEXT_MUTED};
+    background: transparent;
+}}
 
 /* --- Message boxes and dialog buttons --- */
 QMessageBox {{
