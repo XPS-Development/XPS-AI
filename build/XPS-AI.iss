@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "XPS-AI"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "XPS Development"
 #define MyAppURL "https://github.com/XPS-Development/XPS-AI/"
 #define MyAppExeName "XPS-AI.exe"
@@ -22,7 +22,7 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-SetupIconFile=C:\Users\User\Work\XPS-AI\assets\icons\app.ico
+SetupIconFile=..\assets\icons\app.ico
 ; "ArchitecturesAllowed=x64compatible" specifies that Setup cannot run
 ; on anything but x64 and Windows 11 on Arm.
 ArchitecturesAllowed=x64compatible
@@ -35,8 +35,8 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-OutputDir=C:\Users\User\Work\XPS-AI\build\iss_build
-OutputBaseFilename=setup
+OutputDir=iss_build
+OutputBaseFilename=xps-ai_{#MyAppVersion}_x64
 SolidCompression=yes
 WizardStyle=modern dynamic
 
@@ -44,8 +44,8 @@ WizardStyle=modern dynamic
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "C:\Users\User\Work\XPS-AI\build\pyi_dist\XPS-AI\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\User\Work\XPS-AI\build\pyi_dist\XPS-AI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "pyi_dist\XPS-AI\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "pyi_dist\XPS-AI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
