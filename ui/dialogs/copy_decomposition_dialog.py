@@ -551,22 +551,29 @@ class LinkCheckboxDelegate(QStyledItemDelegate):
         option: QStyleOptionViewItem,
         index: QModelIndex | QPersistentModelIndex,
     ) -> bool:
-        """Toggle link state on left-click or Space in the Link cell."""
+        """Toggle link state on left-button release or Space in the Link cell.
+
+        A fast second click is delivered as press, release, double-click, release.
+        Toggling on the double-click as well applies that click twice, so the
+        box no longer matches the number of clicks.
+        """
         if not index.flags() & Qt.ItemFlag.ItemIsUserCheckable:
             return False
-        toggle = False
-        if event.type() in {
+        if isinstance(event, QMouseEvent) and event.type() in {
+            QEvent.Type.MouseButtonPress,
             QEvent.Type.MouseButtonRelease,
             QEvent.Type.MouseButtonDblClick,
-        } and isinstance(event, QMouseEvent):
-            if event.button() == Qt.MouseButton.LeftButton and option.rect.contains(
+        }:
+            if event.button() != Qt.MouseButton.LeftButton or not option.rect.contains(
                 event.position().toPoint()
             ):
-                toggle = True
-        elif event.type() == QEvent.Type.KeyPress and isinstance(event, QKeyEvent):
-            if event.key() in {Qt.Key.Key_Space, Qt.Key.Key_Select}:
-                toggle = True
-        if not toggle:
+                return False
+            if event.type() != QEvent.Type.MouseButtonRelease:
+                return True
+        elif isinstance(event, QKeyEvent) and event.type() == QEvent.Type.KeyPress:
+            if event.key() not in {Qt.Key.Key_Space, Qt.Key.Key_Select}:
+                return False
+        else:
             return False
         current = index.data(Qt.ItemDataRole.CheckStateRole)
         checked = current in {Qt.CheckState.Checked, Qt.CheckState.Checked.value}

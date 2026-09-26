@@ -7,12 +7,13 @@ from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
-from PySide6.QtCore import QModelIndex, Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QEvent, QModelIndex, QPointF, QRect, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from core.dto import ComponentDTO, ParameterDTO
 from ui.component_colors import color_for_component
-from ui.dialogs.copy_decomposition_dialog import LinkTreeModel
+from ui.dialogs.copy_decomposition_dialog import LinkCheckboxDelegate, LinkTreeModel
 from ui.trees.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
 
@@ -104,6 +105,43 @@ def test_link_tree_clear_links(link_model: LinkTreeModel) -> None:
     link_model.setData(region_link, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
     link_model.clear_links()
     assert all(linked is False for linked in link_model.link_flags().values())
+
+
+def _click_link(
+    delegate: LinkCheckboxDelegate,
+    model: LinkTreeModel,
+    index: QModelIndex,
+    event_type: QEvent.Type,
+) -> bool:
+    """Send one left-button event to the Link checkbox delegate."""
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 48, 24)
+    event = QMouseEvent(
+        event_type,
+        QPointF(10, 10),
+        QPointF(10, 10),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    return delegate.editorEvent(event, model, option, index)
+
+
+def test_link_checkbox_double_click_toggles_once_per_click(link_model: LinkTreeModel) -> None:
+    """A fast second click must not toggle again on the double-click event."""
+    delegate = LinkCheckboxDelegate()
+    index = _link_index(link_model, 0, 0, 0)
+    check = Qt.ItemDataRole.CheckStateRole
+
+    assert _click_link(delegate, link_model, index, QEvent.Type.MouseButtonPress)
+    assert link_model.data(index, check) == Qt.CheckState.Unchecked
+    assert _click_link(delegate, link_model, index, QEvent.Type.MouseButtonRelease)
+    assert link_model.data(index, check) == Qt.CheckState.Checked
+
+    assert _click_link(delegate, link_model, index, QEvent.Type.MouseButtonDblClick)
+    assert link_model.data(index, check) == Qt.CheckState.Checked
+    assert _click_link(delegate, link_model, index, QEvent.Type.MouseButtonRelease)
+    assert link_model.data(index, check) == Qt.CheckState.Unchecked
 
 
 def test_link_tree_shows_short_id_and_component_color(link_model: LinkTreeModel) -> None:
