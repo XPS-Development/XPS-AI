@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from PySide6.QtWidgets import QWidget
 
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 FitLinkChoice = Literal["include", "selection_only", "cancel"]
 

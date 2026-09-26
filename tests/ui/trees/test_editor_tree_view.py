@@ -1,4 +1,4 @@
-"""Smoke tests for :class:`ui.tree_style.EditorTreeView` click/paint safety."""
+"""Smoke tests for :class:`ui.trees.tree_style.EditorTreeView` click/paint safety."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from PySide6.QtCore import QModelIndex, QRect
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QApplication, QWidget
 
-from ui.tree_style import EditorTreeView, apply_editor_tree_style
+from ui.trees.tree_style import EditorTreeView, apply_editor_tree_style
 
 
 @pytest.fixture(scope="module")

@@ -1,6 +1,6 @@
 """Tests for shared tree search text."""
 
-from ui.tree_search import make_search_text, matches_search
+from ui.trees.tree_search import make_search_text, matches_search
 
 
 def test_make_search_text_joins_label_and_id() -> None:

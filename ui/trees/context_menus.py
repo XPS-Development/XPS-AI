@@ -7,9 +7,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu, QWidget
 
-from .controller import ControllerWrapper
-from .export_options_dialog import export_peaks, export_spectra
-from .optimize_confirm import confirm_and_optimize
+from ..controller import ControllerWrapper
+from ..dialogs.export_options_dialog import export_peaks, export_spectra
+from ..dialogs.optimize_confirm import confirm_and_optimize
 
 # TODO: refactor as a modular context menu factory
 

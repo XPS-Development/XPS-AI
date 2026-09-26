@@ -4,9 +4,9 @@ from PySide6.QtCore import QModelIndex, QSize, Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
-from .assets import icon_path
-from .controller import ControllerWrapper
-from .optimize_confirm import confirm_and_optimize
+from ..assets import icon_path
+from ..controller import ControllerWrapper
+from ..dialogs.optimize_confirm import confirm_and_optimize
 from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
 from .tree_search import matches_search
 

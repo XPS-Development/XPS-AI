@@ -8,13 +8,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout, QWidget
 
-from .assets import icon_path
-from .copy_decomposition_dialog import CopyDecompositionDialog
-from .optimize_confirm import confirm_and_optimize
+from ..assets import icon_path
+from ..dialogs.copy_decomposition_dialog import CopyDecompositionDialog
+from ..dialogs.optimize_confirm import confirm_and_optimize
 from .properties import PropertiesView
 
 if TYPE_CHECKING:
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 
 class PropertiesPanel(QWidget):

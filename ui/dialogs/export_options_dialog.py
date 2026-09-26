@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from .file_dialogs import ensure_suffix_from_filter
 
 if TYPE_CHECKING:
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 
 class PeakExportOptions(TypedDict):

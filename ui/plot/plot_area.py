@@ -26,13 +26,13 @@ from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
 from core.evaluation import PlotCurve, SpectrumPlotData
 
-from .component_colors import color_for_component
-from .context_menus import (
+from ..component_colors import color_for_component
+from ..controller import ControllerWrapper
+from ..trees.context_menus import (
     SpectrumContextMenuActions,
     attach_region_context_actions,
     attach_spectrum_context_actions,
 )
-from .controller import ControllerWrapper
 
 PlotEditMode = Literal["split_region", "add_peak"]
 _CROSSHAIR_COLOR = QColor("#c62828")

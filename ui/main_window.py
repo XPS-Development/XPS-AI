@@ -15,14 +15,14 @@ from PySide6.QtWidgets import (
 )
 
 from .assets import APP_NAME, load_app_icon
-from .context_menus import optimize_from_selection
 from .controller import ControllerWrapper
-from .export_options_dialog import export_peaks, export_spectra
-from .file_dialogs import ensure_suffix_from_filter, split_open_paths
-from .options_dialog import OptionsDialog
-from .plot_area import PlotAreaWidget
-from .properties_panel import PropertiesPanel
-from .spectrum_tree_panel import SpectrumTreePanel
+from .dialogs.export_options_dialog import export_peaks, export_spectra
+from .dialogs.file_dialogs import ensure_suffix_from_filter, split_open_paths
+from .dialogs.options_dialog import OptionsDialog
+from .plot.plot_area import PlotAreaWidget
+from .trees.context_menus import optimize_from_selection
+from .trees.properties_panel import PropertiesPanel
+from .trees.spectrum_tree_panel import SpectrumTreePanel
 
 
 def _short_id(value: str | None) -> str:

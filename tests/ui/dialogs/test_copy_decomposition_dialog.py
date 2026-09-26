@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QApplication
 
 from core.dto import ComponentDTO, ParameterDTO
 from ui.component_colors import color_for_component
-from ui.copy_decomposition_dialog import LinkTreeModel
-from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
+from ui.dialogs.copy_decomposition_dialog import LinkTreeModel
+from ui.trees.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
 
 @pytest.fixture(scope="module")

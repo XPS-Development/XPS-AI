@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -34,35 +33,29 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from . import theme
-from .component_colors import (
-    STATUS_COLOR_EMPTY,
-    STATUS_COLOR_PEAKS,
-    STATUS_COLOR_REGIONS,
-    color_for_component,
+from .. import theme
+from ..component_colors import color_for_component
+from ..trees.grouping import (
+    ID_DISPLAY_CHARS,
+    STATUS_COLORS,
+    collect_spectrum_ids,
+    iter_spectrum_groups,
+    structure_status,
 )
-from .name_id_delegate import (
+from ..trees.name_id_delegate import (
     ComponentColorRole,
     NameWithIdDelegate,
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from ..trees.tree_search import make_search_text, matches_search
+from ..trees.tree_style import EditorTreeView, apply_editor_tree_style
 from .optimize_confirm import confirm_and_optimize
-from .tree_search import make_search_text, matches_search
-from .tree_style import EditorTreeView, apply_editor_tree_style
 
 if TYPE_CHECKING:
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 _DEFAULT_INDEX = QModelIndex()
-_ID_DISPLAY_CHARS = 5
-
-_STATUS_COLORS = {
-    "empty": STATUS_COLOR_EMPTY,
-    "regions": STATUS_COLOR_REGIONS,
-    "peaks": STATUS_COLOR_PEAKS,
-}
-_STATUS_RANK = {"empty": 0, "regions": 1, "peaks": 2}
 
 
 @dataclass
@@ -153,7 +146,7 @@ class _BaseTreeModel(QAbstractItemModel):
         if role == ObjectIdRole and item.object_id is not None:
             return item.object_id
         if role == ObjectIdPrefixRole and item.object_id is not None:
-            return item.object_id[:_ID_DISPLAY_CHARS]
+            return item.object_id[:ID_DISPLAY_CHARS]
         return None
 
     def flags(self, index: QModelIndex | QPersistentModelIndex = _DEFAULT_INDEX) -> Qt.ItemFlag:
@@ -182,43 +175,29 @@ class TargetSpectrumModel(_BaseTreeModel):
         """Rebuild spectra hierarchy, excluding the source spectrum."""
         self.beginResetModel()
         self._root.children.clear()
-        query = self._controller.query
-        grouped: dict[Any, dict[Any, list[tuple[Any, str]]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        for spectrum_id in query.get_all_spectra_ids():
-            if spectrum_id == self._source_spectrum_id:
-                continue
-            metadata = query.get_metadata(spectrum_id)
-            file_attr = getattr(metadata, "file", None)
-            group_attr = getattr(metadata, "group", None)
-            name_attr = getattr(metadata, "name", None)
-            grouped[file_attr][group_attr].append((name_attr, spectrum_id))
-
-        for file_key, groups in sorted(grouped.items(), key=lambda kv: str(kv[0] or "")):
-            file_label = (str(file_key).split("/")[-1] if file_key else "No file") or "No file"
+        for file_row in iter_spectrum_groups(
+            self._controller.query, skip_ids={self._source_spectrum_id}
+        ):
             file_item = _TreeItem(
-                label=file_label,
+                label=file_row.label,
                 kind="file",
-                search_text=make_search_text(file_label),
+                search_text=make_search_text(file_row.label),
             )
             self._root.append_child(file_item)
-            for group_key, spectra in sorted(groups.items(), key=lambda kv: str(kv[0] or "")):
-                group_label = str(group_key) if group_key else "No group"
+            for group_row in file_row.groups:
                 group_item = _TreeItem(
-                    label=group_label,
+                    label=group_row.label,
                     kind="group",
-                    search_text=make_search_text(group_label),
+                    search_text=make_search_text(group_row.label),
                 )
                 file_item.append_child(group_item)
-                for name, spectrum_id in sorted(spectra, key=lambda t: str(t[0] or "")):
-                    spectrum_label = str(name) if name else "No name"
+                for spectrum in group_row.spectra:
                     group_item.append_child(
                         _TreeItem(
-                            label=spectrum_label,
+                            label=spectrum.label,
                             kind="spectrum",
-                            object_id=spectrum_id,
-                            search_text=make_search_text(spectrum_label, spectrum_id),
+                            object_id=spectrum.spectrum_id,
+                            search_text=make_search_text(spectrum.label, spectrum.spectrum_id),
                         )
                     )
         self.endResetModel()
@@ -232,12 +211,12 @@ class TargetSpectrumModel(_BaseTreeModel):
         if role == ComponentColorRole and index.isValid():
             item = index.internalPointer()
             if isinstance(item, _TreeItem) and item.kind in {"file", "group", "spectrum"}:
-                return _STATUS_COLORS.get(self._structure_status(item))
+                return STATUS_COLORS.get(self._structure_status(item))
             return None
         if role == ObjectIdPrefixRole and index.isValid():
             item = index.internalPointer()
             if isinstance(item, _TreeItem) and item.kind == "spectrum" and item.object_id:
-                return item.object_id[:_ID_DISPLAY_CHARS]
+                return item.object_id[:ID_DISPLAY_CHARS]
             return None
         return super().data(index, role)
 
@@ -258,32 +237,24 @@ class TargetSpectrumModel(_BaseTreeModel):
         item = index.internalPointer()
         if not isinstance(item, _TreeItem):
             return []
-        return self._spectrum_ids_in_subtree(item)
+        return collect_spectrum_ids(
+            item,
+            children=lambda node: node.children,
+            spectrum_id_of=lambda node: node.object_id if node.kind == "spectrum" else None,
+        )
 
     def _structure_status(self, item: _TreeItem) -> str:
-        query = self._controller.query
-        if item.kind == "spectrum" and item.object_id is not None:
-            return query.get_spectrum_structure_status(item.object_id)
-        if item.kind in {"file", "group"}:
-            best = "empty"
-            for sid in self._spectrum_ids_in_subtree(item):
-                status = query.get_spectrum_structure_status(sid)
-                if _STATUS_RANK[status] > _STATUS_RANK[best]:
-                    best = status
-            return best
-        return "empty"
-
-    def _spectrum_ids_in_subtree(self, item: _TreeItem) -> list[str]:
-        found: list[str] = []
-
-        def walk(node: _TreeItem) -> None:
-            if node.kind == "spectrum" and node.object_id is not None:
-                found.append(node.object_id)
-            for child in node.children:
-                walk(child)
-
-        walk(item)
-        return found
+        """Return the structure-dot status for a file, group, or spectrum row."""
+        return structure_status(
+            self._controller.query,
+            kind=item.kind,
+            object_id=item.object_id,
+            child_spectrum_ids=collect_spectrum_ids(
+                item,
+                children=lambda node: node.children,
+                spectrum_id_of=lambda node: node.object_id if node.kind == "spectrum" else None,
+            ),
+        )
 
 
 class LinkTreeModel(_BaseTreeModel):
@@ -431,7 +402,7 @@ class LinkTreeModel(_BaseTreeModel):
             )
         if role == ObjectIdPrefixRole and item.object_id is not None:
             if item.kind in {"region", "component"}:
-                return item.object_id[:_ID_DISPLAY_CHARS]
+                return item.object_id[:ID_DISPLAY_CHARS]
             return None
         if role == ObjectIdRole and item.object_id is not None and item.kind != "parameter":
             return item.object_id

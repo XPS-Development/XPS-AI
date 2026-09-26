@@ -8,7 +8,7 @@ from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem, QWidget
 
-from .component_colors import ID_SUFFIX_HEX
+from ..component_colors import ID_SUFFIX_HEX
 
 # Custom roles used by trees that show truncated IDs next to labels.
 ObjectIdRole = Qt.ItemDataRole.UserRole

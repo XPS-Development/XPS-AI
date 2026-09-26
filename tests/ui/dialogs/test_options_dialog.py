@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from app.parameters import AppParameters
 from core.math_models import ModelRegistry
-from ui.options_dialog import OptionsDialog
+from ui.dialogs.options_dialog import OptionsDialog
 
 
 @pytest.fixture(scope="module")

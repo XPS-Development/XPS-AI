@@ -11,8 +11,8 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionViewItem
 
 from ui.controller import ControllerWrapper
-from ui.parameter_value_editor import ParameterValueEditor
-from ui.properties import (
+from ui.trees.parameter_value_editor import ParameterValueEditor
+from ui.trees.properties import (
     ItemKind,
     PropertiesView,
     PropertyItem,
@@ -620,7 +620,7 @@ def test_delete_optimize_and_add_rows_respond_to_clicks(
         optimized.append(list(region_ids) if region_ids is not None else None)
         return False
 
-    monkeypatch.setattr("ui.properties.confirm_and_optimize", _record_optimize)
+    monkeypatch.setattr("ui.trees.properties.confirm_and_optimize", _record_optimize)
 
     controller = ControllerWrapper(collection=simple_collection)
     controller.set_selection(spectrum_id, region_id, peak_id)

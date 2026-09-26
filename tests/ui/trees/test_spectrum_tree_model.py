@@ -1,4 +1,4 @@
-"""Tests for :class:`ui.spectrum_tree.SpectrumTreeModel`."""
+"""Tests for :class:`ui.trees.spectrum_tree.SpectrumTreeModel`."""
 
 import sys
 from typing import cast
@@ -9,8 +9,8 @@ from PySide6.QtWidgets import QApplication
 from tests.conftest import seed_hierarchy_metadata
 
 from ui.controller import ControllerWrapper
-from ui.spectrum_tree import SpectrumTreeModel
-from ui.spectrum_tree_panel import SpectrumTreePanel
+from ui.trees.spectrum_tree import SpectrumTreeModel
+from ui.trees.spectrum_tree_panel import SpectrumTreePanel
 
 
 @pytest.fixture(scope="module")
@@ -62,7 +62,7 @@ def test_spectrum_tree_model_shows_spectrum_id_suffix_when_enabled(
     hierarchy_collection,
 ) -> None:
     """show_spectrum_id_in_tree exposes a short id via ObjectIdPrefixRole."""
-    from ui.name_id_delegate import ObjectIdPrefixRole
+    from ui.trees.name_id_delegate import ObjectIdPrefixRole
 
     del qapp
     controller = ControllerWrapper(collection=hierarchy_collection)

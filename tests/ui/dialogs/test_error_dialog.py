@@ -8,7 +8,7 @@ from typing import cast
 import pytest
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QPlainTextEdit
 
-from ui.error_dialog import ExceptionDialog
+from ui.dialogs.error_dialog import ExceptionDialog
 
 
 @pytest.fixture(scope="module")

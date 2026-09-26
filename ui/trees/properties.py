@@ -33,24 +33,24 @@ from PySide6.QtWidgets import (
 from core.math_models import ModelRegistry
 from core.math_models.soft_ranges import soft_region_bound_range
 
-from . import theme
-from .assets import icon_path
-from .component_colors import ID_SUFFIX_HEX, color_for_component
+from .. import theme
+from ..assets import icon_path
+from ..component_colors import ID_SUFFIX_HEX, color_for_component
+from ..controller import ControllerWrapper
+from ..dialogs.expr_editor_popup import ExprEditorPopup
+from ..dialogs.optimize_confirm import confirm_and_optimize
 from .context_menus import attach_region_context_actions, attach_spectrum_context_actions
-from .controller import ControllerWrapper
-from .expr_editor_popup import ExprEditorPopup
+from .grouping import ID_DISPLAY_CHARS
 from .name_id_delegate import (
     ComponentColorRole,
     NameWithIdDelegate,
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
-from .optimize_confirm import confirm_and_optimize
 from .parameter_value_editor import ParameterValueEditor
 from .tree_style import EditorTreeView, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
-_ID_DISPLAY_CHARS = 5
 
 
 def _as_model_index(index: QModelIndex | QPersistentModelIndex) -> QModelIndex:
@@ -294,7 +294,7 @@ class PropertiesModel(QAbstractItemModel):
 
         if role == ObjectIdPrefixRole and col == 0 and item.object_id is not None:
             if self._controller.get_app_parameters().show_id_in_properties_tree:
-                return item.object_id[:_ID_DISPLAY_CHARS]
+                return item.object_id[:ID_DISPLAY_CHARS]
             return None
 
         if (

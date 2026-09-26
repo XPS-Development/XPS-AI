@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ui.file_dialogs import ensure_suffix_from_filter, split_open_paths
+from ui.dialogs.file_dialogs import ensure_suffix_from_filter, split_open_paths
 
 
 def test_ensure_suffix_appends_from_filter_when_missing() -> None:

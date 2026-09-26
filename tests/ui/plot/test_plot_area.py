@@ -1,4 +1,4 @@
-"""Tests for :class:`ui.plot_area.PlotAreaWidget` refresh behaviour."""
+"""Tests for :class:`ui.plot.plot_area.PlotAreaWidget` refresh behaviour."""
 
 import sys
 from typing import cast
@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.evaluation import PlotCurve, SpectrumPlotData
 from ui.controller import ControllerWrapper
-from ui.plot_area import PlotAreaWidget
+from ui.plot.plot_area import PlotAreaWidget
 
 
 @pytest.fixture(scope="module")

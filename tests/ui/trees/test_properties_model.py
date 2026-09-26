@@ -1,11 +1,11 @@
-"""Tests for :class:`ui.properties.PropertiesModel`."""
+"""Tests for :class:`ui.trees.properties.PropertiesModel`."""
 
 from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import QModelIndex, Qt
 
-from ui.properties import ItemKind, PropertiesModel, PropertyItem, _is_copyable_value_item
+from ui.trees.properties import ItemKind, PropertiesModel, PropertyItem, _is_copyable_value_item
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_refresh_region_actions_when_empty(mock_controller: MagicMock) -> None:
 def test_component_row_exposes_gray_id_and_color(mock_controller: MagicMock) -> None:
     """COMPONENT rows expose truncated id and a color tied to the peak id."""
     from ui.component_colors import color_for_component
-    from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole, ObjectIdRole
+    from ui.trees.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole, ObjectIdRole
 
     mock_controller.get_app_parameters.return_value.show_id_in_properties_tree = True
     model = PropertiesModel(mock_controller)

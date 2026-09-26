@@ -123,7 +123,7 @@ def _show_exception_dialog(title: str, details: str) -> None:
         return
     if QApplication.instance() is None:
         return
-    from ui.error_dialog import show_exception_dialog
+    from ui.dialogs.error_dialog import show_exception_dialog
 
     show_exception_dialog(title, details)
 

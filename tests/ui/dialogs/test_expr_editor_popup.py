@@ -11,8 +11,8 @@ from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
 from ui.component_colors import color_for_component
-from ui.expr_editor_popup import ExprEditorPopup, ExprPickerModel
-from ui.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
+from ui.dialogs.expr_editor_popup import ExprEditorPopup, ExprPickerModel
+from ui.trees.name_id_delegate import ComponentColorRole, ObjectIdPrefixRole
 
 
 @pytest.fixture(scope="module")
