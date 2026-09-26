@@ -41,6 +41,8 @@ def window(
     # Bypass the unsaved-changes prompt during fixture teardown.
     monkeypatch.setattr(win, "_confirm_close", lambda: True)
     win.close()
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 def test_window_title_shows_dirty_marker_for_untitled(window: MainWindow) -> None:
@@ -66,11 +68,11 @@ def test_confirm_close_accepts_when_clean(
     window._controller.dump_collection(tmp_path / "clean.json")
     prompted = {"called": False}
 
-    def _boom(*_a, **_k):
+    def _boom() -> str:
         prompted["called"] = True
-        return QMessageBox.StandardButton.Cancel
+        return "cancel"
 
-    monkeypatch.setattr(QMessageBox, "question", _boom)
+    monkeypatch.setattr(window, "_prompt_unsaved_close", _boom)
     assert window._confirm_close() is True
     assert prompted["called"] is False
 
@@ -79,11 +81,7 @@ def test_confirm_close_cancel_keeps_window_open(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Cancel on the unsaved prompt must refuse close."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Cancel,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "cancel")
     assert window._controller.is_dirty is True
     assert window._confirm_close() is False
 
@@ -92,11 +90,7 @@ def test_confirm_close_discard_allows_close(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Discard on the unsaved prompt must allow close."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Discard,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "discard")
     assert window._confirm_close() is True
 
 
@@ -104,13 +98,25 @@ def test_confirm_close_save_uses_try_save(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Save on the unsaved prompt delegates to ``_try_save``."""
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *_a, **_k: QMessageBox.StandardButton.Save,
-    )
+    monkeypatch.setattr(window, "_prompt_unsaved_close", lambda: "save")
     monkeypatch.setattr(window, "_try_save", lambda: True)
     assert window._confirm_close() is True
+
+
+def test_prompt_unsaved_close_uses_short_discard_label(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discard button text stays short (not ``Close without saving``)."""
+    labels: list[str] = []
+
+    def _fake_exec(box: QMessageBox) -> int:
+        labels.extend(button.text() for button in box.buttons())
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", _fake_exec)
+    assert window._prompt_unsaved_close() == "cancel"
+    assert labels == ["Save", "Cancel", "Discard"]
+    assert "Close without saving" not in labels
 
 
 def test_close_event_ignored_when_user_cancels(
@@ -122,6 +128,24 @@ def test_close_event_ignored_when_user_cancels(
     window.closeEvent(event)
     event.ignore.assert_called_once()
     event.accept.assert_not_called()
+
+
+def test_selection_ids_stay_after_status_message_cleared(window: MainWindow) -> None:
+    """Spectrum, region, and peak ids stay after a menu clears the status message."""
+    assert window._selection_label is not None
+    assert window._selection_label.text() == "Spectrum: — | Region: — | Peak: —"
+
+    window._controller.set_selection("s1", "region-1", "peak-9")
+    QApplication.processEvents()
+
+    expected = "Spectrum: s1 | Region: regio | Peak: peak-"
+    assert window._selection_label.text() == expected
+
+    status_bar = window.statusBar()
+    assert status_bar is not None
+    status_bar.showMessage("menu tip")
+    status_bar.clearMessage()
+    assert window._selection_label.text() == expected
 
 
 def test_close_event_accepted_when_confirmed(

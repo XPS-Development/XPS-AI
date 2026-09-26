@@ -12,7 +12,7 @@ from app.parameters import AppParameters
 from core.collection import CoreCollection
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from app.command.changes import ParameterField
@@ -154,9 +154,36 @@ class ControllerWrapper(QObject):
         self._orchestrator.redo()
         self._emit_ui_for_command(cmd)
 
-    def import_spectra(self, path: str | Path) -> None:
-        """Import spectra from a file and emit signals."""
+    def import_spectra(self, path: str | Path | Sequence[str | Path]) -> None:
+        """Import spectra from one or more files and emit signals."""
         self._mutate(self._orchestrator.import_spectra, path)
+
+    def copy_decomposition(
+        self,
+        source_spectrum_id: str,
+        target_spectrum_ids: Sequence[str],
+        link_flags: Mapping[tuple[str, str], bool],
+        *,
+        rescale_intensities: bool = True,
+        overwrite_targets: set[str] | frozenset[str] | None = None,
+        optimize_after: bool = False,
+    ) -> list[str]:
+        """Copy a spectrum decomposition onto targets and emit signals."""
+        result: list[str] = []
+
+        def _run() -> None:
+            nonlocal result
+            result = self._orchestrator.copy_decomposition(
+                source_spectrum_id,
+                target_spectrum_ids,
+                link_flags,
+                rescale_intensities=rescale_intensities,
+                overwrite_targets=overwrite_targets,
+                optimize_after=optimize_after,
+            )
+
+        self._mutate(_run)
+        return result
 
     def run_segmenter(self, spectrum_ids: Sequence[str]) -> None:
         """Run the segmenter pipeline and emit signals."""
@@ -326,6 +353,10 @@ class ControllerWrapper(QObject):
             mode=mode,
         )
 
+    def split_region(self, region_id: str, x: float) -> None:
+        """Split a region at axis position ``x`` and emit signals."""
+        self._mutate(self._orchestrator.split_region, region_id, x)
+
     def replace_peak_model(
         self,
         peak_id: str,
@@ -388,12 +419,17 @@ class ControllerWrapper(QObject):
             mode=mode,
         )
 
+    def create_cursor_peak(self, region_id: str, cen: float, height: float) -> None:
+        """Create a pseudo-Voigt peak from a plot click and emit signals."""
+        self._mutate(self._orchestrator.create_cursor_peak, region_id, cen, height)
+
     def create_peak(
         self,
         region_id: str,
         model_name: str,
         parameters: dict[str, float] | None = None,
         peak_id: str | None = None,
+        peak_index: int | None = None,
     ) -> None:
         """Create a new peak component and emit signals."""
         self._mutate(
@@ -402,6 +438,7 @@ class ControllerWrapper(QObject):
             model_name=model_name,
             parameters=parameters,
             peak_id=peak_id,
+            peak_index=peak_index,
         )
 
     def create_background(
@@ -447,7 +484,12 @@ class ControllerWrapper(QObject):
 
     def remove_object(self, obj_id: str) -> None:
         """Remove an object and its descendants and emit signals."""
-        self._mutate(self._orchestrator.remove_object, obj_id)
+
+        def _run() -> None:
+            self._orchestrator.remove_object(obj_id)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_metadata(self, obj_id: str) -> None:
         """Remove metadata for an object and emit signals."""
@@ -455,15 +497,30 @@ class ControllerWrapper(QObject):
 
     def full_remove_object(self, obj_id: str) -> None:
         """Remove an object, all descendants, and their metadata and emit signals."""
-        self._mutate(self._orchestrator.full_remove_object, obj_id)
+
+        def _run() -> None:
+            self._orchestrator.full_remove_object(obj_id)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_group(self, file_label: str, group_label: str) -> None:
         """Remove all spectra belonging to a given file/group combination."""
-        self._mutate(self._orchestrator.remove_group, file_label, group_label)
+
+        def _run() -> None:
+            self._orchestrator.remove_group(file_label, group_label)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def remove_file(self, file_label: str) -> None:
         """Remove all spectra associated with a given file label."""
-        self._mutate(self._orchestrator.remove_file, file_label)
+
+        def _run() -> None:
+            self._orchestrator.remove_file(file_label)
+            self._ensure_selection_valid()
+
+        self._mutate(_run)
 
     def dump_collection(
         self,
@@ -591,7 +648,24 @@ class ControllerWrapper(QObject):
 
     def _emit_ui_for_command(self, cmd: Command) -> None:
         """Emit controller signals appropriate for the given undo/redo command."""
+        self._ensure_selection_valid()
         self._emit_refresh(cmd.combined_ui_refresh())
+
+    def _ensure_selection_valid(self) -> None:
+        """Clear selection fields that no longer exist in the collection."""
+        spectrum_id = self._selected_spectrum_id
+        region_id = self._selected_region_id
+        component_id = self._selected_component_id
+        query = self.query
+
+        if spectrum_id is not None and not query.check_object_exists(spectrum_id):
+            self.set_selection(None)
+            return
+        if region_id is not None and not query.check_object_exists(region_id):
+            self.set_selection(spectrum_id, None)
+            return
+        if component_id is not None and not query.check_object_exists(component_id):
+            self.set_selection(spectrum_id, region_id, None)
 
     def _emit_undo_redo_state(self) -> None:
         """Emit the current undo/redo capability state."""

@@ -240,9 +240,12 @@ class AnalysisUseCases:
 
         When ``expand_linked`` is True (default), expands the requested regions to
         the expression-dependency closure. When False, fits only the resolved
-        selection; cross-scope exprs become inactive for that run. Default
-        optimization kwargs from AppParameters are merged with explicit kwargs;
-        caller values override defaults on conflict.
+        selection; cross-scope exprs become inactive for that run. The fit
+        minimizes the same Poisson chi-squared shown on the error plot,
+        using raw counts. Intensity parameters are scaled to order 1 for the
+        solver and mapped back to counts before the model is evaluated.
+        Default optimization kwargs from AppParameters are merged with explicit
+        kwargs; caller values override defaults on conflict.
 
         Parameters
         ----------
@@ -279,7 +282,8 @@ class AnalysisUseCases:
 
         region_reprs: list[tuple[RegionDTO, tuple[ComponentDTO, ...]]] = []
         for region_id in target_ids:
-            region_reprs.append(self._query.get_region_dto_repr(region_id, normalized=True))
+            # Raw counts: the least-squares objective is then the plotted χ².
+            region_reprs.append(self._query.get_region_dto_repr(region_id, normalized=False))
 
         return CompositeChange(
             changes=[self._optimization.optimize_regions(region_reprs, **merged)]

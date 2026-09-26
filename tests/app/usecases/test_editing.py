@@ -9,6 +9,8 @@ from app.command.changes import (
     CompositeChange,
     CreateBackground,
     CreatePeak,
+    CreateRegion,
+    RemoveObject,
     RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
@@ -46,6 +48,20 @@ def test_create_peak_auto_returns_guessed_pseudo_voigt(simple_collection, region
     assert change.model_name == "pseudo-voigt"
     assert change.parameters is not None
     assert set(change.parameters) == {"amp", "cen", "sig", "frac"}
+
+
+def test_create_peak_with_peak_index_uses_that_channel(simple_collection, region_id) -> None:
+    """peak_index overrides the residual maximum when guessing parameters."""
+    editing = _editing(simple_collection, automatic_methods=True)
+    region, _components = editing._query.get_region_dto_repr(region_id, normalized=False)
+    peak_index = len(region.x) // 4
+    expected_cen = float(region.x[peak_index])
+
+    change = editing.create_peak(region_id, "pseudo-voigt", parameters=None, peak_index=peak_index)
+
+    assert isinstance(change, CreatePeak)
+    assert change.parameters is not None
+    assert change.parameters["cen"] == pytest.approx(expected_cen)
 
 
 def test_create_peak_explicit_when_automatic_methods_false(simple_collection, region_id) -> None:
@@ -298,3 +314,99 @@ def test_rename_component_builds_change(simple_collection, peak_id) -> None:
     assert isinstance(change, RenameComponent)
     assert change.component_id == peak_id
     assert change.new_name == "C1s"
+
+
+def test_split_region_moves_boundary_peak_right_and_keeps_id(
+    simple_collection, region_id, peak_id
+) -> None:
+    """Peaks with cen on the split channel move right; peak id is preserved."""
+    editing = _editing(simple_collection, automatic_methods=True)
+    peak = editing._query.get_component_dto(peak_id, normalized=False)
+    split_x = peak.parameters["cen"].value
+    left_start, left_stop = editing._query.get_region_slice(region_id, mode="index")
+
+    change = editing.split_region(region_id, split_x)
+
+    assert isinstance(change, CompositeChange)
+    slice_changes = [c for c in change.changes if isinstance(c, UpdateRegionSlice)]
+    create_regions = [c for c in change.changes if isinstance(c, CreateRegion)]
+    create_bgs = [c for c in change.changes if isinstance(c, CreateBackground)]
+    removes = [c for c in change.changes if isinstance(c, RemoveObject)]
+    create_peaks = [c for c in change.changes if isinstance(c, CreatePeak)]
+
+    assert len(slice_changes) == 1
+    assert slice_changes[0].region_id == region_id
+    assert slice_changes[0].start == left_start
+    assert slice_changes[0].stop is not None
+    assert left_start < int(slice_changes[0].stop) < left_stop
+
+    assert len(create_regions) == 1
+    right_id = create_regions[0].region_id
+    assert right_id is not None
+    assert create_regions[0].start == slice_changes[0].stop
+    assert create_regions[0].stop == left_stop
+
+    assert len(create_bgs) == 1
+    assert create_bgs[0].region_id == right_id
+    assert create_bgs[0].model_name == "constant"
+    assert create_bgs[0].parameters is not None
+
+    assert removes == [RemoveObject(obj_id=peak_id)]
+    assert len(create_peaks) == 1
+    assert create_peaks[0].peak_id == peak_id
+    assert create_peaks[0].region_id == right_id
+    assert create_peaks[0].parameters == {
+        name: param.value for name, param in peak.parameters.items()
+    }
+
+
+def test_split_region_keeps_left_peak_when_cen_is_left_of_split(
+    simple_collection, region_id, peak_id
+) -> None:
+    """Peaks with cen strictly left of the split channel stay on the left region."""
+    editing = _editing(simple_collection, automatic_methods=False)
+    spectrum = editing._query.get_spectrum_dto(
+        editing._query.get_parent_id(region_id), normalized=False
+    )
+    _start, stop = editing._query.get_region_slice(region_id, mode="index")
+    # Split well to the right of cen=0 so the peak stays left.
+    assert isinstance(stop, int)
+    split_index = stop - 2
+    split_x = float(spectrum.x[split_index])
+
+    change = editing.split_region(region_id, split_x)
+
+    assert isinstance(change, CompositeChange)
+    assert not any(isinstance(c, RemoveObject) for c in change.changes)
+    assert not any(isinstance(c, CreatePeak) for c in change.changes)
+    create_regions = [c for c in change.changes if isinstance(c, CreateRegion)]
+    assert len(create_regions) == 1
+    assert create_regions[0].start == split_index
+
+
+def test_split_region_returns_none_when_too_narrow(simple_collection) -> None:
+    """A one-channel region cannot be split."""
+    from core.objects import Region
+    from core.services import CoreContext
+
+    collection = simple_collection
+    spectrum_id = "s1"
+    narrow = Region(slice(50, 51), parent_id=spectrum_id, id_="r-narrow")
+    collection.add(narrow)
+    editing = EditingUseCases(
+        QueryService(CoreContext.from_collection(collection)),
+        AppParameters(automatic_methods=False),
+    )
+
+    assert editing.split_region("r-narrow", 0.0) is None
+
+
+def test_split_region_returns_none_outside_region(simple_collection, region_id) -> None:
+    """A split position that maps outside the region yields no change."""
+    editing = _editing(simple_collection, automatic_methods=False)
+    spectrum = editing._query.get_spectrum_dto(
+        editing._query.get_parent_id(region_id), normalized=False
+    )
+    outside = float(spectrum.x[0])
+
+    assert editing.split_region(region_id, outside) is None

@@ -1,14 +1,13 @@
 """Main window: spectrum tree, plot area, properties, and menus."""
 
 import sys
-from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
+    QLabel,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QSplitter,
     QStatusBar,
@@ -17,12 +16,20 @@ from PySide6.QtWidgets import (
 
 from .assets import APP_NAME, load_app_icon
 from .controller import ControllerWrapper
-from .export_options_dialog import export_peaks, export_spectra
-from .options_dialog import OptionsDialog
-from .plot_area import PlotAreaWidget
-from .properties_panel import PropertiesPanel
-from .spectrum_tree_panel import SpectrumTreePanel
-from .tree_style import apply_editor_menu_style
+from .dialogs.export_options_dialog import export_peaks, export_spectra
+from .dialogs.file_dialogs import ensure_suffix_from_filter, split_open_paths
+from .dialogs.options_dialog import OptionsDialog
+from .plot.plot_area import PlotAreaWidget
+from .trees.context_menus import optimize_from_selection
+from .trees.properties_panel import PropertiesPanel
+from .trees.spectrum_tree_panel import SpectrumTreePanel
+
+
+def _short_id(value: str | None) -> str:
+    """Return a five-character id, or an em dash when nothing is selected."""
+    if not value:
+        return "—"
+    return value[:5]
 
 
 class MainWindow(QMainWindow):
@@ -59,15 +66,22 @@ class MainWindow(QMainWindow):
         self._action_export_peaks_all_selected_spectra_csv: QAction | None = None
         self._action_undo: QAction | None = None
         self._action_redo: QAction | None = None
-        self._action_auto_fit: QAction | None = None
+        self._action_optimize: QAction | None = None
+        self._action_split_region: QAction | None = None
+        self._action_add_peak_at_point: QAction | None = None
         self._action_load_nn_model: QAction | None = None
         self._action_app_parameters: QAction | None = None
 
         self._status_bar: QStatusBar | None = None
+        self._path_label: QLabel | None = None
+        self._selection_label: QLabel | None = None
 
         self._spectrum_tree_panel: SpectrumTreePanel | None = None
         self._plot_area: PlotAreaWidget | None = None
         self._properties_panel: PropertiesPanel | None = None
+        self._plot_refresh_timer = QTimer(self)
+        self._plot_refresh_timer.setSingleShot(True)
+        self._plot_refresh_timer.setInterval(16)
 
         self._create_actions()
         self._create_menus()
@@ -111,7 +125,15 @@ class MainWindow(QMainWindow):
         self._action_undo.setEnabled(False)
         self._action_redo.setEnabled(False)
 
-        self._action_auto_fit = QAction("Auto fit", self)
+        self._action_split_region = QAction("Split region…", self)
+        self._action_split_region.setCheckable(True)
+        self._action_split_region.setShortcut(QKeySequence("S"))
+        self._action_add_peak_at_point = QAction("Add peak at point…", self)
+        self._action_add_peak_at_point.setCheckable(True)
+        self._action_add_peak_at_point.setShortcut(QKeySequence("A"))
+        self._action_optimize = QAction("Optimize", self)
+        self._action_optimize.setShortcut(QKeySequence("O"))
+
         self._action_load_nn_model = QAction("Load NN model…", self)
         self._action_app_parameters = QAction("Application parameters…", self)
 
@@ -131,8 +153,10 @@ class MainWindow(QMainWindow):
 
         self._action_undo.triggered.connect(self._on_undo_triggered)
         self._action_redo.triggered.connect(self._on_redo_triggered)
+        self._action_split_region.triggered.connect(self._on_split_region_triggered)
+        self._action_add_peak_at_point.triggered.connect(self._on_add_peak_at_point_triggered)
+        self._action_optimize.triggered.connect(self._on_optimize_shortcut)
 
-        self._action_auto_fit.triggered.connect(self._on_auto_fit_triggered)
         self._action_load_nn_model.triggered.connect(self._on_load_nn_model_triggered)
         self._action_app_parameters.triggered.connect(self._on_app_parameters_triggered)
 
@@ -168,9 +192,12 @@ class MainWindow(QMainWindow):
         if self._action_redo is not None:
             edit_menu.addAction(self._action_redo)
 
-        run_menu = menu_bar.addMenu("Run")
-        if self._action_auto_fit is not None:
-            run_menu.addAction(self._action_auto_fit)
+        if self._action_add_peak_at_point is not None:
+            self.addAction(self._action_add_peak_at_point)
+        if self._action_optimize is not None:
+            self.addAction(self._action_optimize)
+        if self._action_split_region is not None:
+            self.addAction(self._action_split_region)
 
         options_menu = menu_bar.addMenu("Options")
         if self._action_load_nn_model is not None:
@@ -178,29 +205,11 @@ class MainWindow(QMainWindow):
         if self._action_app_parameters is not None:
             options_menu.addAction(self._action_app_parameters)
 
-        for action in menu_bar.actions():
-            menu = action.menu()
-            if isinstance(menu, QMenu):
-                apply_editor_menu_style(menu)
-
     def _create_central_splitter(self) -> None:
         """Create the central splitter with left/center/right panels."""
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("MainSplitter")
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet(
-            """
-            QSplitter#MainSplitter::handle:horizontal {
-                background: #c8c8c8;
-                width: 1px;
-                margin: 0;
-                padding: 0;
-            }
-            QSplitter#MainSplitter::handle:horizontal:hover {
-                background: #a8a8a8;
-            }
-            """
-        )
 
         self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
@@ -226,40 +235,61 @@ class MainWindow(QMainWindow):
             self._plot_area.refresh()
 
     def _create_status_bar(self) -> None:
-        """Create and attach the status bar."""
+        """Create a status bar whose path and selection labels stay visible.
+
+        Permanent widgets are not cleared when a menu hover calls
+        ``QStatusBar.clearMessage``.
+        """
         status_bar = QStatusBar(self)
-        status_bar.setStyleSheet(
-            """
-            QStatusBar {
-                background: #fafafa;
-                border-top: 1px solid #e5e5e5;
-                color: #666666;
-            }
-            """
-        )
+        path_label = QLabel(status_bar)
+        path_label.setObjectName("StatusPathLabel")
+        selection_label = QLabel(status_bar)
+        selection_label.setObjectName("StatusSelectionLabel")
+        status_bar.addWidget(path_label, 1)
+        status_bar.addPermanentWidget(selection_label)
         self.setStatusBar(status_bar)
         self._status_bar = status_bar
+        self._path_label = path_label
+        self._selection_label = selection_label
 
     def _connect_controller_signals(self) -> None:
-        """Connect controller wrapper signals to window slots."""
+        """Connect controller wrapper signals to window slots.
+
+        UI refresh slots use :attr:`Qt.ConnectionType.QueuedConnection` so
+        failures inside plot/properties/hierarchy redraw go through
+        ``QApplication.notify`` (copyable error dialog) instead of being
+        swallowed on a same-thread DirectConnection emit.
+        """
+        queued = Qt.ConnectionType.QueuedConnection
+
         self._controller.undoRedoStateChanged.connect(self._on_undo_redo_state_changed)
-        self._controller.documentStateChanged.connect(self._on_document_state_changed)
-        self._controller.selectionChanged.connect(self._on_selection_changed)
+        self._controller.documentStateChanged.connect(self._on_document_state_changed, queued)
+        self._controller.selectionChanged.connect(self._on_selection_changed, queued)
 
         if self._spectrum_tree_panel is not None:
-            self._controller.spectrumHierarchyChanged.connect(self._spectrum_tree_panel.refresh)
+            self._controller.spectrumHierarchyChanged.connect(
+                self._spectrum_tree_panel.refresh, queued
+            )
             # Structure dots depend on regions/peaks created by auto-fit / optimize.
             self._controller.propertiesNeedsRefresh.connect(
-                self._spectrum_tree_panel.tree.refresh_structure_status
+                self._spectrum_tree_panel.tree.refresh_structure_status, queued
             )
         if self._plot_area is not None:
-            self._controller.plotNeedsRefresh.connect(self._plot_area.refresh)
-            self._controller.selectionChanged.connect(self._plot_area.refresh)
+            self._plot_refresh_timer.timeout.connect(self._plot_area.refresh)
+            # Coalesce slider previews: many plotNeedsRefresh signals become one redraw.
+            self._controller.plotNeedsRefresh.connect(self._schedule_plot_refresh)
+            self._controller.selectionChanged.connect(self._plot_area.refresh, queued)
+            self._plot_area.editModeChanged.connect(self._on_plot_edit_mode_changed)
         if self._properties_panel is not None:
-            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh)
+            self._controller.propertiesNeedsRefresh.connect(self._properties_panel.refresh, queued)
             self._controller.selectionChanged.connect(
-                self._properties_panel.on_controller_selection_changed
+                self._properties_panel.on_controller_selection_changed, queued
             )
+
+    def _schedule_plot_refresh(self) -> None:
+        """Queue a single plot redraw; further requests wait until it has run."""
+        if not self._plot_refresh_timer.isActive():
+            self._plot_refresh_timer.start()
 
     # ------------------------------------------------------------------
     # Slots for actions
@@ -273,35 +303,38 @@ class MainWindow(QMainWindow):
 
     def _on_open_triggered(self) -> None:
         """
-        Open a collection or spectrum file using the controller.
+        Open a collection or import one or more spectrum files.
 
         The dialog offers options to open a saved JSON collection or import
         spectra files supported by the import service (.txt, .csv, .dat, .vms,
-        .vamas) via :meth:`ControllerWrapper.import_spectra`.
+        .vamas) via :meth:`ControllerWrapper.import_spectra`. Multiple spectrum
+        files may be selected at once.
         """
-        filename, selected_filter = QFileDialog.getOpenFileName(
+        filenames, _selected_filter = QFileDialog.getOpenFileNames(
             self,
             "Open or import",
             "",
-            "Files (*.json *.txt *.csv *.dat *.vms *.vamas);;Collections (*.json);;"
+            "Files (*.json *.json.gz *.txt *.csv *.dat *.vms *.vamas);;"
+            "Collections (*.json *.json.gz);;"
             "Spectra (*.txt *.csv *.dat *.vms *.vamas);;All files (*)",
         )
-        if not filename:
+        if not filenames:
             return
 
-        suffix = Path(filename).suffix.lower()
-        if "Spectra" in selected_filter or suffix in {
-            ".txt",
-            ".csv",
-            ".dat",
-            ".vms",
-            ".vamas",
-        }:
-            self._controller.import_spectra(filename)
-        else:
+        spectrum_paths, collection_paths = split_open_paths(filenames)
+
+        if spectrum_paths:
+            self._controller.import_spectra([str(p) for p in spectrum_paths])
+        elif len(collection_paths) == 1:
             if not self._confirm_discard_changes():
                 return
-            self._controller.load_collection(filename)
+            self._controller.load_collection(collection_paths[0])
+        else:
+            self._show_info(
+                "Nothing to open",
+                "Select spectrum files to import, or a single JSON collection to open.",
+            )
+            return
 
         self._update_window_title()
         self._update_status_bar()
@@ -362,16 +395,32 @@ class MainWindow(QMainWindow):
         """Trigger a redo via the controller."""
         self._controller.redo()
 
-    def _on_auto_fit_triggered(self) -> None:
-        """Run segmenter then optimization for all selected spectra."""
-        spectrum_ids: list[str] = []
-        if self._spectrum_tree_panel is not None:
-            spectrum_ids = self._spectrum_tree_panel.tree.get_selected_spectrum_ids()
-        if not spectrum_ids:
-            self._show_info("No spectrum selected", "Select one or more spectra before auto fit.")
-            return
+    def _on_optimize_shortcut(self) -> None:
+        """Optimize the open spectrum, the selected region, or do nothing."""
+        optimize_from_selection(self._controller, self)
 
-        self._controller.auto_fit(spectrum_ids)
+    def _on_split_region_triggered(self, checked: bool = False) -> None:
+        """Toggle interactive split-region mode on the plot."""
+        if self._plot_area is None:
+            return
+        self._plot_area.set_edit_mode("split_region" if checked else None)
+
+    def _on_add_peak_at_point_triggered(self, checked: bool = False) -> None:
+        """Toggle interactive add-peak mode on the plot."""
+        if self._plot_area is None:
+            return
+        self._plot_area.set_edit_mode("add_peak" if checked else None)
+
+    def _on_plot_edit_mode_changed(self, mode: object) -> None:
+        """Keep hidden shortcut actions in sync with the plot edit mode."""
+        if self._action_split_region is not None:
+            self._action_split_region.blockSignals(True)
+            self._action_split_region.setChecked(mode == "split_region")
+            self._action_split_region.blockSignals(False)
+        if self._action_add_peak_at_point is not None:
+            self._action_add_peak_at_point.blockSignals(True)
+            self._action_add_peak_at_point.setChecked(mode == "add_peak")
+            self._action_add_peak_at_point.blockSignals(False)
 
     def _on_load_nn_model_triggered(self) -> None:
         """Open a file dialog and load an NN model into the service."""
@@ -389,7 +438,11 @@ class MainWindow(QMainWindow):
     def _on_app_parameters_triggered(self) -> None:
         """Open the application parameters dialog."""
         params = self._controller.get_app_parameters()
-        dialog = OptionsDialog(self)
+        dialog = OptionsDialog(
+            self,
+            peak_model_names=self._controller.query.get_peak_model_names(),
+            background_model_names=self._controller.query.get_background_model_names(),
+        )
         dialog.load_from_params(params)
 
         if not dialog.exec():
@@ -484,23 +537,29 @@ class MainWindow(QMainWindow):
         bool
             True if the user picked a path and the document was saved.
         """
-        filename, _ = QFileDialog.getSaveFileName(
+        filename, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save collection as",
             "",
-            "JSON files (*.json);;All files (*)",
+            "JSON files (*.json);;Gzip JSON (*.json.gz);;All files (*)",
         )
         if not filename:
             return False
 
-        self._controller.dump_collection(filename)
+        use_gzip = self._controller.orchestrator.params.default_serialization_use_gzip
+        fallback = ".json.gz" if use_gzip else ".json"
+        path = ensure_suffix_from_filter(filename, selected_filter, fallback=fallback)
+        # Filter may yield ".gz" from "*.json.gz"; normalize to the compound suffix.
+        if path.suffix.lower() == ".gz" and not path.name.lower().endswith(".json.gz"):
+            path = path.with_suffix(".json.gz")
+        self._controller.dump_collection(path)
         self._update_window_title()
         self._update_status_bar()
         return True
 
     def _update_window_title(self) -> None:
         """Set the window title from save path and dirty state."""
-        path: Path | None = self._controller.get_default_save_path()
+        path = self._controller.get_default_save_path()
 
         if path is None:
             name = "Untitled"
@@ -511,24 +570,18 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_NAME} - {dirty}{name}")
 
     def _update_status_bar(self) -> None:
-        """Refresh the status bar text with path, dirty flag, and selection."""
-        if self._status_bar is None:
+        """Refresh the path and the spectrum, region, and peak id labels."""
+        if self._path_label is None or self._selection_label is None:
             return
 
         path = self._controller.get_default_save_path()
         path_str = path.name if path is not None else "No file"
+        prefix = "* " if self._controller.is_dirty else ""
+        self._path_label.setText(f"{prefix}{path_str}")
 
         spectrum_id = self._controller.selected_spectrum_id
         region_id = self._controller.selected_region_id
         component_id = self._controller.selected_component_id
-
-        selection_parts: list[str] = []
-        if spectrum_id is not None:
-            selection_parts.append(f"Spectrum: {spectrum_id[:5]}")
-        if region_id is not None:
-            selection_parts.append(f"Region: {region_id[:5]}")
-        if component_id is not None:
-            selection_parts.append(f"Component: {component_id[:5]}")
 
         extra_selection = ""
         if self._spectrum_tree_panel is not None:
@@ -541,14 +594,16 @@ class MainWindow(QMainWindow):
                 if others > 0:
                     extra_selection = f" (+{others} spectra)"
 
-        selection_str_base = " | ".join(selection_parts) if selection_parts else "No selection"
-        selection_str = f"{selection_str_base}{extra_selection}"
-
-        if self._controller.is_dirty:
-            text = f"* {path_str} | {selection_str}"
-        else:
-            text = f"{path_str} | {selection_str}"
-        self._status_bar.showMessage(text)
+        self._selection_label.setText(
+            " | ".join(
+                (
+                    f"Spectrum: {_short_id(spectrum_id)}",
+                    f"Region: {_short_id(region_id)}",
+                    f"Peak: {_short_id(component_id)}",
+                )
+            )
+            + extra_selection
+        )
 
     def _confirm_discard_changes(self) -> bool:
         """
@@ -583,20 +638,37 @@ class MainWindow(QMainWindow):
         if not self._controller.is_dirty:
             return True
 
-        answer = QMessageBox.question(
-            self,
-            "Unsaved changes",
-            "Save changes before closing?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
-        )
-        if answer == QMessageBox.StandardButton.Save:
+        choice = self._prompt_unsaved_close()
+        if choice == "save":
             return self._try_save()
-        if answer == QMessageBox.StandardButton.Discard:
+        if choice == "discard":
             return True
         return False
+
+    def _prompt_unsaved_close(self) -> str:
+        """
+        Show the unsaved-changes close dialog.
+
+        Returns
+        -------
+        {"save", "discard", "cancel"}
+            User choice. Discard uses a short label so the button fits on Linux.
+        """
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Unsaved changes")
+        box.setText("Save changes before closing?")
+        save_btn = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        discard_btn = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(save_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == save_btn:
+            return "save"
+        if clicked == discard_btn:
+            return "discard"
+        return "cancel"
 
     def _show_info(self, title: str, message: str) -> None:
         """

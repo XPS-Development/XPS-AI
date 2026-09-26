@@ -102,6 +102,30 @@ def half_max_sigma(x: NDArray, y: NDArray, peak_index: int) -> float:
     return float((x[r_hm_idx] - x[l_hm_idx]) / 2)
 
 
+def amplitude_from_peak_height(height: float, sig: float, frac: float) -> float:
+    """
+    Pseudo-Voigt amplitude whose value at the center equals ``height``.
+
+    Parameters
+    ----------
+    height : float
+        Desired peak height above the baseline.
+    sig : float
+        Width parameter.
+    frac : float
+        Lorentzian fraction.
+
+    Returns
+    -------
+    float
+        Amplitude that produces ``height`` at the peak center.
+    """
+    shape_mult = frac / np.pi + (1.0 - frac) * np.sqrt(np.log(2) / np.pi)
+    if sig == 0.0 or shape_mult == 0.0:
+        return 0.0
+    return float(height * sig / shape_mult)
+
+
 def amp_from_height(y: NDArray, peak_index: int, sig: float, frac: float) -> float:
     """
     Guess pseudo-Voigt amplitude from peak height, sigma, and fraction.
@@ -122,5 +146,5 @@ def amp_from_height(y: NDArray, peak_index: int, sig: float, frac: float) -> flo
     float
         Amplitude estimate.
     """
-    shape_mult = frac / np.pi + (1 - frac) * np.sqrt(np.log(2) / np.pi)
-    return float((y[peak_index] - y.min()) * sig / shape_mult)
+    height = float(y[peak_index] - y.min())
+    return amplitude_from_peak_height(height, sig, frac)

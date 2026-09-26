@@ -224,13 +224,16 @@ class CommandRegistry:
         KeyError
             If the change type is not registered.
         """
-        # Handle BatchChange specially to avoid circular dependency
+        # Composite: apply each subcommand as it is built so later from_change
+        # calls see prior creates (e.g. CreatePeak then UpdateParameter on the
+        # new id). Mark the composite so execute()'s apply is a no-op once.
         if isinstance(change, CompositeChange):
             commands = []
             for sub_change in change.changes:
                 cmd = self.build(sub_change, ctx)
+                cmd.apply(ctx)
                 commands.append(cmd)
-            return CompositeCommand(commands=commands)
+            return CompositeCommand(commands=commands, applied_during_build=True)
 
         cmd_cls = self._registry[type(change)]
         return cmd_cls.from_change(change, ctx)

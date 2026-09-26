@@ -7,16 +7,19 @@ import pytest
 
 import core.fitting.optimization as optimization_module
 from core.dto import ComponentDTO, ParameterDTO, RegionDTO
+from core.evaluation import chi_square_contributions, chi_square_residual
 from core.fitting.optimization import (
     LmfitOptimizer,
     OptimizationContext,
     OptimizationPlanner,
     OptimizedComponent,
+    _norms_by_component,
     build_contexts,
     optimize,
     resolve_component_reference,
 )
 from core.math_models import PseudoVoigtPeakModel
+from core.math_models.model_funcs import pvoigt
 
 
 @pytest.fixture
@@ -327,6 +330,103 @@ class TestLmfitOptimizer:
         assert np.isclose(
             by_id["peakBB01xx"].parameters["amp"], by_id["peakAA01xx"].parameters["amp"] * 0.25
         )
+
+
+class TestChiSquareObjective:
+    """The fitter minimizes the same Poisson chi-squared shown on the plot."""
+
+    def test_residual_squares_equal_chi_square(self) -> None:
+        """Squared residuals sum to Σ (y - model)² / max(|y|, 1)."""
+        x = np.linspace(0.0, 10.0, 40)
+        measured = np.linspace(10.0, 400.0, 40)
+        component = _make_component("p1", "r1", {"amp": 50.0, "cen": 5.0, "sig": 1.0, "frac": 0.0})
+        ctx = OptimizationContext("r1", "s1", False, x, measured, (component,), measured_y=measured)
+        params = LmfitOptimizer()._to_params((component,))
+        residual = LmfitOptimizer.residual(params, (ctx,))
+        model = component.model.evaluate(x, measured, amp=50.0, cen=5.0, sig=1.0, frac=0.0)
+        assert np.allclose(residual, chi_square_residual(measured - model, measured))
+        assert np.isclose(
+            float(np.sum(residual**2)),
+            float(np.sum(chi_square_contributions(measured, model))),
+        )
+
+    def test_build_contexts_keeps_weights_on_measured_intensity(
+        self, dto_service, region_id: str
+    ) -> None:
+        """Fixed backgrounds are removed from the target, not from the variance."""
+        region, components = dto_service.get_region_repr(region_id, normalized=False)
+        ctx = build_contexts([(region, components)])[0]
+        assert ctx.measured_y is not None
+        assert np.allclose(ctx.measured_y, region.y)
+        assert not np.allclose(ctx.y, region.y)
+
+    def test_optimize_reduces_chi_square_of_a_counts_peak(self) -> None:
+        """A poor starting peak is moved toward the chi-squared minimum."""
+        x = np.linspace(-6.0, 6.0, 121)
+        measured = pvoigt(x, 4000.0, 0.2, 1.1, 0.1)
+        component = _make_component(
+            "p1", "r1", {"amp": 1500.0, "cen": 1.4, "sig": 2.0, "frac": 0.6}
+        )
+        ctx = OptimizationContext("r1", "s1", False, x, measured, (component,), measured_y=measured)
+
+        def _chi2(params: dict[str, float]) -> float:
+            model = component.model.evaluate(x, measured, **params)
+            return float(np.sum(chi_square_contributions(measured, model)))
+
+        before = _chi2({"amp": 1500.0, "cen": 1.4, "sig": 2.0, "frac": 0.6})
+        result = optimize((ctx,), method="least_squares")
+        fitted = result[0].parameters
+        assert _chi2(fitted) < before
+        assert fitted["cen"] == pytest.approx(0.2, abs=0.05)
+
+
+class TestSolverNormalization:
+    """Intensity parameters are O(1) inside the solver and raw in the result."""
+
+    def test_solver_sees_scaled_amplitude(self) -> None:
+        """An amplitude of several thousand is divided by the intensity span."""
+        x = np.linspace(0.0, 10.0, 40)
+        measured = np.linspace(1000.0, 5000.0, 40)
+        component = _make_component(
+            "p1", "r1", {"amp": 4000.0, "cen": 5.0, "sig": 1.0, "frac": 0.0}
+        )
+        ctx = build_contexts(
+            [(RegionDTO(id_="r1", parent_id="s1", normalized=False, x=x, y=measured), (component,))]
+        )[0]
+        assert ctx.norm_scale == pytest.approx(4000.0)
+        optimizer = LmfitOptimizer()
+        optimizer._build_component_index((component,))
+        optimizer._norm_by_component = _norms_by_component((ctx,))
+        params = optimizer._to_params((component,))
+        assert params["p1_amp"].value == pytest.approx(1.0)
+        assert params["p1_cen"].value == pytest.approx(5.0)
+
+    def test_expression_ratio_stays_in_raw_counts_across_scales(self) -> None:
+        """``amp = other * 0.5`` is enforced on counts even when regions differ in scale."""
+        x = np.linspace(-4.0, 4.0, 81)
+        y_a = 2000.0 + 6000.0 * np.exp(-(x**2))
+        y_b = 500.0 + 500.0 * np.exp(-(x**2))
+        leader = _make_component(
+            "peakA", "r1", {"amp": 6000.0, "cen": 0.0, "sig": 1.0, "frac": 0.0}
+        )
+        follower = _make_component(
+            "peakB",
+            "r2",
+            {"amp": 1000.0, "cen": 0.0, "sig": 1.0, "frac": 0.0},
+            amp_expr="peakA * 0.5",
+        )
+        contexts = build_contexts(
+            [
+                (RegionDTO(id_="r1", parent_id="s1", normalized=False, x=x, y=y_a), (leader,)),
+                (RegionDTO(id_="r2", parent_id="s2", normalized=False, x=x, y=y_b), (follower,)),
+            ]
+        )
+        result = optimize(contexts, method="least_squares")
+        by_id = {item.component_id: item for item in result}
+        assert by_id["peakB"].parameters["amp"] == pytest.approx(
+            by_id["peakA"].parameters["amp"] * 0.5
+        )
+        assert by_id["peakA"].parameters["amp"] > 100.0
 
 
 class TestOptimize:

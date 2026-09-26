@@ -41,22 +41,23 @@ def test_amp_is_non_negative() -> None:
 
 
 def test_sig_uses_fixed_soft_window() -> None:
-    """sig soft slider stays within 0.1 .. 30 when hard bounds are open."""
+    """sig soft slider stays within 0.1 .. 8 when hard bounds are open."""
     assert PseudoVoigtPeakModel.soft_parameter_range("sig", 1.5, -math.inf, math.inf) == (
         0.1,
-        30.0,
+        8.0,
     )
 
 
 def test_sig_respects_tighter_hard_bounds() -> None:
-    """Finite hard bounds clip the default sig soft window."""
-    assert PseudoVoigtPeakModel.soft_parameter_range("sig", 2.0, 0.5, 10.0) == (0.5, 10.0)
+    """Finite hard bounds clip the default sig soft window, and never exceed 8."""
+    assert PseudoVoigtPeakModel.soft_parameter_range("sig", 2.0, 0.5, 10.0) == (0.5, 8.0)
+    assert PseudoVoigtPeakModel.soft_parameter_range("sig", 2.0, 0.5, 4.0) == (0.5, 4.0)
 
 
 def test_registry_soft_range_matches_model_class() -> None:
     """Registry instances expose the same soft_parameter_range as the class."""
     model = ModelRegistry.get("pseudo-voigt")
-    assert model.soft_parameter_range("sig", 1.0, -math.inf, math.inf) == (0.1, 30.0)
+    assert model.soft_parameter_range("sig", 1.0, -math.inf, math.inf) == (0.1, 8.0)
 
 
 def test_background_intensity_soft_range() -> None:

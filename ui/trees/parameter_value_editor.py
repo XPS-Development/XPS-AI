@@ -8,40 +8,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QDoubleSpinBox, QSlider, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 _SLIDER_STEPS = 1000
-
-# Minimal editor-style slider: thin track, solid gray thumb (fully inside cell).
-_SLIDER_STYLE = """
-QSlider::groove:horizontal {
-    height: 2px;
-    background: #d0d0d0;
-    border: none;
-    border-radius: 1px;
-    margin: 0 6px;
-}
-QSlider::sub-page:horizontal,
-QSlider::add-page:horizontal {
-    background: #d0d0d0;
-    border: none;
-    border-radius: 1px;
-}
-QSlider::handle:horizontal {
-    width: 8px;
-    height: 8px;
-    margin: -3px 0;
-    border: none;
-    border-radius: 4px;
-    background: #6e6e6e;
-}
-QSlider::handle:horizontal:hover {
-    background: #555555;
-}
-QSlider::handle:horizontal:pressed {
-    background: #444444;
-}
-"""
 
 
 class ParameterValueEditor(QWidget):
@@ -110,6 +79,7 @@ class ParameterValueEditor(QWidget):
 
         decimals = 0 if self._slice_mode == "index" and self._region_id is not None else 4
         self._spin = QDoubleSpinBox(self)
+        self._spin.setObjectName("ParameterValueSpin")
         self._spin.setDecimals(decimals)
         self._spin.setRange(self._soft_lo, self._soft_hi)
         step = 1.0 if decimals == 0 else max((self._soft_hi - self._soft_lo) / 100.0, 1e-4)
@@ -121,11 +91,11 @@ class ParameterValueEditor(QWidget):
         self._spin.setFixedHeight(20)
 
         self._slider = QSlider(Qt.Orientation.Horizontal, self)
+        self._slider.setObjectName("ParameterValueSlider")
         self._slider.setRange(0, _SLIDER_STEPS)
         self._slider.setSingleStep(1)
         self._slider.setPageStep(max(_SLIDER_STEPS // 20, 1))
         self._slider.setFixedHeight(14)
-        self._slider.setStyleSheet(_SLIDER_STYLE)
         self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         layout = QVBoxLayout(self)
@@ -137,8 +107,6 @@ class ParameterValueEditor(QWidget):
         self.setMinimumWidth(90)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
-        self.setStyleSheet("ParameterValueEditor { background: transparent; }")
-        self._spin.setStyleSheet("QDoubleSpinBox { background: transparent; border: none; }")
 
         self._spin.valueChanged.connect(self._on_spin_changed)
         self._slider.valueChanged.connect(self._on_slider_changed)

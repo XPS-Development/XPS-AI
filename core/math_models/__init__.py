@@ -11,10 +11,12 @@ from .base_models import (
     ParameterSpec as ParameterSpec,
 )
 from .models import (
+    AsymPseudoVoigtPeakModel,
     ConstantBackgroundModel,
     LinearBackgroundModel,
     PseudoVoigtPeakModel,
     ShirleyBackgroundModel,
+    TailPseudoVoigtPeakModel,
 )
 from .normalization import NormalizationContext as NormalizationContext
 
@@ -49,6 +51,8 @@ class ModelRegistry:
 
 
 ModelRegistry.register(PseudoVoigtPeakModel)
+ModelRegistry.register(AsymPseudoVoigtPeakModel)
+ModelRegistry.register(TailPseudoVoigtPeakModel)
 ModelRegistry.register(ConstantBackgroundModel)
 ModelRegistry.register(LinearBackgroundModel)
 ModelRegistry.register(ShirleyBackgroundModel)

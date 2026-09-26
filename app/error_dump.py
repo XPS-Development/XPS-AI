@@ -1,13 +1,11 @@
-"""Persist unexpected exceptions to ``error_dumps`` and optionally show Qt dialogs."""
+"""Report unexpected exceptions to logs and an optional copyable Qt dialog."""
 
 from __future__ import annotations
 
 import functools
 import logging
-from datetime import datetime
-from pathlib import Path
 from traceback import format_exception
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection
@@ -19,14 +17,14 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 _ORCHESTRATOR_ERROR_USER_ATTR = "_ai_xps_orchestrator_error_user_notified"
-_ORCHESTRATOR_ERROR_DUMP_ATTR = "_ai_xps_orchestrator_error_dumped"
+_ORCHESTRATOR_ERROR_HANDLED_ATTR = "_ai_xps_orchestrator_error_handled"
 
 _user_exception_ui_enabled: bool = False
 
 
 def enable_user_exception_ui() -> None:
     """
-    Turn on Qt message boxes for failures caught by :func:`safe_execution`.
+    Turn on Qt dialogs for failures caught by :func:`safe_execution`.
 
     Call once a ``QApplication`` exists (typically right after constructing the
     application in ``main``). Headless tests and library use should leave this
@@ -38,51 +36,103 @@ def enable_user_exception_ui() -> None:
 
 def orchestrator_error_user_feedback_done(exc: BaseException) -> bool:
     """
-    Return True if ``exc`` was already persisted and shown via ``safe_execution``.
+    Return True if ``exc`` was already shown via :func:`report_exception`.
 
     Used by the Qt ``QApplication.notify`` override to avoid duplicate dialogs
-    and dump files for the same exception object.
+    for the same exception object.
 
     Parameters
     ----------
     exc
-        Exception propagated from orchestrator code.
+        Exception propagated from orchestrator or UI code.
 
     Returns
     -------
     bool
-        True when :func:`safe_execution` already handled user feedback.
+        True when user feedback was already shown for ``exc``.
     """
     return getattr(exc, _ORCHESTRATOR_ERROR_USER_ATTR, False)
 
 
-def _notify_orchestrator_error_ui(exc: BaseException, dump_path: Path) -> None:
-    """Show a modal error dialog when UI notifications are enabled."""
+def format_exception_report(exc: BaseException) -> str:
+    """
+    Build a plain-text report with exception type, message, and traceback.
+
+    Parameters
+    ----------
+    exc : BaseException
+        Exception to format.
+
+    Returns
+    -------
+    str
+        Multi-line report suitable for display or clipboard copy.
+    """
+    traceback_text = "".join(format_exception(exc))
+    return (
+        f"Exception type: {type(exc).__name__}\n"
+        f"Exception message: {exc}\n"
+        f"\n"
+        f"Traceback:\n"
+        f"\n"
+        f"{traceback_text}"
+    )
+
+
+def report_exception(
+    exc: BaseException,
+    *,
+    title: str = "Unexpected error",
+    context: str | None = None,
+) -> None:
+    """
+    Log ``exc`` and show a copyable error dialog when UI feedback is enabled.
+
+    Parameters
+    ----------
+    exc : BaseException
+        Exception to report.
+    title : str, optional
+        Dialog window title.
+    context : str or None, optional
+        Optional log/context label (e.g. function qualname).
+    """
+    if getattr(exc, _ORCHESTRATOR_ERROR_HANDLED_ATTR, False):
+        return
+    setattr(exc, _ORCHESTRATOR_ERROR_HANDLED_ATTR, True)
+
+    report = format_exception_report(exc)
+    if context:
+        logger.error("Error in %s\n%s", context, report)
+    else:
+        logger.error("%s", report)
+
     if not _user_exception_ui_enabled:
         return
-    try:
-        from PySide6.QtWidgets import QApplication, QMessageBox
-    except ImportError:
+    if orchestrator_error_user_feedback_done(exc):
         return
-    app = QApplication.instance()
-    if app is None:
-        return
-    app_any = cast(Any, app)
-    parent = app_any.activeWindow() if hasattr(app_any, "activeWindow") else None
-    QMessageBox.critical(
-        parent,
-        "Error",
-        f"{exc}\n\nDetails were saved to:\n{dump_path}",
-    )
+    _show_exception_dialog(title, report)
     setattr(exc, _ORCHESTRATOR_ERROR_USER_ATTR, True)
 
 
-def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
-    """Wrap a callable so failures are persisted, logged, and then re-raised.
+def _show_exception_dialog(title: str, details: str) -> None:
+    """Open the copyable exception dialog when a Qt application is running."""
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:
+        return
+    if QApplication.instance() is None:
+        return
+    from ui.dialogs.error_dialog import show_exception_dialog
 
-    On :class:`Exception`, writes ``error_dumps`` via :func:`save_error_dump`,
-    logs with :meth:`logging.Logger.exception`, and when
-    :func:`enable_user_exception_ui` has been called, shows ``QMessageBox``.
+    show_exception_dialog(title, details)
+
+
+def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
+    """Wrap a callable so failures are logged, shown to the user, then re-raised.
+
+    On :class:`Exception`, calls :func:`report_exception` (dialog when
+    :func:`enable_user_exception_ui` has been called), then re-raises.
 
     Parameters
     ----------
@@ -100,14 +150,10 @@ def safe_execution(func: Callable[_P, _R]) -> Callable[_P, _R]:
         try:
             return func(*args, **kwargs)
         except Exception as exc:
-            if not getattr(exc, _ORCHESTRATOR_ERROR_DUMP_ATTR, False):
-                dump_path = save_error_dump(exc)
-                setattr(exc, _ORCHESTRATOR_ERROR_DUMP_ATTR, True)
-                func_name = getattr(
-                    func, "__qualname__", getattr(func, "__name__", type(func).__name__)
-                )
-                logger.exception("Error in %s", func_name)
-                _notify_orchestrator_error_ui(exc, dump_path)
+            func_name = getattr(
+                func, "__qualname__", getattr(func, "__name__", type(func).__name__)
+            )
+            report_exception(exc, title="Error", context=func_name)
             raise
 
     return wrapper
@@ -154,42 +200,3 @@ def apply_safe_execution_to_class(
         if callable(attr):
             setattr(cls, name, safe_execution(attr))
     return cls
-
-
-def save_error_dump(exc: BaseException) -> Path:
-    """
-    Save an error dump with full traceback to the error_dumps folder.
-
-    The dump file is created under ``Path.cwd() / "error_dumps"`` with a
-    timestamped name. The file contains the exception type, message, and
-    full traceback.
-
-    Parameters
-    ----------
-    exc : BaseException
-        Exception instance to serialize.
-
-    Returns
-    -------
-    Path
-        Path to the written dump file.
-    """
-    dumps_dir = Path.cwd() / "error_dumps"
-    dumps_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"error_{timestamp}.txt"
-    dump_path = dumps_dir / filename
-
-    lines = format_exception(exc)
-    dump_text = "".join(lines)
-
-    header = [
-        f"Exception type: {type(exc).__name__}",
-        f"Exception message: {exc}",
-        "",
-        "Traceback:",
-        "",
-    ]
-    dump_path.write_text("\n".join(header) + dump_text, encoding="utf-8")
-    return dump_path

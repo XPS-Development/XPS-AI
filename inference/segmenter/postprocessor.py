@@ -47,6 +47,8 @@ class SegmenterPostprocessor:
         min_border_distance: int = 5,
         peak_model_name: str = "pseudo-voigt",
         background_model_name: str = "shirley",
+        peak_fallback_floor: float = 0.25,
+        peak_fallback_relative: float = 0.5,
     ) -> None:
         """Configure mask thresholding, smoothing, and default models.
 
@@ -64,6 +66,12 @@ class SegmenterPostprocessor:
             Registered peak model for ``guess_initial``.
         background_model_name : str, optional
             Registered background model for ``guess_initial``.
+        peak_fallback_floor : float, optional
+            Minimum raw peak-mask value used when a detected region has no
+            pixels above ``threshold`` (default 0.25).
+        peak_fallback_relative : float, optional
+            A fallback peak must also reach this fraction of the strongest
+            raw peak-mask value inside the region (default 0.5).
         """
         self._threshold = threshold
         self._smooth = smooth
@@ -71,6 +79,8 @@ class SegmenterPostprocessor:
         self._min_border_distance = min_border_distance
         self._peak_model_name = peak_model_name
         self._background_model_name = background_model_name
+        self._peak_fallback_floor = peak_fallback_floor
+        self._peak_fallback_relative = peak_fallback_relative
 
     def __call__(
         self,
@@ -104,7 +114,7 @@ class SegmenterPostprocessor:
                 f"Model output must contain {ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[0]!r} and {ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[1]!r}"
             )
         region_mask, max_mask = self._restrict_mask(region_raw, max_raw)
-        return self._get_parameters_from_masks(x, x_int, y, region_mask, max_mask)
+        return self._get_parameters_from_masks(x, x_int, y, region_mask, max_mask, max_raw=max_raw)
 
     def _smooth_mask(self, mask: NDArray) -> NDArray:
         """Smooth mask using moving average."""
@@ -134,6 +144,62 @@ class SegmenterPostprocessor:
         medians = [(t + f) // 2 for f, t in zip(borders[0::2], borders[1::2], strict=False)]
         return np.array(medians)
 
+    def _fallback_peak_indices(
+        self,
+        max_raw: NDArray,
+        x: NDArray,
+        x_int: NDArray,
+        start: int,
+        stop: int,
+    ) -> NDArray:
+        """Recover peak centers inside a region the hard threshold missed.
+
+        Used when the region mask is on but no peak-mask pixel exceeds
+        ``threshold``. Local maxima of the raw peak mask are kept when the
+        strongest one is at least ``peak_fallback_floor`` and each kept
+        maximum reaches ``peak_fallback_relative`` of that strongest value.
+        Indices are mapped onto the original energy grid and limited to
+        ``(start, stop)``.
+
+        Parameters
+        ----------
+        max_raw : NDArray
+            Raw peak-mask probabilities on the interpolated grid.
+        x : NDArray
+            Original spectrum energy axis.
+        x_int : NDArray
+            Interpolated energy axis aligned with ``max_raw``.
+        start, stop : int
+            Region bounds on the original grid, exclusive of the endpoints
+            used by the hard-threshold peak search.
+
+        Returns
+        -------
+        NDArray
+            Original-grid indices of recovered peaks, or an empty array.
+        """
+        if max_raw.size < 3:
+            return np.array([], dtype=int)
+        interior = (
+            np.flatnonzero((max_raw[1:-1] > max_raw[:-2]) & (max_raw[1:-1] >= max_raw[2:])) + 1
+        )
+        if interior.size == 0:
+            return np.array([], dtype=int)
+        mapped = np.array([recalculate_idx(int(i), x_int, x) for i in interior], dtype=int)
+        inside = (mapped > start) & (mapped < stop)
+        interior = interior[inside]
+        mapped = mapped[inside]
+        if interior.size == 0:
+            return np.array([], dtype=int)
+        scores = max_raw[interior]
+        strongest = float(scores.max())
+        if strongest < self._peak_fallback_floor:
+            return np.array([], dtype=int)
+        cutoff = max(self._peak_fallback_floor, self._peak_fallback_relative * strongest)
+        chosen = mapped[scores >= cutoff]
+        _, first = np.unique(chosen, return_index=True)
+        return chosen[np.sort(first)]
+
     def _guess_peaks(
         self, x: NDArray, y: NDArray, max_idxs: NDArray
     ) -> tuple[PeakDetectionResult, ...]:
@@ -154,6 +220,8 @@ class SegmenterPostprocessor:
         y: NDArray,
         region_mask: NDArray,
         max_mask: NDArray,
+        *,
+        max_raw: NDArray,
     ) -> list[SegmenterResult]:
         """Build RegionBounds from borders and max positions, mapped to original indices."""
         region_borders = self._find_borders(region_mask)
@@ -175,8 +243,10 @@ class SegmenterPostprocessor:
         result: list[SegmenterResult] = []
         borders = np.array(connected_region_borders)
         for i in range(0, len(borders) - 1, 2):
-            f, t = borders[i], borders[i + 1]
+            f, t = int(borders[i]), int(borders[i + 1])
             local_max_idxs = max_idxs[(max_idxs > f) & (max_idxs < t)]
+            if local_max_idxs.size == 0:
+                local_max_idxs = self._fallback_peak_indices(max_raw, x, x_int, f, t)
             if local_max_idxs.size != 0:
                 reg = RegionDetectionResult(start=int(f), stop=int(t))
                 peaks = self._guess_peaks(x, y, local_max_idxs)

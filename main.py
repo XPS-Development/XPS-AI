@@ -1,19 +1,19 @@
 """Application entry point: start the Qt main window."""
 
 import sys
-import traceback
 
 from PySide6.QtCore import QEvent, QObject
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from app.error_dump import (
     enable_user_exception_ui,
     orchestrator_error_user_feedback_done,
-    save_error_dump,
+    report_exception,
 )
 from ui.assets import APP_NAME, load_app_icon
 from ui.controller import ControllerWrapper
 from ui.main_window import MainWindow
+from ui.theme import install_theme
 
 
 class _SafeNotifyApplication(QApplication):
@@ -21,8 +21,8 @@ class _SafeNotifyApplication(QApplication):
     QApplication that catches Python exceptions during event delivery.
 
     Qt slots and other callbacks invoked through ``notify`` are wrapped so
-    failures are written to ``error_dumps`` and shown in a message box instead
-    of failing silently or terminating the process without feedback.
+    failures are shown in a copyable dialog instead of failing silently or
+    terminating the process without feedback.
     """
 
     def notify(self, receiver: QObject, event: QEvent) -> bool:
@@ -45,12 +45,8 @@ class _SafeNotifyApplication(QApplication):
         try:
             return super().notify(receiver, event)
         except Exception as exc:
-            if orchestrator_error_user_feedback_done(exc):
-                return False
-            dump_path = save_error_dump(exc)
-            message = f"{exc}\n\nDetails were saved to:\n{dump_path}"
-            parent = self.activeWindow()
-            QMessageBox.critical(parent, "Unexpected error", message)
+            if not orchestrator_error_user_feedback_done(exc):
+                report_exception(exc, title="Unexpected error")
             return False
 
 
@@ -67,30 +63,24 @@ def main() -> int:
         Exit code from the Qt event loop.
     """
     app = _SafeNotifyApplication(sys.argv)
+    install_theme(app)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
     if getattr(sys, "frozen", False):
         app.setWindowIcon(load_app_icon())
     enable_user_exception_ui()
 
-    window: MainWindow | None = None
     try:
         controller = ControllerWrapper()
         window = MainWindow(controller)
         window.show()
         return app.exec()
     except Exception as exc:
-        dump_path = save_error_dump(exc)
-        message = (
-            "An unexpected error occurred and the application needs to close.\n\n"
-            f"Details were saved to:\n{dump_path}"
+        report_exception(
+            exc,
+            title="Unexpected error",
+            context="application startup",
         )
-        if window is not None:
-            QMessageBox.critical(window, "Unexpected error", message)
-        else:
-            # Fallback if the window was not created yet.
-            sys.stderr.write(message + "\n")
-            traceback.print_exception(exc)
         return 1
 
 

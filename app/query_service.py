@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from core.evaluation import SpectrumPlotData, plot_data_from_evaluation, spectrum_bundle
+from core.evaluation import (
+    SpectrumPlotData,
+    peak_area,
+    plot_data_from_evaluation,
+    region_area,
+    spectrum_bundle,
+)
 from core.math_models import ModelRegistry
 
 from .dto_service import DTOService
@@ -359,6 +365,40 @@ class QueryService:
             Component data transfer object.
         """
         return self._dto.get_component(component_id, normalized=normalized)
+
+    def get_peak_area(self, component_id: str) -> float | None:
+        """
+        Return the fitted area of a peak, or None for a background.
+
+        Parameters
+        ----------
+        component_id : str
+            Identifier of the component.
+
+        Returns
+        -------
+        float or None
+            Fitted peak area from the component model, or None when the
+            component does not define one.
+        """
+        return peak_area(self.get_component_dto(component_id, normalized=False))
+
+    def get_region_area(self, region_id: str) -> float:
+        """
+        Return the sum of fitted peak areas in a region.
+
+        Parameters
+        ----------
+        region_id : str
+            Identifier of the region.
+
+        Returns
+        -------
+        float
+            Sum of peak areas. Background is excluded; an empty region is 0.
+        """
+        _region, components = self.get_region_dto_repr(region_id, normalized=False)
+        return region_area(components)
 
     def get_spectrum_dto_repr(
         self,

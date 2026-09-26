@@ -6,7 +6,8 @@ LmfitOptimizer, and optimize()
 for use as a standalone library or via the app layer. Uses core.dto projections;
 """
 
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -14,8 +15,9 @@ from lmfit import Parameters, minimize
 from lmfit.minimizer import MinimizerResult
 
 from core.dto import ComponentDTO, RegionDTO
-from core.evaluation import component_y
+from core.evaluation import chi_square_residual, component_y
 from core.fitting.expressions import parse_parameter_expression, resolve_component_reference
+from core.math_models.normalization import NormalizationContext
 
 __all__ = [
     "LmfitOptimizer",
@@ -46,6 +48,17 @@ class OptimizationContext:
     Region-like context with components to optimize.
 
     Holds region arrays (x, y) plus components to optimize.
+
+    Attributes
+    ----------
+    measured_y : np.ndarray or None
+        Original intensity used as the Poisson weight. When ``None``, ``y``
+        is used. Set this when fixed components have been subtracted from
+        ``y`` so the variance still follows the measured counts.
+    norm_offset, norm_scale : float or None
+        Intensity normalization for solver variables. Intensity parameters are
+        presented to the optimizer in this space and mapped back to counts
+        before the model is evaluated.
     """
 
     id_: str
@@ -54,6 +67,9 @@ class OptimizationContext:
     x: np.ndarray
     y: np.ndarray
     components: tuple[ComponentDTO, ...]
+    measured_y: np.ndarray | None = None
+    norm_offset: float | None = None
+    norm_scale: float | None = None
 
 
 def build_contexts(
@@ -64,8 +80,8 @@ def build_contexts(
 
     Subtracts contributions of fully fixed components (all parameters have
     ``vary=False``) from ``y`` and includes only components to optimize.
-    Works with RegionDTO and ComponentDTO
-    (e.g. DTOs from DTOService.get_region_repr).
+    Poisson weights stay on the original measured intensity. Works with
+    RegionDTO and ComponentDTO (e.g. DTOs from DTOService.get_region_repr).
 
     Parameters
     ----------
@@ -80,7 +96,8 @@ def build_contexts(
     contexts: list[OptimizationContext] = []
 
     for region, components in region_reprs:
-        y = region.y.copy()
+        measured = np.asarray(region.y, dtype=float).copy()
+        y = measured.copy()
         cmps_to_opt: list[ComponentDTO] = []
 
         for cmp in components:
@@ -89,6 +106,16 @@ def build_contexts(
             else:
                 cmps_to_opt.append(cmp)
 
+        norm_offset: float | None = None
+        norm_scale: float | None = None
+        try:
+            norm = NormalizationContext.from_array(measured)
+        except ValueError:
+            norm = None
+        if norm is not None:
+            norm_offset = norm.offset
+            norm_scale = norm.scale
+
         ctx = OptimizationContext(
             id_=region.id_,
             parent_id=region.parent_id,
@@ -96,6 +123,9 @@ def build_contexts(
             x=region.x,
             y=y,
             components=tuple(cmps_to_opt),
+            measured_y=measured,
+            norm_offset=norm_offset,
+            norm_scale=norm_scale,
         )
         contexts.append(ctx)
 
@@ -291,11 +321,119 @@ class OptimizationPlanner:
         return groups
 
 
+def _context_norm(ctx: OptimizationContext) -> NormalizationContext | None:
+    """Return the solver normalization for ``ctx``, if intensity scaling is active."""
+    if ctx.norm_offset is None or ctx.norm_scale is None or ctx.norm_scale <= 0.0:
+        return None
+    return NormalizationContext(offset=ctx.norm_offset, scale=ctx.norm_scale)
+
+
+def _norms_by_component(
+    contexts: Sequence[OptimizationContext],
+) -> dict[str, NormalizationContext]:
+    """Map each fitted component id to the normalization of its region."""
+    norms: dict[str, NormalizationContext] = {}
+    for ctx in contexts:
+        norm = _context_norm(ctx)
+        if norm is None:
+            continue
+        for cmp in ctx.components:
+            norms[cmp.id_] = norm
+    return norms
+
+
+def _solver_token_to_raw(token: str, model: object, norm: NormalizationContext) -> str:
+    """Embed a solver variable in an expression that yields its raw value."""
+    expr = token
+    if getattr(model, "use_scale", False):
+        expr = f"(({expr})*({norm.scale!r}))"
+    if getattr(model, "use_offset", False):
+        expr = f"(({expr})+({norm.offset!r}))"
+    return expr
+
+
+def _raw_expr_to_solver(raw_expr: str, model: object, norm: NormalizationContext) -> str:
+    """Map a raw-unit expression result into solver space."""
+    expr = f"({raw_expr})"
+    if getattr(model, "use_offset", False):
+        expr = f"({expr}-({norm.offset!r}))"
+    if getattr(model, "use_scale", False):
+        expr = f"({expr}/({norm.scale!r}))"
+    return expr
+
+
+def _expression_in_solver_space(
+    expr: str,
+    *,
+    owner: ComponentDTO,
+    owner_param: str,
+    components: Mapping[str, ComponentDTO],
+    norms: Mapping[str, NormalizationContext],
+) -> str:
+    """Rewrite a raw-unit lmfit expression so it constrains solver variables.
+
+    Component references that are intensity parameters are denormalized to
+    counts inside the expression. When the constrained parameter itself is an
+    intensity, the whole result is mapped back into solver space.
+    """
+    tokens: list[tuple[str, ComponentDTO, str]] = []
+    for cmp in components.values():
+        for pname in cmp.parameters:
+            if pname not in cmp.model.normalization_target_parameters:
+                continue
+            if cmp.id_ not in norms:
+                continue
+            tokens.append((f"{cmp.id_}_{pname}", cmp, pname))
+    tokens.sort(key=lambda item: len(item[0]), reverse=True)
+
+    rewritten = expr
+    placeholders: dict[str, str] = {}
+    for index, (token, cmp, _pname) in enumerate(tokens):
+        pattern = rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])"
+        if re.search(pattern, rewritten) is None:
+            continue
+        placeholder = f"__solver_ref_{index}__"
+        rewritten = re.sub(pattern, placeholder, rewritten)
+        placeholders[placeholder] = _solver_token_to_raw(token, cmp.model, norms[cmp.id_])
+    for placeholder, raw_token in placeholders.items():
+        rewritten = rewritten.replace(placeholder, raw_token)
+
+    owner_norm = norms.get(owner.id_)
+    if owner_param in owner.model.normalization_target_parameters and owner_norm is not None:
+        rewritten = _raw_expr_to_solver(rewritten, owner.model, owner_norm)
+    return rewritten
+
+
+def _solver_value_to_raw(
+    value: float,
+    component: ComponentDTO,
+    name: str,
+    norm: NormalizationContext | None,
+) -> float:
+    """Map one solver parameter back to counts when it is intensity-normalized."""
+    if norm is None or name not in component.model.normalization_target_parameters:
+        return value
+    return float(component.model.denormalize_value(value, norm))
+
+
+def _raw_value_to_solver(
+    value: float,
+    component: ComponentDTO,
+    name: str,
+    norm: NormalizationContext | None,
+) -> float:
+    """Map one raw parameter into solver space when it is intensity-normalized."""
+    if norm is None or name not in component.model.normalization_target_parameters:
+        return value
+    return float(component.model.normalize_value(value, norm))
+
+
 class LmfitOptimizer:
     """Maps ComponentDTO parameters to lmfit.Parameters and resolves component-scoped expressions."""
 
     def __init__(self) -> None:
         self._component_index: dict[str, ComponentDTO] = {}
+        self._norm_by_component: dict[str, NormalizationContext] = {}
 
     def _build_component_index(self, components: Sequence[ComponentDTO]) -> None:
         self._component_index = {cmp.id_: cmp for cmp in components}
@@ -331,8 +469,9 @@ class LmfitOptimizer:
 
         # Add every parameter without expr first so cross-component references
         # resolve regardless of region/component iteration order.
-        pending_expr: list[tuple[str, str]] = []
+        pending_expr: list[tuple[str, str, ComponentDTO, str]] = []
         for cmp in components:
+            norm = self._norm_by_component.get(cmp.id_)
             for pname, param_obj in cmp.parameters.items():
                 full_name = f"{cmp.id_}_{pname}"
                 expr: str | None = None
@@ -348,17 +487,25 @@ class LmfitOptimizer:
 
                 params.add(
                     full_name,
-                    value=param_obj.value,
-                    min=param_obj.lower,
-                    max=param_obj.upper,
+                    value=_raw_value_to_solver(float(param_obj.value), cmp, pname, norm),
+                    min=_raw_value_to_solver(float(param_obj.lower), cmp, pname, norm),
+                    max=_raw_value_to_solver(float(param_obj.upper), cmp, pname, norm),
                     vary=param_obj.vary if expr is None else False,
                     expr=None,
                 )
                 if expr is not None:
-                    pending_expr.append((full_name, expr))
+                    pending_expr.append((full_name, expr, cmp, pname))
 
-        for full_name, expr in pending_expr:
-            params[full_name].set(expr=expr)
+        for full_name, expr, cmp, pname in pending_expr:
+            params[full_name].set(
+                expr=_expression_in_solver_space(
+                    expr,
+                    owner=cmp,
+                    owner_param=pname,
+                    components=self._component_index,
+                    norms=self._norm_by_component,
+                )
+            )
 
         return params
 
@@ -367,14 +514,25 @@ class LmfitOptimizer:
         params: Parameters,
         contexts: tuple[OptimizationContext, ...],
     ) -> np.ndarray:
-        """Return concatenated residuals for all optimization contexts."""
+        """Return concatenated Poisson chi-squared residuals.
+
+        The sum of squares of the result is the chi-squared criterion
+        ``Σ (target - model)² / max(|measured|, 1)``.
+        """
         residuals: list[np.ndarray] = []
         for ctx in contexts:
             y_model = np.zeros_like(ctx.y)
+            norm = _context_norm(ctx)
             for cmp in ctx.components:
-                param_dict = {pname: params[f"{cmp.id_}_{pname}"].value for pname in cmp.parameters}
+                param_dict = {
+                    pname: _solver_value_to_raw(
+                        float(params[f"{cmp.id_}_{pname}"].value), cmp, pname, norm
+                    )
+                    for pname in cmp.parameters
+                }
                 y_model += cmp.model.evaluate(ctx.x, ctx.y, **param_dict)
-            residuals.append(ctx.y - y_model)
+            measured = ctx.y if ctx.measured_y is None else ctx.measured_y
+            residuals.append(chi_square_residual(ctx.y - y_model, measured))
 
         return np.concatenate(residuals)
 
@@ -388,9 +546,12 @@ class LmfitOptimizer:
             params_obj = getattr(result, "params", None)
             if params_obj is None:
                 raise RuntimeError("lmfit MinimizerResult missing `params` attribute")
+            norm = self._norm_by_component.get(cmp.id_)
             for pname in cmp.parameters:
                 opt_pname = f"{cmp.id_}_{pname}"
-                params[pname] = params_obj[opt_pname].value
+                params[pname] = _solver_value_to_raw(
+                    float(params_obj[opt_pname].value), cmp, pname, norm
+                )
             output.append(
                 OptimizedComponent(
                     component_id=cmp.id_,
@@ -422,6 +583,7 @@ class LmfitOptimizer:
         """
         components = tuple(cmp for ctx in contexts for cmp in ctx.components)
         self._build_component_index(components)
+        self._norm_by_component = _norms_by_component(contexts)
         params = self._to_params(components, expression_plan=expression_plan)
         result = minimize(
             self.residual,

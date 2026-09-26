@@ -62,17 +62,26 @@ def test_update_parameter_command_undo_restores_old_value(ctx, peak_id):
 
 
 def test_update_parameter_command_undo_without_apply_raises(ctx, peak_id):
-    """undo without prior apply raises RuntimeError."""
+    """undo without a captured old value raises RuntimeError."""
     cmd = UpdateParameterCommand(
         component_id=peak_id,
         name="cen",
         parameter_field="value",
         new_value=5.0,
-        old_value=None,
         normalized=False,
     )
     with pytest.raises(RuntimeError, match="Command was not applied"):
         cmd.undo(ctx)
+
+
+def test_update_parameter_command_undo_restores_none_expr(ctx, peak_id):
+    """undo may restore expr to None (valid previous value)."""
+    change = UpdateParameter(peak_id, "amp", "expr", "pOther")
+    cmd = UpdateParameterCommand.from_change(change, ctx)
+    assert cmd._old_value is None
+    cmd.apply(ctx)
+    cmd.undo(ctx)
+    assert ctx.component.get_parameter(peak_id, "amp")["expr"] is None
 
 
 def test_rename_component_command_apply_undo(ctx, peak_id):

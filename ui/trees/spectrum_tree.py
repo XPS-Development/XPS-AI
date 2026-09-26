@@ -1,36 +1,30 @@
 """Spectrum tree model and widget grouped by file and group metadata."""
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QPersistentModelIndex, QPoint, Qt
 from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QTreeView, QWidget
 
-from .component_colors import (
-    STATUS_COLOR_EMPTY,
-    STATUS_COLOR_PEAKS,
-    STATUS_COLOR_REGIONS,
+from ..controller import ControllerWrapper
+from ..dialogs.export_options_dialog import export_peaks, export_spectra
+from .grouping import (
+    ID_DISPLAY_CHARS,
+    STATUS_COLORS,
+    collect_spectrum_ids,
+    iter_spectrum_groups,
+    structure_status,
 )
-from .controller import ControllerWrapper
-from .export_options_dialog import export_peaks, export_spectra
 from .name_id_delegate import (
     ComponentColorRole,
     NameWithIdDelegate,
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
-from .tree_style import EditorTreeView, apply_editor_menu_style, apply_editor_tree_style
+from .tree_search import make_search_text
+from .tree_style import EditorTreeView, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
-_ID_DISPLAY_CHARS = 5
-
-_STATUS_COLORS = {
-    "empty": STATUS_COLOR_EMPTY,
-    "regions": STATUS_COLOR_REGIONS,
-    "peaks": STATUS_COLOR_PEAKS,
-}
-_STATUS_RANK = {"empty": 0, "regions": 1, "peaks": 2}
 
 
 @dataclass
@@ -52,6 +46,9 @@ class SpectrumTreeItem:
         Parent item in the hierarchy.
     spectrum_id : str or None, optional
         Identifier of the spectrum associated with this item (for leaf nodes).
+    search_text : str, optional
+        Lowercase text the search box matches. Spectrum rows include the
+        spectrum id and the ids of its regions and components.
     """
 
     _label: str
@@ -59,6 +56,7 @@ class SpectrumTreeItem:
     kind: str
     parent: Optional["SpectrumTreeItem"] = None
     spectrum_id: str | None = None
+    search_text: str = ""
     _row: int = 0
     children: list["SpectrumTreeItem"] = field(default_factory=list)
 
@@ -169,12 +167,12 @@ class SpectrumTreeModel(QAbstractItemModel):
 
         if role == ObjectIdPrefixRole and item.spectrum_id is not None:
             if self._controller.get_app_parameters().show_spectrum_id_in_tree:
-                return item.spectrum_id[:_ID_DISPLAY_CHARS]
+                return item.spectrum_id[:ID_DISPLAY_CHARS]
             return None
 
         if role == ComponentColorRole:
             status = self._structure_status_for_item(item)
-            return _STATUS_COLORS.get(status)
+            return STATUS_COLORS.get(status)
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             return item.label
@@ -183,37 +181,16 @@ class SpectrumTreeModel(QAbstractItemModel):
 
     def _structure_status_for_item(self, item: SpectrumTreeItem) -> str:
         """Return aggregated structural status for spectrum/file/group nodes."""
-        if item.kind == "spectrum" and item.spectrum_id is not None:
-            return self._controller.query.get_spectrum_structure_status(item.spectrum_id)
-
-        if item.kind in {"file", "group"}:
-            best = "empty"
-            for spectrum_id in self._spectrum_ids_in_subtree(item):
-                status = self._controller.query.get_spectrum_structure_status(spectrum_id)
-                if _STATUS_RANK[status] > _STATUS_RANK[best]:
-                    best = status
-            return best
-
-        return "empty"
-
-    def _spectrum_ids_in_subtree(self, item: SpectrumTreeItem) -> list[str]:
-        """Collect spectrum ids under ``item`` in tree order."""
-        ids: list[str] = []
-        seen: set[str] = set()
-
-        def walk(node: SpectrumTreeItem) -> None:
-            if (
-                node.kind == "spectrum"
-                and node.spectrum_id is not None
-                and node.spectrum_id not in seen
-            ):
-                seen.add(node.spectrum_id)
-                ids.append(node.spectrum_id)
-            for child in node.children:
-                walk(child)
-
-        walk(item)
-        return ids
+        return structure_status(
+            self._controller.query,
+            kind=item.kind,
+            object_id=item.spectrum_id,
+            child_spectrum_ids=collect_spectrum_ids(
+                item,
+                children=lambda node: node.children,
+                spectrum_id_of=lambda node: node.spectrum_id if node.kind == "spectrum" else None,
+            ),
+        )
 
     def flags(self, index: QModelIndex | QPersistentModelIndex) -> Qt.ItemFlag:
         """Return enabled and selectable flags for valid indexes."""
@@ -230,42 +207,35 @@ class SpectrumTreeModel(QAbstractItemModel):
         self.beginResetModel()
         self._root_item.children.clear()
 
-        grouped = defaultdict(lambda: defaultdict(list))
-
-        for spectrum_id in self._controller.query.get_all_spectra_ids():
-            metadata = self._controller.query.get_metadata(spectrum_id)
-
-            file_attr = getattr(metadata, "file", None)
-            group_attr = getattr(metadata, "group", None)
-            name_attr = getattr(metadata, "name", None)
-
-            grouped[file_attr][group_attr].append((name_attr, spectrum_id))
-
-        for file, groups in sorted(grouped.items()):
+        for file_row in iter_spectrum_groups(self._controller.query):
             file_item = SpectrumTreeItem(
-                _label=file,
-                label=file.split("/")[-1] or "No file",
+                _label=file_row.raw_key,
+                label=file_row.label,
                 kind="file",
                 parent=self._root_item,
+                search_text=make_search_text(file_row.label),
             )
             self._root_item.append_child(file_item)
 
-            for group, spectra in sorted(groups.items()):
+            for group_row in file_row.groups:
                 group_item = SpectrumTreeItem(
                     kind="group",
                     parent=file_item,
-                    _label=group,
-                    label=group or "No group",
+                    _label=group_row.raw_key,
+                    label=group_row.label,
+                    search_text=make_search_text(group_row.label),
                 )
                 file_item.append_child(group_item)
 
-                for name, spectrum_id in sorted(spectra):
+                for spectrum in group_row.spectra:
+                    object_ids = self._controller.query.get_subtree_ids(spectrum.spectrum_id)
                     spectrum_item = SpectrumTreeItem(
-                        _label=name,
-                        label=name or "No name",
+                        _label=spectrum.raw_name,
+                        label=spectrum.label,
                         kind="spectrum",
                         parent=group_item,
-                        spectrum_id=spectrum_id,
+                        spectrum_id=spectrum.spectrum_id,
+                        search_text=make_search_text(spectrum.label, *object_ids),
                     )
 
                     group_item.append_child(spectrum_item)
@@ -583,7 +553,6 @@ class SpectrumTreeWidget(EditorTreeView):
         if menu.isEmpty():
             return
 
-        apply_editor_menu_style(menu)
         menu.popup(self.viewport().mapToGlobal(pos))
 
     def _handle_rename(self, item: SpectrumTreeItem) -> None:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-# Peak palette: first is blue, second orange, then cycled by peak index.
+import zlib
+
+# Peak palette. A peak's color is a stable function of its id, not its order.
 PEAK_COLORS: list[str] = [
     "#1f77b4",
     "#ff7f0e",
@@ -27,20 +29,21 @@ STATUS_COLOR_REGIONS = "#e6a817"
 STATUS_COLOR_PEAKS = "#2ca02c"
 
 
-def color_for_component(*, kind: str = "peak", index: int = 0) -> str:
+def color_for_component(*, kind: str = "peak", component_id: str | None = None) -> str:
     r"""
     Return a CSS-like color string for a component.
 
-    Peak colors are taken from :data:`PEAK_COLORS` by ``index`` modulo the
-    palette length, so the first peak is always blue, the second orange, and
-    so on, independent of spectrum or component id.
+    Peak colors come from :data:`PEAK_COLORS` hashed from ``component_id``.
+    Adding, removing, or replacing another peak does not recolor this one,
+    and replacing a peak's model keeps the color because the id stays.
 
     Parameters
     ----------
     kind : str, optional
         ``\"peak\"`` or ``\"background\"``. Backgrounds use a fixed gray.
-    index : int, optional
-        Zero-based peak order within a region. Ignored for backgrounds.
+    component_id : str or None, optional
+        Peak identifier. Ignored for backgrounds. Missing ids use the first
+        palette color.
 
     Returns
     -------
@@ -49,4 +52,7 @@ def color_for_component(*, kind: str = "peak", index: int = 0) -> str:
     """
     if kind == "background":
         return BACKGROUND_COLOR
-    return PEAK_COLORS[index % len(PEAK_COLORS)]
+    if not component_id:
+        return PEAK_COLORS[0]
+    slot = zlib.crc32(component_id.encode("utf-8")) % len(PEAK_COLORS)
+    return PEAK_COLORS[slot]

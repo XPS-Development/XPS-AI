@@ -9,6 +9,7 @@ from core.math_models.base_models import (
 from core.math_models.models import (
     ConstantBackgroundModel,
     LinearBackgroundModel,
+    PseudoVoigtPeakModel,
     ShirleyBackgroundModel,
 )
 
@@ -31,6 +32,15 @@ def test_parametric_model_contract():
 def test_constant_background_schema_all_inactive_for_optimization():
     """Constant model is fully fixed in schema (optimization subtracts its y contribution)."""
     assert all(not s.vary for s in ConstantBackgroundModel.parameter_schema)
+
+
+def test_area_comes_from_the_base_model():
+    """Peaks report ``amp``; models without an area parameter report None."""
+    peak = PseudoVoigtPeakModel()
+    assert peak.area({"amp": 2.5, "cen": 0.0, "sig": 1.0, "frac": 0.5}) == 2.5
+    assert peak.area({"cen": 0.0}) is None
+    assert peak.area({"amp": float("nan")}) is None
+    assert ConstantBackgroundModel().area({"const": 1.0}) is None
 
 
 def test_linear_background_has_mixed_vary_shirley_all_fixed():
