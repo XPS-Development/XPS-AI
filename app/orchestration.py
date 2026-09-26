@@ -38,6 +38,7 @@ from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
 from .parameters import AppParameters
+from .paths import resolve_resource_path
 from .query_service import QueryService
 from .serialization import SerializationService
 from .usecases import (
@@ -84,7 +85,7 @@ class AppOrchestrator:
         self._executor = CommandExecutor(self.__ctx, self.__stack, create_default_registry())
 
         self._nn = NNService(
-            model_path=params.nn_model_path,
+            model_path=resolve_resource_path(params.nn_model_path),
             pred_threshold=params.nn_pred_threshold,
             smooth=params.nn_smooth,
             interp_num=params.nn_interp_num,
@@ -154,7 +155,7 @@ class AppOrchestrator:
         parameters; other services read parameters lazily when invoked.
         """
         self._nn = NNService(
-            model_path=self._params.nn_model_path,
+            model_path=resolve_resource_path(self._params.nn_model_path),
             pred_threshold=self._params.nn_pred_threshold,
             smooth=self._params.nn_smooth,
             interp_num=self._params.nn_interp_num,
@@ -350,7 +351,10 @@ class AppOrchestrator:
         model_path : str or Path
             Path to the NN model file.
         """
-        self._nn.load_model(model_path)
+        resolved = resolve_resource_path(model_path)
+        if resolved is None:
+            return
+        self._nn.load_model(resolved)
 
     def run_segmenter(
         self,

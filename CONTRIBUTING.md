@@ -88,13 +88,13 @@ The installer is built on 64-bit Windows. PyInstaller freezes the application, a
    uv sync
    ```
 
-2. `build/XPS-AI.spec` packages `model.onnx` from the repository root. The checked-in weights live at `assets/models/model.onnx`, so copy them before freezing:
+2. Copy the version from `pyproject.toml` into the installer script:
 
    ```powershell
-   copy assets\models\model.onnx model.onnx
+   uv run python build/sync_version.py
    ```
 
-3. Freeze the application from `build/` (the spec paths are relative to that directory). PyInstaller is pulled in for this step only, outside the locked dependency groups:
+3. Freeze the application. `build/XPS-AI.spec` packages `assets/models/model.onnx` and `assets/icons` from the repository, using paths relative to the spec file. PyInstaller is pulled in for this step only, outside the locked dependency groups:
 
    ```powershell
    cd build
@@ -103,16 +103,10 @@ The installer is built on 64-bit Windows. PyInstaller freezes the application, a
 
    Git Bash can run the same step with `build/build_app_pyi.sh`. The frozen app is `build/pyi_dist/XPS-AI/XPS-AI.exe`.
 
-4. Copy the version from `pyproject.toml` into the installer script:
-
-   ```powershell
-   uv run python build/sync_version.py
-   ```
-
-5. Compile `build/XPS-AI.iss` with the Inno Setup compiler. Paths in that script are relative to `build/`:
+4. Compile `build/XPS-AI.iss` with the Inno Setup compiler. Paths in that script are relative to `build/`:
 
    ```powershell
    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" build\XPS-AI.iss
    ```
 
-   The installer is written to `build\iss_build\xps-ai_<version>_x64.exe`. The version in the filename is the `MyAppVersion` define, which step 4 copies from `pyproject.toml`.
+   The installer is written to `build\iss_build\xps-ai_<version>_x64.exe`. The version in the filename is the `MyAppVersion` define, which step 2 copies from `pyproject.toml`.
