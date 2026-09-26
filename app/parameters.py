@@ -29,6 +29,7 @@ class AppParameters:
     region_slice_display_mode: Literal["value", "index"] = "value"
     show_id_in_properties_tree: bool = True
     show_residuals_plot: bool = True
+    invert_x_axis: bool = True
 
     # ---- Import service parameters ----
     import_use_binding_energy: bool = True

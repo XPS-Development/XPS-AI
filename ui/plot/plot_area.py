@@ -2,28 +2,62 @@
 pyqtgraph-based plot area for spectrum visualization.
 
 Displays the selected spectrum with raw data, background, peaks, model,
-and optional residuals. Driven by ``ControllerWrapper`` selection and signals,
+and an optional chi-squared subplot. Driven by ``ControllerWrapper`` selection and signals,
 using precomputed plot data from the application query layer.
 """
 
 from collections.abc import Iterable
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 import pyqtgraph as pg
 from pyqtgraph.GraphicsScene.mouseEvents import HoverEvent, MouseClickEvent, MouseDragEvent
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QResizeEvent,
+    QShortcut,
+)
 from PySide6.QtWidgets import QLabel, QMenu, QVBoxLayout, QWidget
 
 from core.evaluation import PlotCurve, SpectrumPlotData
 
-from .component_colors import color_for_component
-from .context_menus import (
+from ..component_colors import color_for_component
+from ..controller import ControllerWrapper
+from ..trees.context_menus import (
     SpectrumContextMenuActions,
     attach_region_context_actions,
     attach_spectrum_context_actions,
 )
-from .controller import ControllerWrapper
+
+PlotEditMode = Literal["split_region", "add_peak"]
+_CROSSHAIR_COLOR = QColor("#c62828")
+
+
+_RED_CROSSHAIR: QCursor | None = None
+
+
+def _red_crosshair_cursor() -> QCursor:
+    """System cursor: a red cross, composited with the pointer (no widget repaint)."""
+    global _RED_CROSSHAIR
+    if _RED_CROSSHAIR is not None:
+        return _RED_CROSSHAIR
+    size = 64
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setPen(QPen(_CROSSHAIR_COLOR, 1))
+    mid = size // 2
+    painter.drawLine(mid, 0, mid, size - 1)
+    painter.drawLine(0, mid, size - 1, mid)
+    painter.end()
+    _RED_CROSSHAIR = QCursor(pixmap, mid, mid)
+    return _RED_CROSSHAIR
+
 
 # Curve styling constants
 PEN_BACKGROUND = pg.mkPen(color="k", width=1, style=Qt.PenStyle.DashLine)
@@ -52,6 +86,8 @@ class DoubleClickAutoRangeViewBox(pg.ViewBox):
 
     RectMode uses the left button to draw a zoom rectangle (single-button friendly).
     A double left-click resets the visible range via :meth:`~pyqtgraph.ViewBox.autoRange`.
+    While a plot edit mode is active, left-click commits the edit and left-drag
+    zoom / double-click auto-range are suppressed.
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -64,21 +100,46 @@ class DoubleClickAutoRangeViewBox(pg.ViewBox):
         """
         super().__init__(**kwargs)
         self.setMouseMode(pg.ViewBox.RectMode)
+        self._edit_host: PlotAreaWidget | None = None
+
+    def set_edit_host(self, host: "PlotAreaWidget | None") -> None:
+        """Attach the plot area that owns interactive edit modes."""
+        self._edit_host = host
 
     def mouseClickEvent(self, ev: MouseClickEvent) -> None:
         """
-        Reset range on double left-click; otherwise delegate to the base ViewBox.
+        Commit an edit, reset range on double left-click, or delegate.
 
         Parameters
         ----------
         ev : MouseClickEvent
             Scene click event from pyqtgraph.
         """
+        host = self._edit_host
+        if host is not None and host.edit_mode is not None:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                ev.accept()
+                if not ev.double():
+                    coord = self.mapSceneToView(ev.scenePos())
+                    host.commit_edit_at(float(coord.x()), float(coord.y()))
+                return
         if ev.button() == Qt.MouseButton.LeftButton and ev.double():
             ev.accept()
             self.autoRange()
             return
         super().mouseClickEvent(ev)
+
+    def mouseDragEvent(self, ev: MouseDragEvent, axis: int | None = None) -> None:
+        """Swallow left-button zoom drags while an edit mode is active."""
+        host = self._edit_host
+        if (
+            host is not None
+            and host.edit_mode is not None
+            and ev.button() == Qt.MouseButton.LeftButton
+        ):
+            ev.accept()
+            return
+        super().mouseDragEvent(ev, axis=axis)
 
 
 class VieBoxCustomContextMenu(DoubleClickAutoRangeViewBox):
@@ -111,7 +172,15 @@ class VieBoxCustomContextMenu(DoubleClickAutoRangeViewBox):
 
     def _create_menu(self) -> QMenu:
         menu = QMenu()
-        self._spectrum_menu_actions = attach_spectrum_context_actions(menu, self._controller, None)
+        widget = self.getViewWidget()
+        host = widget.parent() if widget is not None else None
+        self._spectrum_menu_actions = attach_spectrum_context_actions(
+            menu,
+            self._controller,
+            widget,
+            on_enter_split_mode=getattr(host, "enter_split_region_mode", None),
+            on_enter_add_peak_mode=getattr(host, "enter_add_peak_mode", None),
+        )
         return menu
 
     def _applyMenuEnabled(self) -> None:
@@ -247,18 +316,32 @@ class InteractiveRegion(pg.LinearRegionItem):
             controller,
             region_id,
             dialog_parent,
+            on_enter_split_mode=getattr(dialog_parent, "enter_split_region_mode", None),
+            on_enter_add_peak_mode=getattr(dialog_parent, "enter_add_peak_mode", None),
         )
         self._update_menu_enabled_state()
 
     def mouseClickEvent(self, ev: MouseClickEvent) -> None:
         """
-        Select the region, show menus, or auto-range on double left-click.
+        Select the region, show menus, commit an edit, or auto-range.
 
         Parameters
         ----------
         ev : MouseClickEvent
             Click event from the graphics scene.
         """
+        edit_host = self._dialog_parent
+        edit_mode = getattr(edit_host, "edit_mode", None)
+        if edit_mode is not None and ev.button() == Qt.MouseButton.LeftButton:
+            ev.accept()
+            if not ev.double():
+                vb = self.getViewBox()
+                if vb is not None:
+                    coord = vb.mapSceneToView(ev.scenePos())
+                    commit = getattr(edit_host, "commit_edit_at", None)
+                    if commit is not None:
+                        commit(float(coord.x()), float(coord.y()))
+            return
         if ev.button() == Qt.MouseButton.LeftButton and ev.double():
             ev.accept()
             vb = self.getViewBox()
@@ -332,7 +415,7 @@ class PlotAreaWidget(QWidget):
     Plot widget displaying the selected spectrum with fitted components.
 
     Shows main plot (raw spectrum, background, peaks, model), a separate
-    residuals subplot with shared x-axis and locked y-axis, optional ROI
+    chi-squared subplot with shared x-axis and locked y-axis, optional ROI
     for the selected region, cursor (x, y) overlay, and context menu for
     region-aware actions. Refreshes on collection or selection changes via
     the connected controller signals.
@@ -342,11 +425,14 @@ class PlotAreaWidget(QWidget):
     _main_plot : RegionContextPlotWidget
         Main spectrum and fit curves.
     _res_plot : pg.PlotWidget
-        Residuals subplot, x-linked to the main ViewBox.
+        Chi-squared subplot, x-linked to the main ViewBox.
+    editModeChanged : Signal
+        Emits the active :data:`PlotEditMode` or ``None`` when the mode changes.
     """
 
     _main_plot: RegionContextPlotWidget
     _res_plot: pg.PlotWidget
+    editModeChanged: Signal = Signal(object)
 
     def __init__(
         self,
@@ -369,6 +455,11 @@ class PlotAreaWidget(QWidget):
         self._cursor_label: QLabel | None = None
         self._last_plot_data: SpectrumPlotData | None = None
         self._last_spectrum_id: str | None = None
+        self._drawn_curve_items: list[pg.PlotDataItem] = []
+        self._drawn_curve_key: tuple[Any, ...] | None = None
+        self._edit_mode: PlotEditMode | None = None
+
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -381,7 +472,11 @@ class PlotAreaWidget(QWidget):
         self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         layout.addWidget(self._main_plot, stretch=1)
 
-        # Residuals plot (shared x-axis, locked y)
+        vb = self._main_plot.getViewBox()
+        if isinstance(vb, DoubleClickAutoRangeViewBox):
+            vb.set_edit_host(self)
+
+        # Chi-squared plot (shared x-axis, locked y)
         self._res_plot = pg.PlotWidget(
             parent=self,
             viewBox=DoubleClickAutoRangeViewBox(enableMenu=False),
@@ -395,21 +490,147 @@ class PlotAreaWidget(QWidget):
         self._res_plot.getViewBox().enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
         layout.addWidget(self._res_plot, stretch=0)
 
+        self._chi_label = QLabel(self._res_plot)
+        self._chi_label.setObjectName("PlotChiSquareLabel")
+        self._chi_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._chi_label.hide()
+
         # Cursor (x, y) overlay on main plot
         self._cursor_label = QLabel(self._main_plot)
         self._cursor_label.setObjectName("PlotCursorLabel")
         self._cursor_label.setText("x: —  y: —")
         self._cursor_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
+        self._escape_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self._escape_shortcut.activated.connect(self._clear_edit_mode)
+        self._escape_shortcut.setEnabled(False)
+
         class _SceneWithMouseSignal(Protocol):
             sigMouseMoved: Any
 
         scene = cast(_SceneWithMouseSignal, self._main_plot.scene())
         scene.sigMouseMoved.connect(self._on_main_plot_mouse_moved)
+        self._sync_x_axis_direction()
+
+    @property
+    def edit_mode(self) -> PlotEditMode | None:
+        """Active interactive plot edit mode, or ``None``."""
+        return self._edit_mode
+
+    def enter_split_region_mode(self) -> None:
+        """Toggle or enter the split-region edit mode."""
+        if self._edit_mode == "split_region":
+            self.set_edit_mode(None)
+        else:
+            self.set_edit_mode("split_region")
+
+    def enter_add_peak_mode(self) -> None:
+        """Toggle or enter the add-peak-at-point edit mode."""
+        if self._edit_mode == "add_peak":
+            self.set_edit_mode(None)
+        else:
+            self.set_edit_mode("add_peak")
+
+    def set_edit_mode(self, mode: PlotEditMode | None) -> None:
+        """
+        Enable or disable an interactive plot edit mode.
+
+        Parameters
+        ----------
+        mode : PlotEditMode or None
+            Mode to activate, or ``None`` to leave edit mode.
+        """
+        if mode == self._edit_mode:
+            return
+        self._edit_mode = mode
+        self._escape_shortcut.setEnabled(mode is not None)
+        self._sync_edit_cursor()
+        if mode is not None:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.editModeChanged.emit(mode)
+
+    def _clear_edit_mode(self) -> None:
+        """Leave the current edit mode (Escape)."""
+        self.set_edit_mode(None)
+
+    def _sync_edit_cursor(self) -> None:
+        """Red crosshair over the spectrum; arrow on the band between the plots.
+
+        The crosshair belongs on the view box only. Qt remembers the viewport
+        cursor the first time the pointer enters that item and restores it
+        outside the data area. A crosshair stored there stays on the axis band
+        between the two plots after the mode ends.
+        """
+        view_box = self._main_plot.getViewBox()
+        if self._edit_mode is None:
+            view_box.unsetCursor()
+            arrow = QCursor(Qt.CursorShape.ArrowCursor)
+            # unsetCursor restores whatever Qt stored, which may be the cross.
+            self._main_plot.viewport().setCursor(arrow)
+            self._main_plot.setCursor(arrow)
+            return
+        view_box.setCursor(_red_crosshair_cursor())
+
+    def commit_edit_at(self, x: float, y: float) -> None:
+        """
+        Apply the active edit mode at plot coordinates ``(x, y)``.
+
+        Clicks outside every region are ignored. A click inside a region
+        performs the edit and leaves the mode.
+
+        Parameters
+        ----------
+        x : float
+            Axis (energy) coordinate under the cursor.
+        y : float
+            Intensity coordinate under the cursor (used as peak amplitude).
+        """
+        mode = self._edit_mode
+        if mode is None:
+            return
+        region_id = self._region_under_x(x)
+        if region_id is None:
+            return
+        if mode == "split_region":
+            self._controller.split_region(region_id, x)
+        elif mode == "add_peak":
+            self._controller.create_cursor_peak(region_id, x, y)
+        self.set_edit_mode(None)
+
+    def _region_under_x(self, x: float) -> str | None:
+        """
+        Return the region containing ``x``, preferring the selection then width.
+
+        Parameters
+        ----------
+        x : float
+            Axis coordinate.
+
+        Returns
+        -------
+        str or None
+            Region id, or ``None`` if no region covers ``x``.
+        """
+        spectrum_id = self._controller.selected_spectrum_id
+        if spectrum_id is None:
+            return None
+        candidates: list[tuple[float, str]] = []
+        for region_id in self._controller.query.get_regions_ids(spectrum_id):
+            start, stop = self._controller.query.get_region_slice(region_id, mode="value")
+            lo, hi = (start, stop) if start <= stop else (stop, start)
+            if lo <= x <= hi:
+                candidates.append((abs(float(hi) - float(lo)), region_id))
+        if not candidates:
+            return None
+        selected = self._controller.selected_region_id
+        if selected is not None and any(rid == selected for _, rid in candidates):
+            return selected
+        candidates.sort(key=lambda item: item[0])
+        return candidates[0][1]
 
     def _on_main_plot_mouse_moved(self, pos: QPointF) -> None:
         """
-        Update the overlay label from the cursor position in scene coordinates.
+        Update the overlay label and edit guide from the cursor position.
 
         Parameters
         ----------
@@ -424,6 +645,7 @@ class PlotAreaWidget(QWidget):
             self._cursor_label.setText(f"x: {coord.x():.4g}  y: {coord.y():.4g}")
         else:
             self._cursor_label.setText("x: —  y: —")
+        self._position_cursor_label()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         """
@@ -436,17 +658,24 @@ class PlotAreaWidget(QWidget):
         """
         super().resizeEvent(event)
         self._position_cursor_label()
+        self._position_chi_label()
 
     def refresh(self) -> None:
         """
         Redraw plots from the controller's current spectrum selection.
 
         Loads data via :meth:`QueryService.get_spectrum_plot_data`,
-        updates ROIs, and repaints the main and residuals plots. If no spectrum
+        updates ROIs, and repaints the main and chi-squared plots. If no spectrum
         is selected, clears the plot area.
         """
         spectrum_id = self._controller.selected_spectrum_id
+        self._sync_x_axis_direction()
         if spectrum_id is None:
+            self.clear_plot()
+            return
+        if not self._controller.query.check_object_exists(spectrum_id):
+            # Stale selection after delete/undo — clear before redrawing.
+            self._controller.set_selection(None)
             self.clear_plot()
             return
 
@@ -456,21 +685,76 @@ class PlotAreaWidget(QWidget):
         self._sync_residuals_visibility()
         self._sync_rois_for_spectrum(spectrum_id=spectrum_id)
         self._draw_spectrum(plot_data)
+        self._update_chi_label(plot_data)
         self._position_cursor_label()
 
+    def _viewbox_rect(self, plot: pg.PlotWidget) -> QRect:
+        """
+        Return the data area of ``plot`` in that widget's coordinates.
+
+        Falls back to the area right of the fixed left axis when the view box
+        has not been laid out yet.
+        """
+        scene_rect = plot.getViewBox().sceneBoundingRect()
+        if scene_rect.width() >= 1.0 and scene_rect.height() >= 1.0:
+            top_left = plot.mapFromScene(scene_rect.topLeft())
+            bottom_right = plot.mapFromScene(scene_rect.bottomRight())
+            rect = QRect(top_left, bottom_right).normalized()
+            if rect.width() >= 1 and rect.height() >= 1:
+                return rect
+        return QRect(
+            _LEFT_AXIS_WIDTH,
+            0,
+            max(plot.width() - _LEFT_AXIS_WIDTH, 0),
+            max(plot.height(), 1),
+        )
+
     def _position_cursor_label(self) -> None:
-        """Place the coordinate overlay in the upper-right of the main plot."""
-        if self._cursor_label is not None:
-            self._cursor_label.adjustSize()
-            self._cursor_label.move(self._main_plot.width() - self._cursor_label.width() - 8, 8)
+        """Keep the coordinate readout inside the main plot's data area, top-right."""
+        if self._cursor_label is None:
+            return
+        self._cursor_label.adjustSize()
+        rect = self._viewbox_rect(self._main_plot)
+        x = rect.right() - self._cursor_label.width() - 6
+        self._cursor_label.move(max(x, rect.left() + 4), rect.top() + 4)
+
+    def _position_chi_label(self) -> None:
+        """Keep the χ² readout inside the error plot's data area, clear of the axis."""
+        if not self._chi_label.isVisible():
+            return
+        self._chi_label.adjustSize()
+        rect = self._viewbox_rect(self._res_plot)
+        x = rect.left() + 6
+        max_x = rect.right() - self._chi_label.width() - 4
+        if max_x >= rect.left():
+            x = min(x, max_x)
+        self._chi_label.move(x, rect.top() + 2)
+
+    def _update_chi_label(self, plot_data: SpectrumPlotData) -> None:
+        """Show the summed χ² criterion for the curves on the error plot."""
+        stat = plot_data.chi_square
+        if stat is None or not self._res_plot.isVisible():
+            self._chi_label.hide()
+            return
+        reduced = stat.reduced_chi_square
+        if reduced is None:
+            text = f"χ² = {stat.chi_square:.6g}"
+        else:
+            text = f"χ² = {stat.chi_square:.6g}    χ²/dof = {reduced:.4g}"
+        self._chi_label.setText(text)
+        self._chi_label.show()
+        self._position_chi_label()
 
     def clear_plot(self) -> None:
-        """Clear curve items, residuals, and region ROIs."""
+        """Clear curve items, the chi-squared subplot, and region ROIs."""
         self._main_plot.clear()
         self._res_plot.clear()
+        self._chi_label.hide()
         self._clear_rois()
         self._last_plot_data = None
         self._last_spectrum_id = None
+        self._drawn_curve_items = []
+        self._drawn_curve_key = None
 
     def _clear_rois(self) -> None:
         """Detach every ``InteractiveRegion`` from the main plot."""
@@ -480,9 +764,20 @@ class PlotAreaWidget(QWidget):
         self._roi_region_ids_in_plot.clear()
 
     def _sync_residuals_visibility(self) -> None:
-        """Toggle residuals subplot visibility from application parameters."""
+        """Toggle the chi-squared subplot visibility from application parameters."""
         params = self._controller.get_app_parameters()
         self._res_plot.setVisible(bool(getattr(params, "show_residuals_plot", True)))
+
+    def _sync_x_axis_direction(self) -> None:
+        """Invert both X axes when ``AppParameters.invert_x_axis`` is set.
+
+        The chi-squared plot is X-linked, but inversion is per view, so both
+        view boxes are updated.
+        """
+        params = self._controller.get_app_parameters()
+        inverted = bool(getattr(params, "invert_x_axis", True))
+        self._main_plot.getViewBox().invertX(inverted)
+        self._res_plot.getViewBox().invertX(inverted)
 
     def _sync_rois_for_spectrum(self, *, spectrum_id: str) -> None:
         """
@@ -608,18 +903,21 @@ class PlotAreaWidget(QWidget):
 
     def _draw_spectrum(self, plot_data: SpectrumPlotData) -> None:
         """
-        Render the main spectrum stack and optional residuals subplot.
+        Render the main spectrum stack and optional chi-squared subplot.
 
         Clears both plot widgets, re-attaches existing ``InteractiveRegion``
-        items, and draws precomputed curves on the main and residuals plots.
+        items, and draws precomputed curves on the main and chi-squared plots.
 
         Parameters
         ----------
         plot_data : SpectrumPlotData
             Display-ready curves from the application query layer.
         """
+        if self._try_update_drawn_curves(plot_data):
+            return
         self._main_plot.clear()
         self._res_plot.clear()
+        self._drawn_curve_items = []
 
         # Re-add ROIs after clearing to keep them visible, but only once per redraw.
         self._roi_region_ids_in_plot.clear()
@@ -630,7 +928,8 @@ class PlotAreaWidget(QWidget):
         for curve in plot_data.curves:
             if curve.kind == "residual":
                 if self._res_plot.isVisible():
-                    self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                    item = self._res_plot.plot(curve.x, curve.y, pen=self._pen_for_curve(curve))
+                    self._drawn_curve_items.append(item)
                 continue
 
             if curve.kind == "raw":
@@ -644,10 +943,14 @@ class PlotAreaWidget(QWidget):
                     symbolBrush=_RAW_COLOR,
                 )
                 item.setZValue(0)
+                # Points accept left-clicks by default and swallow the edit mode.
+                self._pass_clicks_during_edit(item.scatter)
+                self._drawn_curve_items.append(item)
                 continue
 
             pen = self._pen_for_curve(curve)
             item = self._main_plot.plot(curve.x, curve.y, pen=pen)
+            self._drawn_curve_items.append(item)
             if curve.kind == "model":
                 item.setZValue(30)
                 continue
@@ -658,6 +961,7 @@ class PlotAreaWidget(QWidget):
                 item.setZValue(20 if selected else 5)
                 if curve.component_id is not None:
                     item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
+                    self._pass_clicks_during_edit(item.curve)
                     cid = curve.component_id
                     item.sigClicked.connect(
                         lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
@@ -666,10 +970,13 @@ class PlotAreaWidget(QWidget):
             if curve.kind == "peak" and curve.component_id is not None:
                 item.setZValue(20 if self._is_selected_component(curve.component_id) else 10)
                 item.setCurveClickable(True, width=_CURVE_CLICK_WIDTH)
+                self._pass_clicks_during_edit(item.curve)
                 cid = curve.component_id
                 item.sigClicked.connect(
                     lambda _item, _ev, component_id=cid: self._on_curve_clicked(component_id)
                 )
+
+        self._drawn_curve_key = self._curve_draw_key(plot_data)
 
         if self._res_plot.isVisible():
             if plot_data.residual_y_range is not None:
@@ -679,8 +986,53 @@ class PlotAreaWidget(QWidget):
 
         self._align_plot_axes()
 
+    def _curve_draw_key(self, plot_data: SpectrumPlotData) -> tuple[Any, ...]:
+        """Identity of the current curves, ignoring y so a slider drag can reuse items."""
+        curves = tuple(
+            (curve.kind, curve.component_id, curve.peak_index, int(curve.x.shape[0]))
+            for curve in plot_data.curves
+            if curve.kind != "residual" or self._res_plot.isVisible()
+        )
+        return (self._controller.selected_component_id, curves)
+
+    def _try_update_drawn_curves(self, plot_data: SpectrumPlotData) -> bool:
+        """
+        Write new y values into existing curve items.
+
+        Returns False when the curve set changed and a full rebuild is required.
+        """
+        if not self._drawn_curve_items or self._drawn_curve_key != self._curve_draw_key(plot_data):
+            return False
+        curves = [
+            curve
+            for curve in plot_data.curves
+            if curve.kind != "residual" or self._res_plot.isVisible()
+        ]
+        if len(curves) != len(self._drawn_curve_items):
+            return False
+        for item, curve in zip(self._drawn_curve_items, curves, strict=True):
+            item.setData(curve.x, curve.y)
+        if self._res_plot.isVisible():
+            if plot_data.residual_y_range is not None:
+                self._res_plot.setYRange(*plot_data.residual_y_range)
+            else:
+                self._res_plot.setYRange(-1, 1)
+        return True
+
+    def _pass_clicks_during_edit(self, item: Any) -> None:
+        """Let left-clicks through while an edit mode is active."""
+        original = item.mouseClickEvent
+
+        def _mouse_click(ev: MouseClickEvent) -> None:
+            if self._edit_mode is not None and ev.button() == Qt.MouseButton.LeftButton:
+                ev.ignore()
+                return
+            original(ev)
+
+        item.mouseClickEvent = _mouse_click
+
     def _align_plot_axes(self) -> None:
-        """Keep main and residuals left axes the same width so plot areas line up."""
+        """Keep main and chi-squared left axes the same width so plot areas line up."""
         self._main_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
         self._res_plot.getAxis("left").setWidth(_LEFT_AXIS_WIDTH)
 
@@ -726,7 +1078,7 @@ class PlotAreaWidget(QWidget):
         if curve.kind == "model":
             return PEN_MODEL
         if curve.kind == "peak":
-            color = color_for_component(kind="peak", index=curve.peak_index or 0)
+            color = color_for_component(kind="peak", component_id=curve.component_id)
             if is_selected:
                 width = _PEAK_WIDTH_SELECTED
             elif has_selection:

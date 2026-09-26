@@ -194,6 +194,24 @@ def test_remove_spectrum_emits_all(
     assert counts["document"] == 1
 
 
+def test_remove_selected_spectrum_clears_selection(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+    region_id: str,
+) -> None:
+    """Deleting the selected spectrum clears selection before UI refresh."""
+    del qapp
+    ctrl = ControllerWrapper(collection=simple_collection)
+    ctrl.set_selection(spectrum_id, region_id)
+
+    ctrl.full_remove_object(spectrum_id)
+
+    assert ctrl.selected_spectrum_id is None
+    assert ctrl.selected_region_id is None
+    assert not ctrl.query.check_object_exists(spectrum_id)
+
+
 def test_auto_fit_emits_once_for_two_internal_executes(
     qapp: QApplication,
     simple_collection,

@@ -8,7 +8,7 @@ They encapsulate "how" to apply and undo changes against the core data model.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import asdict
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from core.metadata import Metadata
 from core.objects import Background, CoreObject, Peak, Spectrum
@@ -33,6 +33,8 @@ from .changes import (
     UpdateRegionSlice,
 )
 from .refresh import UiRefresh
+
+_OLD_VALUE_UNSET: object = object()
 
 
 class Command(ABC):
@@ -69,7 +71,7 @@ class UpdateParameterCommand(Command):
         name: str,
         parameter_field: ParameterField,
         new_value: str | bool | float | None,
-        old_value: str | bool | float | None = None,
+        old_value: str | bool | float | object | None = _OLD_VALUE_UNSET,
         normalized: bool = False,
     ) -> None:
         """
@@ -83,10 +85,11 @@ class UpdateParameterCommand(Command):
             Parameter name.
         parameter_field : str
             Field of the parameter to update.
-        new_value : str | bool | float
+        new_value : str | bool | float | None
             New value for the parameter field.
         old_value : str | bool | float | None, optional
-            Old value for undo (typically set by from_change).
+            Old value for undo (typically set by from_change). ``None`` is a
+            valid previous value (e.g. clearing or setting ``expr``).
         normalized : bool, default=False
             Whether the new value is normalized.
         """
@@ -143,13 +146,14 @@ class UpdateParameterCommand(Command):
 
     def undo(self, ctx: CoreContext) -> None:
         """Restore the previous parameter value."""
-        if self._old_value is None:
+        if self._old_value is _OLD_VALUE_UNSET:
             raise RuntimeError("Command was not applied")
+        restored = cast(str | bool | float | None, self._old_value)
         ctx.component.set_parameter(
             self.component_id,
             self.name,
             normalized=self.normalized,
-            **{self.parameter_field: self._old_value},
+            **{self.parameter_field: restored},
         )
 
 
@@ -744,7 +748,12 @@ class CompositeCommand(Command):
             "CompositeCommand is built from CompositeChange by CommandRegistry"
         )
 
-    def __init__(self, *, commands: list[Command]) -> None:
+    def __init__(
+        self,
+        *,
+        commands: list[Command],
+        applied_during_build: bool = False,
+    ) -> None:
         """
         Initialize a composite command.
 
@@ -752,11 +761,20 @@ class CompositeCommand(Command):
         ----------
         commands : list[Command]
             List of commands to execute.
+        applied_during_build : bool, optional
+            When True, the next :meth:`apply` is a no-op because subcommands
+            were already applied while the registry built this composite
+            (so later ``from_change`` calls could see new objects). Cleared
+            after that skip so undo/redo still re-applies correctly.
         """
         self.commands = commands
+        self._applied_during_build = applied_during_build
 
     def apply(self, ctx: CoreContext) -> None:
-        """Apply all commands in order."""
+        """Apply all commands in order (or skip once if already applied at build)."""
+        if self._applied_during_build:
+            self._applied_during_build = False
+            return
         for cmd in self.commands:
             cmd.apply(ctx)
 

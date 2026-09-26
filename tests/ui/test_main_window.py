@@ -41,6 +41,8 @@ def window(
     # Bypass the unsaved-changes prompt during fixture teardown.
     monkeypatch.setattr(win, "_confirm_close", lambda: True)
     win.close()
+    win.deleteLater()
+    QApplication.processEvents()
 
 
 def test_window_title_shows_dirty_marker_for_untitled(window: MainWindow) -> None:
@@ -126,6 +128,24 @@ def test_close_event_ignored_when_user_cancels(
     window.closeEvent(event)
     event.ignore.assert_called_once()
     event.accept.assert_not_called()
+
+
+def test_selection_ids_stay_after_status_message_cleared(window: MainWindow) -> None:
+    """Spectrum, region, and peak ids stay after a menu clears the status message."""
+    assert window._selection_label is not None
+    assert window._selection_label.text() == "Spectrum: — | Region: — | Peak: —"
+
+    window._controller.set_selection("s1", "region-1", "peak-9")
+    QApplication.processEvents()
+
+    expected = "Spectrum: s1 | Region: regio | Peak: peak-"
+    assert window._selection_label.text() == expected
+
+    status_bar = window.statusBar()
+    assert status_bar is not None
+    status_bar.showMessage("menu tip")
+    status_bar.clearMessage()
+    assert window._selection_label.text() == expected
 
 
 def test_close_event_accepted_when_confirmed(

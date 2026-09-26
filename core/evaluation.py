@@ -5,6 +5,7 @@ Provides module-level functions that operate on DTO projections
 (ComponentDTO, RegionDTO, SpectrumDTO) for model evaluation without domain state.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -31,6 +32,7 @@ class RegionEvaluationResult(RegionDTO):
     background: ComponentEvaluationResult | None
     model: NDArray
     residuals: NDArray
+    n_free_parameters: int
 
 
 @dataclass(frozen=True)
@@ -55,11 +57,124 @@ class PlotCurve:
 
 
 @dataclass(frozen=True)
+class FitChiSquare:
+    """
+    Poisson chi-squared criterion for the plotted fit.
+
+    Attributes
+    ----------
+    chi_square : float
+        Sum of per-channel contributions ``(y - model)² / max(|y|, 1)``.
+    n_points : int
+        Number of channels included in the sum.
+    n_free_parameters : int
+        Varied parameters that are not bound by an expression.
+    """
+
+    chi_square: float
+    n_points: int
+    n_free_parameters: int
+
+    @property
+    def reduced_chi_square(self) -> float | None:
+        """Return reduced chi-square, or None when degrees of freedom are not positive."""
+        dof = self.n_points - self.n_free_parameters
+        if dof <= 0:
+            return None
+        return self.chi_square / dof
+
+
+@dataclass(frozen=True)
 class SpectrumPlotData:
     """Display-ready plot series derived from a spectrum evaluation."""
 
     curves: tuple[PlotCurve, ...]
     residual_y_range: tuple[float, float] | None
+    chi_square: FitChiSquare | None = None
+
+
+def free_parameter_count(components: tuple[ComponentDTO, ...]) -> int:
+    """
+    Count parameters that the fitter is free to change.
+
+    Parameters
+    ----------
+    components : tuple of ComponentDTO
+        Peak and background components in one region.
+
+    Returns
+    -------
+    int
+        Parameters with ``vary`` set and no expression.
+    """
+    return sum(
+        1
+        for component in components
+        for param in component.parameters.values()
+        if param.vary and not param.expr
+    )
+
+
+def poisson_variance(measured: NDArray) -> NDArray:
+    """
+    Return per-channel Poisson variance ``max(|measured|, 1)``.
+
+    The floor of 1 count keeps empty and negative channels finite.
+
+    Parameters
+    ----------
+    measured : NDArray
+        Measured intensity that sets the variance. This is the original
+        spectrum, not a target with fixed components removed.
+
+    Returns
+    -------
+    NDArray
+        Variance at each channel.
+    """
+    return np.maximum(np.abs(measured), 1.0)
+
+
+def chi_square_residual(difference: NDArray, measured: NDArray) -> NDArray:
+    """
+    Return the residual whose squares sum to the Poisson chi-squared.
+
+    Parameters
+    ----------
+    difference : NDArray
+        ``target - model`` on the fit grid. Equals ``y - model`` when the
+        target is the measured spectrum.
+    measured : NDArray
+        Intensities that set the Poisson variance.
+
+    Returns
+    -------
+    NDArray
+        ``difference / sqrt(max(|measured|, 1))``.
+    """
+    return difference / np.sqrt(poisson_variance(measured))
+
+
+def chi_square_contributions(y: NDArray, model: NDArray) -> NDArray:
+    """
+    Return per-channel Poisson chi-squared contributions.
+
+    Variance is estimated as ``max(|y|, 1)`` so empty and negative channels
+    stay finite. The chi-squared criterion is the sum of this array.
+
+    Parameters
+    ----------
+    y : NDArray
+        Measured intensity.
+    model : NDArray
+        Fitted model intensity on the same grid.
+
+    Returns
+    -------
+    NDArray
+        ``(y - model)² / max(|y|, 1)`` at each channel.
+    """
+    return chi_square_residual(y - model, y) ** 2
 
 
 def get_eval_fn(component: ComponentDTO) -> EvaluationLikeFn:
@@ -104,6 +219,53 @@ def component_y(
     eval_fn = get_eval_fn(component)
     params = {name: p.value for name, p in component.parameters.items()}
     return eval_fn(x, y, **params)
+
+
+def peak_area(component: ComponentDTO) -> float | None:
+    """
+    Return the fitted area of a peak component.
+
+    The value comes from :meth:`ParametricModelLike.area`. Backgrounds and
+    models that do not define an area return ``None``.
+
+    Parameters
+    ----------
+    component : ComponentDTO
+        Component whose area is requested.
+
+    Returns
+    -------
+    float or None
+        Fitted peak area, or ``None`` when the component has none.
+    """
+    if component.kind != "peak":
+        return None
+    parameters = {name: float(param.value) for name, param in component.parameters.items()}
+    return component.model.area(parameters)
+
+
+def region_area(components: Iterable[ComponentDTO]) -> float:
+    """
+    Return the sum of fitted peak areas in a region.
+
+    Background components are ignored. A region with no peaks has area 0.
+
+    Parameters
+    ----------
+    components : iterable of ComponentDTO
+        Components belonging to one region.
+
+    Returns
+    -------
+    float
+        Sum of :func:`peak_area` over peak components.
+    """
+    total = 0.0
+    for component in components:
+        area = peak_area(component)
+        if area is not None:
+            total += area
+    return total
 
 
 def component_result(
@@ -194,6 +356,7 @@ def region_bundle(
         background=background_result,
         model=model,
         residuals=residuals,
+        n_free_parameters=free_parameter_count(components),
     )
 
 
@@ -251,12 +414,16 @@ def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotD
     Returns
     -------
     SpectrumPlotData
-        Curves for the main and residuals plots plus optional residuals y-range.
+        Curves for the main plot and the chi-squared subplot, plus the
+        summed χ² criterion when at least one region is evaluated.
     """
     curves: list[PlotCurve] = [
         PlotCurve(x=result.x, y=result.y, kind="raw"),
     ]
     residual_arrays: list[NDArray] = []
+    total_chi_square = 0.0
+    total_points = 0
+    total_free_parameters = 0
 
     for region in result.regions:
         x = region.x
@@ -285,15 +452,30 @@ def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotD
 
         curves.append(PlotCurve(x=x, y=region.model, kind="model"))
 
-        if region.residuals.size > 0:
-            curves.append(PlotCurve(x=x, y=region.residuals, kind="residual"))
-            residual_arrays.append(region.residuals)
+        contributions = chi_square_contributions(region.y, region.model)
+        if contributions.size > 0:
+            curves.append(PlotCurve(x=x, y=contributions, kind="residual"))
+            residual_arrays.append(contributions)
+            total_chi_square += float(np.sum(contributions))
+            total_points += int(contributions.size)
+            total_free_parameters += region.n_free_parameters
 
     residual_y_range: tuple[float, float] | None = None
     if residual_arrays:
-        concat = np.concatenate(residual_arrays)
-        r_min, r_max = float(np.min(concat)), float(np.max(concat))
-        margin = max((r_max - r_min) * 0.1, 1e-12)
-        residual_y_range = (r_min - margin, r_max + margin)
+        c_max = float(np.max(np.concatenate(residual_arrays)))
+        top = c_max * 1.1 if c_max > 0.0 else 1.0
+        residual_y_range = (0.0, top)
 
-    return SpectrumPlotData(curves=tuple(curves), residual_y_range=residual_y_range)
+    chi_square: FitChiSquare | None = None
+    if total_points > 0:
+        chi_square = FitChiSquare(
+            chi_square=total_chi_square,
+            n_points=total_points,
+            n_free_parameters=total_free_parameters,
+        )
+
+    return SpectrumPlotData(
+        curves=tuple(curves),
+        residual_y_range=residual_y_range,
+        chi_square=chi_square,
+    )

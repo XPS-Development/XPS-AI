@@ -52,6 +52,53 @@ def test_postprocessor_one_region(
         assert isinstance(peak, PeakDetectionResult)
 
 
+def test_postprocessor_recovers_subthreshold_peaks_inside_region(
+    x_original: np.ndarray,
+    x_interp: np.ndarray,
+    y_original: np.ndarray,
+) -> None:
+    """A confident region is kept when peak probabilities sit just under 0.5."""
+    n = len(x_interp)
+    region_mask = np.zeros(n)
+    region_mask[40:200] = 1.0
+    max_mask = np.zeros(n)
+    max_mask[99] = 0.2
+    max_mask[100] = 0.45
+    max_mask[101] = 0.2
+    max_mask[139] = 0.1
+    max_mask[140] = 0.30
+    max_mask[141] = 0.1
+    max_mask[160] = 0.1
+    model_output = {
+        ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[0]: region_mask,
+        ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[1]: max_mask,
+    }
+    post = SegmenterPostprocessor(threshold=0.5, smooth=False)
+    result = post(model_output, x=x_original, x_int=x_interp, y=y_original)
+    assert len(result) == 1
+    assert len(result[0].peaks) == 2
+
+
+def test_postprocessor_ignores_peak_mask_below_fallback_floor(
+    x_original: np.ndarray,
+    x_interp: np.ndarray,
+    y_original: np.ndarray,
+) -> None:
+    """Peak-mask lobes below the fallback floor still produce no region."""
+    n = len(x_interp)
+    region_mask = np.zeros(n)
+    region_mask[40:200] = 1.0
+    max_mask = np.zeros(n)
+    max_mask[100] = 0.2
+    model_output = {
+        ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[0]: region_mask,
+        ONNXSegmenterAdapter.CHANNEL_MASK_KEYS[1]: max_mask,
+    }
+    post = SegmenterPostprocessor(threshold=0.5, smooth=False)
+    result = post(model_output, x=x_original, x_int=x_interp, y=y_original)
+    assert result == []
+
+
 def test_postprocessor_no_region_when_empty_max(
     x_original: np.ndarray,
     x_interp: np.ndarray,

@@ -2,6 +2,7 @@
 
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import ClassVar, Protocol, TypeVar
 
@@ -68,6 +69,10 @@ class ParametricModelLike(Protocol[T]):
         """Map a normalized parameter value back to physical units."""
         ...
 
+    def area(self, parameters: Mapping[str, float]) -> float | None:
+        """Return the fitted area for ``parameters``, or None if undefined."""
+        ...
+
 
 class ParametricModel(ParameterNormalizationPolicy, ABC):
     """Abstract parametric model with a name, schema, evaluate, and guess_initial."""
@@ -118,6 +123,25 @@ class ParametricModel(ParameterNormalizationPolicy, ABC):
         span = max(abs(v) * 0.5, 1.0)
         return soft_window_around(v, span=span, lower=lower, upper=upper)
 
+    def area(self, parameters: Mapping[str, float]) -> float | None:
+        """
+        Return the fitted area for ``parameters``.
+
+        The base model has no area. Peak models override this when the
+        integrated intensity is a parameter or a function of parameters.
+
+        Parameters
+        ----------
+        parameters : Mapping[str, float]
+            Current parameter values keyed by schema name.
+
+        Returns
+        -------
+        float or None
+            Fitted area, or None when this model does not define one.
+        """
+        return None
+
 
 class EvaluationLikeFn(Protocol[T]):
     """Callable that evaluates a model given ``x``, ``y``, and named parameters."""
@@ -137,6 +161,28 @@ class NormalizationLikeFn(Protocol[T]):
 
 class BasePeakModel(ParametricModel):
     """Parametric model used as a peak component."""
+
+    def area(self, parameters: Mapping[str, float]) -> float | None:
+        """
+        Return the fitted peak area.
+
+        Area-normalized peaks store the integrated intensity in ``amp``.
+        Subclasses override this when the area is not that parameter.
+
+        Parameters
+        ----------
+        parameters : Mapping[str, float]
+            Current parameter values keyed by schema name.
+
+        Returns
+        -------
+        float or None
+            Fitted area, or None when ``amp`` is missing or not finite.
+        """
+        amp = parameters.get("amp")
+        if amp is None or not math.isfinite(amp):
+            return None
+        return float(amp)
 
     @staticmethod
     @abstractmethod

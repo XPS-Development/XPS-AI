@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QDoubleSpinBox, QSlider, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
-    from .controller import ControllerWrapper
+    from ..controller import ControllerWrapper
 
 _SLIDER_STEPS = 1000
 

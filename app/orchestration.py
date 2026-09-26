@@ -5,7 +5,7 @@ Aggregates app services and the command/change pipeline into a single entry poin
 for running services, applying changes (create/update/metadata/remove), and undo/redo.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -17,6 +17,7 @@ from core.services import CoreContext
 
 from .command.changes import (
     BaseChange,
+    CompositeChange,
     CreateRegion,
     CreateSpectrum,
     FullRemoveObject,
@@ -37,10 +38,12 @@ from .import_service import import_spectra as import_spectra_changes
 from .nn_service import NNService
 from .optimization import OptimizationService
 from .parameters import AppParameters
+from .paths import resolve_resource_path
 from .query_service import QueryService
 from .serialization import SerializationService
 from .usecases import (
     AnalysisUseCases,
+    CopyDecompositionUseCases,
     DocumentUseCases,
     EditingUseCases,
     ExportUseCases,
@@ -82,7 +85,7 @@ class AppOrchestrator:
         self._executor = CommandExecutor(self.__ctx, self.__stack, create_default_registry())
 
         self._nn = NNService(
-            model_path=params.nn_model_path,
+            model_path=resolve_resource_path(params.nn_model_path),
             pred_threshold=params.nn_pred_threshold,
             smooth=params.nn_smooth,
             interp_num=params.nn_interp_num,
@@ -93,6 +96,7 @@ class AppOrchestrator:
         self._serialization = SerializationService()
         self._csv_export = CSVExportService()
         self._editing = EditingUseCases(self._query, params)
+        self._copy = CopyDecompositionUseCases(self._query)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
         self._export = ExportUseCases(self._query, self._csv_export)
@@ -151,7 +155,7 @@ class AppOrchestrator:
         parameters; other services read parameters lazily when invoked.
         """
         self._nn = NNService(
-            model_path=self._params.nn_model_path,
+            model_path=resolve_resource_path(self._params.nn_model_path),
             pred_threshold=self._params.nn_pred_threshold,
             smooth=self._params.nn_smooth,
             interp_num=self._params.nn_interp_num,
@@ -262,23 +266,81 @@ class AppOrchestrator:
 
     # ---- App services ----
 
-    def import_spectra(self, path: str | Path) -> None:
+    def import_spectra(self, path: str | Path | Sequence[str | Path]) -> None:
         """
-        Parse a spectrum file and execute changes to create spectra with metadata.
+        Parse one or more spectrum files and create spectra with metadata.
 
         Import behavior (use_binding_energy, use_cps) is governed by AppParameters.
+        Multiple paths are applied as a single undoable composite change.
 
         Parameters
         ----------
-        path : str or Path
-            Path to the spectrum file (.txt, .csv, .dat, .vms, .vamas).
+        path : str or Path or sequence of those
+            Path(s) to spectrum file(s) (.txt, .csv, .dat, .vms, .vamas).
         """
-        change = import_spectra_changes(
-            path,
-            use_binding_energy=self._params.import_use_binding_energy,
-            use_cps=self._params.import_use_cps,
+        paths = (path,) if isinstance(path, (str, Path)) else tuple(path)
+        if not paths:
+            return
+        changes: list[BaseChange] = []
+        for file_path in paths:
+            change = import_spectra_changes(
+                file_path,
+                use_binding_energy=self._params.import_use_binding_energy,
+                use_cps=self._params.import_use_cps,
+            )
+            changes.extend(change.changes)
+        self.execute(CompositeChange(changes=changes))
+
+    def copy_decomposition(
+        self,
+        source_spectrum_id: str,
+        target_spectrum_ids: Sequence[str],
+        link_flags: Mapping[tuple[str, str], bool],
+        *,
+        rescale_intensities: bool = True,
+        overwrite_targets: set[str] | frozenset[str] | None = None,
+        optimize_after: bool = False,
+    ) -> list[str]:
+        """
+        Copy the source spectrum's regions/peaks onto selected targets.
+
+        Each target is one undoable composite. When ``optimize_after`` is True,
+        successfully updated targets are optimized afterward.
+
+        Parameters
+        ----------
+        source_spectrum_id
+            Template spectrum.
+        target_spectrum_ids
+            Destinations.
+        link_flags
+            ``(source_component_id, param_name) -> link_to_source``.
+        rescale_intensities
+            Scale intensity parameters between spectrum norms.
+        overwrite_targets
+            Targets whose existing regions are removed first.
+        optimize_after
+            Run :meth:`optimize_regions` on copied targets.
+
+        Returns
+        -------
+        list of str
+            Target spectrum ids that received a copy.
+        """
+        changes = self._copy.copy_decomposition(
+            source_spectrum_id,
+            target_spectrum_ids,
+            link_flags,
+            rescale_intensities=rescale_intensities,
+            overwrite_targets=overwrite_targets,
         )
-        self.execute(change)
+        applied: list[str] = []
+        for target_id, change in changes:
+            self.execute(change)
+            applied.append(target_id)
+        if optimize_after and applied:
+            self.optimize_regions(spectrum_ids=applied)
+        return applied
 
     def load_nn_model(self, model_path: str | Path) -> None:
         """
@@ -289,7 +351,10 @@ class AppOrchestrator:
         model_path : str or Path
             Path to the NN model file.
         """
-        self._nn.load_model(model_path)
+        resolved = resolve_resource_path(model_path)
+        if resolved is None:
+            return
+        self._nn.load_model(resolved)
 
     def run_segmenter(
         self,
@@ -566,6 +631,10 @@ class AppOrchestrator:
         """Update the index slice of an existing region; executed as a command."""
         self.execute(self._editing.update_region_slice(region_id, start, stop, mode=mode))
 
+    def split_region(self, region_id: str, x: float) -> None:
+        """Split a region at axis position ``x`` into two regions; one undo step."""
+        self.execute_optional(self._editing.split_region(region_id, x))
+
     def replace_peak_model(
         self,
         peak_id: str,
@@ -628,12 +697,17 @@ class AppOrchestrator:
             )
         )
 
+    def create_cursor_peak(self, region_id: str, cen: float, height: float) -> None:
+        """Create a pseudo-Voigt peak from a plot click; executed as a command."""
+        self.execute(self._editing.create_cursor_peak(region_id, cen, height))
+
     def create_peak(
         self,
         region_id: str,
         model_name: str,
         parameters: dict[str, float] | None = None,
         peak_id: str | None = None,
+        peak_index: int | None = None,
     ) -> None:
         """Create a new peak component; executed as a command."""
         self.execute(
@@ -642,6 +716,7 @@ class AppOrchestrator:
                 model_name,
                 parameters=parameters,
                 peak_id=peak_id,
+                peak_index=peak_index,
             )
         )
 

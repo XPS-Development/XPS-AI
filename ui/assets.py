@@ -2,33 +2,16 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QIcon
 
+from app.paths import bundle_root
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 APP_NAME = "XPS-AI"
-
-
-def bundle_root() -> Path:
-    """
-    Return the application bundle root.
-
-    In a PyInstaller build this is ``sys._MEIPASS`` (the folder next to the
-    executable when ``contents_directory='.'``). During development it is the
-    repository root.
-
-    Returns
-    -------
-    Path
-        Directory that contains ``assets/``.
-    """
-    if getattr(sys, "frozen", False):
-        meipass = getattr(sys, "_MEIPASS", None)
-        if meipass:
-            return Path(meipass)
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
 
 
 def icon_path(name: str) -> Path:

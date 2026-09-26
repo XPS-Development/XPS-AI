@@ -86,6 +86,26 @@ def test_orchestrator_import_spectra(empty_collection):
     assert "test_1_spec.txt" in meta.file
 
 
+def test_orchestrator_import_multiple_spectra_one_undo(empty_collection):
+    """Importing several files is one undo step that removes all of them."""
+    orch = AppOrchestrator(empty_collection, AppParameters())
+    orch.import_spectra(
+        [
+            "tests/data/test_1_spec.txt",
+            "tests/data/test_1_spec.vms",
+        ]
+    )
+
+    spectrum_ids = [
+        oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)
+    ]
+    assert len(spectrum_ids) > 1
+    orch.undo()
+    assert not [
+        oid for oid, obj in empty_collection.objects_index.items() if isinstance(obj, Spectrum)
+    ]
+
+
 def test_orchestrator_run_segmenter(empty_collection, simple_gauss_spectrum):
     """run_segmenter executes CreateRegion, CreateBackground, CreatePeak."""
     orch = AppOrchestrator(empty_collection, AppParameters())
@@ -553,6 +573,38 @@ def test_create_peak_explicit_params_when_automatic_methods_false(simple_collect
     peaks = [p for p in simple_collection.objects_index.values() if isinstance(p, Peak)]
     new_peak = next(p for p in peaks if p.parent_id == region_id and p.id_ != "p1")
     assert orch.ctx.component.get_parameter(new_peak.id_, "amp")["value"] == 5.0
+
+
+def test_orchestrator_split_region_roundtrip(simple_collection, region_id, peak_id, spectrum_id):
+    """split_region executes as one undo step and reparents the boundary peak."""
+    orch = AppOrchestrator(simple_collection, AppParameters(automatic_methods=True))
+    cen = orch.ctx.component.get_parameter(peak_id, "cen")["value"]
+    left_start, left_stop = orch.ctx.region.get_slice(region_id, mode="index")
+
+    orch.split_region(region_id, float(cen))
+
+    new_start, new_stop = orch.ctx.region.get_slice(region_id, mode="index")
+    assert new_start == left_start
+    assert left_start < new_stop < left_stop
+
+    regions = [
+        obj
+        for obj in simple_collection.objects_index.values()
+        if isinstance(obj, Region) and obj.parent_id == spectrum_id
+    ]
+    assert len(regions) == 2
+    right = next(r for r in regions if r.id_ != region_id)
+    assert right.slice_.start == new_stop
+    assert right.slice_.stop == left_stop
+
+    assert orch.ctx.query.check_object_exists(peak_id)
+    assert orch.ctx.query.get_parent(peak_id) == right.id_
+    assert orch.ctx.query.get_background(right.id_) is not None
+
+    orch.undo()
+    assert orch.ctx.region.get_slice(region_id, mode="index") == (left_start, left_stop)
+    assert orch.ctx.query.get_parent(peak_id) == region_id
+    assert not orch.ctx.query.check_object_exists(right.id_)
 
 
 def test_update_region_slice_plain_when_no_background(empty_collection, simple_gauss_spectrum):

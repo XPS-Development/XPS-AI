@@ -364,3 +364,87 @@ def parse_parameter_expression(
         issues=(),
         lmfit_expr=lmfit_expr,
     )
+
+
+def rewrite_expression_component_ids(
+    expr: str,
+    id_map: Mapping[str, str],
+) -> str:
+    """
+    Rewrite component id tokens in ``expr`` using ``id_map``.
+
+    Tokens that resolve (exact or unique prefix) to a key in ``id_map`` are
+    replaced with the mapped id. Numbers, lmfit builtins, and unresolved
+    tokens are left unchanged.
+
+    Parameters
+    ----------
+    expr : str
+        Raw constraint expression.
+    id_map : Mapping[str, str]
+        Source component id → replacement id.
+
+    Returns
+    -------
+    str
+        Expression with remapped component references.
+    """
+    if not expr or not id_map:
+        return expr
+    known = frozenset(id_map)
+    replacements: list[tuple[int, int, str]] = []
+    for match in _TOKEN_RE.finditer(expr):
+        if match.lastgroup != "ident":
+            continue
+        token = match.group("ident")
+        if token in _LMFIT_BUILTIN_NAMES:
+            continue
+        ref = match_component_reference(token, known)
+        if ref.status in {"exact", "prefix"} and ref.component_id is not None:
+            start, end = match.span()
+            replacements.append((start, end, id_map[ref.component_id]))
+    rewritten = expr
+    for start, end, replacement in sorted(replacements, key=lambda item: item[0], reverse=True):
+        rewritten = rewritten[:start] + replacement + rewritten[end:]
+    return rewritten
+
+
+def shortest_unique_prefix(
+    component_id: str,
+    all_ids: Iterable[str],
+    *,
+    min_len: int = 5,
+) -> str:
+    """
+    Return the shortest unique ``startswith`` prefix of ``component_id``.
+
+    Matches the resolution rules used by :func:`match_component_reference`: a
+    prefix is unique when exactly one known id starts with it. Prefers at
+    least ``min_len`` characters when the id is long enough (tree display
+    uses 5).
+
+    Parameters
+    ----------
+    component_id : str
+        Full component identifier to abbreviate.
+    all_ids : iterable of str
+        Known component ids in the insertion scope.
+    min_len : int, optional
+        Prefer prefixes at least this long when possible.
+
+    Returns
+    -------
+    str
+        Unique prefix, or the full id if no shorter unique prefix exists.
+    """
+    if not component_id:
+        return component_id
+    ids = {cid for cid in all_ids if cid}
+    ids.add(component_id)
+    start = min(max(1, min_len), len(component_id))
+    for length in range(start, len(component_id) + 1):
+        prefix = component_id[:length]
+        matches = [cid for cid in ids if cid.startswith(prefix)]
+        if len(matches) == 1:
+            return prefix
+    return component_id

@@ -124,7 +124,7 @@ These are intentional temporary states. Avoid reinforcing them.
 
 - Branch from `dev`; PR into `dev`. See `CONTRIBUTING.md`.
 - Commit only when asked. Messages in English, concise, focus on why.
-- Do not commit secrets, `error_dumps/`, or notebooks (gitignored).
+- Do not commit secrets or notebooks (gitignored).
 
 ## Tests
 

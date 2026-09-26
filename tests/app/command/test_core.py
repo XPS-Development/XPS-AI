@@ -4,6 +4,7 @@ import pytest
 
 from app.command.changes import (
     CompositeChange,
+    CreatePeak,
     RemoveObject,
     RenameComponent,
     SetMetadata,
@@ -222,6 +223,41 @@ def test_command_registry_build_composite_returns_composite_command(ctx, peak_id
     assert len(cmd.commands) == 2
     assert isinstance(cmd.commands[0], UpdateParameterCommand)
     assert isinstance(cmd.commands[1], UpdateRegionSliceCommand)
+    # Subcommands are applied during build so later from_change sees prior state.
+    assert ctx.component.get_parameter(peak_id, "cen")["value"] == 3.0
+    # execute()'s apply must not re-run (flag consumed here).
+    cmd.apply(ctx)
+    assert ctx.component.get_parameter(peak_id, "cen")["value"] == 3.0
+
+
+def test_composite_create_peak_then_update_parameter(ctx, region_id):
+    """CreatePeak + UpdateParameter on the new id works in one CompositeChange."""
+    stack = UndoRedoStack()
+    executor = CommandExecutor(ctx, stack)
+    peak_id = "p-new-composite"
+    change = CompositeChange(
+        changes=[
+            CreatePeak(
+                region_id=region_id,
+                model_name="pseudo-voigt",
+                parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5},
+                peak_id=peak_id,
+            ),
+            UpdateParameter(peak_id, "amp", "expr", "p1"),
+            UpdateParameter(peak_id, "cen", "vary", False),
+        ]
+    )
+    executor.execute(change)
+
+    param = ctx.component.get_parameter(peak_id, "amp")
+    assert param["expr"] == "p1"
+    assert ctx.component.get_parameter(peak_id, "cen")["vary"] is False
+
+    executor.undo()
+    assert not ctx.query.check_object_exists(peak_id)
+
+    executor.redo()
+    assert ctx.component.get_parameter(peak_id, "amp")["expr"] == "p1"
 
 
 def test_create_default_registry_has_all_mappings():

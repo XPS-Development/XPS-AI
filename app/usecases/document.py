@@ -75,11 +75,16 @@ class DocumentUseCases:
         """
         from pathlib import Path as PathCls
 
-        resolved_path = path if path is not None else self._params.default_serialization_path
-        if resolved_path is None:
+        raw_path = path if path is not None else self._params.default_serialization_path
+        if raw_path is None:
             raise ValueError(
                 "path is required when AppParameters.default_serialization_path is not set"
             )
+        resolved_path = PathCls(raw_path)
+        use_gzip = self._params.default_serialization_use_gzip
+        if not resolved_path.suffix:
+            # Native save dialogs on Linux often omit the filter extension.
+            resolved_path = resolved_path.with_suffix(".json.gz" if use_gzip else ".json")
         resolved_indent = (
             indent if indent is not None else self._params.default_serialization_indent
         )
@@ -88,12 +93,12 @@ class DocumentUseCases:
             collection=self._collection,
             metadata_service=self._metadata,
             indent=resolved_indent,
-            use_gzip=self._params.default_serialization_use_gzip,
+            use_gzip=use_gzip,
             compresslevel=self._params.default_serialization_compresslevel,
         )
         self._params.default_serialization_path = resolved_path
         self._executor.stack.mark_saved()
-        return PathCls(resolved_path)
+        return resolved_path
 
     def load_collection(
         self,

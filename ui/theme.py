@@ -3,25 +3,25 @@
 Call :func:`install_theme` once on the ``QApplication`` before creating widgets.
 Rounded menus (and optionally combo popups) become translucent via
 :class:`EditorStyle` so stylesheet ``border-radius`` shows through on Windows
-and Linux.
+and Linux. The same style draws rounded checkbox indicators for ``QCheckBox``
+and item-view check columns.
 """
 
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPalette, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QMenu,
     QProxyStyle,
     QStyle,
+    QStyleOption,
+    QStyleOptionMenuItem,
     QWidget,
 )
-
-if TYPE_CHECKING:
-    from PySide6.QtGui import QPalette
 
 # Side panels sit slightly off-white; the plot stays pure white.
 PANEL_BG = "#f7f7f7"
@@ -55,6 +55,8 @@ SCROLLBAR_THUMB_HOVER = "#a8a8a8"
 
 ITEM_RADIUS = 6
 POPUP_RADIUS = 10
+CHECKBOX_SIZE = 16
+CHECKBOX_RADIUS = 4.0
 
 _INSTALLED_STYLE: EditorStyle | None = None
 
@@ -106,6 +108,21 @@ QTreeView[editorRows="hairlines"] QHeaderView::section {{
     padding: 4px 6px;
     color: {TEXT_HEADER};
 }}
+QTreeView[editorRows="hairlines"]::indicator,
+QTreeView[editorRows="spaced"]::indicator {{
+    width: {CHECKBOX_SIZE}px;
+    height: {CHECKBOX_SIZE}px;
+}}
+
+/* --- Checkboxes --- */
+QCheckBox {{
+    spacing: 8px;
+    color: {TEXT};
+}}
+QCheckBox::indicator {{
+    width: {CHECKBOX_SIZE}px;
+    height: {CHECKBOX_SIZE}px;
+}}
 
 /* --- Combo boxes --- */
 QComboBox {{
@@ -149,7 +166,7 @@ QMenu {{
 QMenu::item {{
     background: transparent;
     color: {TEXT};
-    padding: 6px 28px 6px 12px;
+    padding: 6px 36px 6px 12px;
     border-radius: {ITEM_RADIUS}px;
     margin: 1px 2px;
 }}
@@ -195,6 +212,14 @@ QStatusBar {{
     background: {STATUS_BG};
     border-top: 1px solid {STATUS_BORDER};
     color: {TEXT_MUTED};
+}}
+QStatusBar::item {{
+    border: none;
+}}
+QStatusBar QLabel#StatusPathLabel,
+QStatusBar QLabel#StatusSelectionLabel {{
+    color: {TEXT_MUTED};
+    background: transparent;
 }}
 
 /* --- Message boxes and dialog buttons --- */
@@ -338,7 +363,7 @@ QLineEdit#PropertiesFieldEdit {{
     border: none;
     padding: 1px 2px;
 }}
-QLabel#PlotCursorLabel {{
+QLabel#PlotCursorLabel, QLabel#PlotChiSquareLabel {{
     background-color: rgba(255, 255, 255, 0.8);
     padding: 2px 4px;
     border-radius: 2px;
@@ -447,8 +472,85 @@ def _wants_rounded_popup(widget: QWidget) -> bool:
     return isinstance(widget, QMenu) or widget.inherits("QComboBoxPrivateContainer")
 
 
+def paint_rounded_checkbox(painter: QPainter, option: QStyleOption) -> None:
+    """
+    Paint a rounded checkbox indicator into ``option.rect``.
+
+    Used by :class:`EditorStyle` for ``QCheckBox`` and item-view check
+    indicators so the same look appears everywhere.
+
+    Parameters
+    ----------
+    painter : QPainter
+        Active painter.
+    option : QStyleOption
+        Style option whose ``rect`` and ``state`` describe the indicator.
+    """
+    state = option.state
+    enabled = bool(state & QStyle.StateFlag.State_Enabled)
+    hovered = bool(state & QStyle.StateFlag.State_MouseOver) and enabled
+    checked = bool(state & QStyle.StateFlag.State_On)
+    partial = bool(state & QStyle.StateFlag.State_NoChange) and not checked
+
+    rect = option.rect
+    size = min(CHECKBOX_SIZE, rect.width(), rect.height())
+    box_rect = QRect(
+        rect.x() + max(0, (rect.width() - size) // 2),
+        rect.y() + max(0, (rect.height() - size) // 2),
+        size,
+        size,
+    )
+    box = QRectF(box_rect)
+    path = QPainterPath()
+    path.addRoundedRect(box, CHECKBOX_RADIUS, CHECKBOX_RADIUS)
+
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    if checked or partial:
+        fill = QColor(TEXT if enabled else TEXT_DISABLED)
+        painter.fillPath(path, fill)
+        painter.setPen(Qt.PenStyle.NoPen)
+    else:
+        painter.fillPath(path, QColor(SURFACE))
+        border = QColor(BORDER_HOVER if hovered else (BORDER if enabled else TEXT_DISABLED))
+        pen = QPen(border)
+        pen.setWidthF(1.25)
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+    if checked or partial:
+        mark = QColor(SURFACE)
+        pen = QPen(mark)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        x, y, w, h = box.x(), box.y(), box.width(), box.height()
+        if checked:
+            pen.setWidthF(1.8)
+            painter.setPen(pen)
+            painter.drawLine(
+                QPointF(x + w * 0.28, y + h * 0.52),
+                QPointF(x + w * 0.42, y + h * 0.68),
+            )
+            painter.drawLine(
+                QPointF(x + w * 0.42, y + h * 0.68),
+                QPointF(x + w * 0.72, y + h * 0.32),
+            )
+        else:
+            pen.setWidthF(2.0)
+            painter.setPen(pen)
+            mid_y = box.center().y()
+            inset = box.width() * 0.22
+            painter.drawLine(
+                QPointF(box.left() + inset, mid_y),
+                QPointF(box.right() - inset, mid_y),
+            )
+
+    painter.restore()
+
+
 class EditorStyle(QProxyStyle):
-    """Fusion-based proxy style that makes popup menus translucent for rounded chrome."""
+    """Fusion proxy: translucent menus and rounded checkbox indicators."""
 
     def __init__(self) -> None:
         """Initialize with the Fusion base style."""
@@ -473,6 +575,74 @@ class EditorStyle(QProxyStyle):
         if isinstance(arg, QWidget) and _wants_rounded_popup(arg):
             make_translucent_popup(arg)
         return super().polish(arg)
+
+    def pixelMetric(
+        self,
+        metric: QStyle.PixelMetric,
+        option: QStyleOption | None = None,
+        widget: QWidget | None = None,
+    ) -> int:
+        """Return a uniform checkbox indicator size."""
+        if metric in {
+            QStyle.PixelMetric.PM_IndicatorWidth,
+            QStyle.PixelMetric.PM_IndicatorHeight,
+        }:
+            return CHECKBOX_SIZE
+        return super().pixelMetric(metric, option, widget)
+
+    def drawPrimitive(
+        self,
+        element: QStyle.PrimitiveElement,
+        option: QStyleOption,
+        painter: QPainter,
+        widget: QWidget | None = None,
+    ) -> None:
+        """Draw rounded checkboxes for widgets and item views."""
+        if element in {
+            QStyle.PrimitiveElement.PE_IndicatorCheckBox,
+            QStyle.PrimitiveElement.PE_IndicatorItemViewItemCheck,
+        }:
+            paint_rounded_checkbox(painter, option)
+            return
+        super().drawPrimitive(element, option, painter, widget)
+
+    def drawControl(
+        self,
+        element: QStyle.ControlElement,
+        option: QStyleOption,
+        painter: QPainter,
+        widget: QWidget | None = None,
+    ) -> None:
+        """Draw menu shortcuts in a column on the right edge of the item."""
+        if element == QStyle.ControlElement.CE_MenuItem and isinstance(
+            option, QStyleOptionMenuItem
+        ):
+            label, sep, shortcut = option.text.partition("\t")
+            if sep and shortcut:
+                opt = QStyleOptionMenuItem(option)
+                opt.text = label
+                super().drawControl(element, opt, painter, widget)
+                self._draw_menu_shortcut(opt, painter, shortcut)
+                return
+        super().drawControl(element, option, painter, widget)
+
+    @staticmethod
+    def _draw_menu_shortcut(
+        option: QStyleOptionMenuItem,
+        painter: QPainter,
+        shortcut: str,
+    ) -> None:
+        """Paint ``shortcut`` vertically centered on the right of ``option``."""
+        enabled = bool(option.state & QStyle.StateFlag.State_Enabled)
+        role = QPalette.ColorRole.Text if enabled else QPalette.ColorRole.PlaceholderText
+        painter.save()
+        painter.setPen(option.palette.color(role))
+        painter.drawText(
+            option.rect.adjusted(12, 0, -12, 0),
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+            shortcut,
+        )
+        painter.restore()
 
 
 def build_palette(style: QStyle) -> QPalette:

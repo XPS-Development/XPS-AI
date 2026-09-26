@@ -1,13 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
+# SPECPATH is the directory that contains this spec (build/).
+_ROOT = Path(SPECPATH).parent
 
 a = Analysis(
-    ['..\\main.py'],
+    [str(_ROOT / "main.py")],
     pathex=[],
     binaries=[],
     datas=[
-        ('..\\model.onnx', '.'),
-        ('..\\assets\\icons', 'assets/icons'),
+        (str(_ROOT / "assets" / "models" / "model.onnx"), "assets/models"),
+        (str(_ROOT / "assets" / "icons"), "assets/icons"),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -35,7 +39,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='..\\assets\\icons\\app.ico',
+    icon=str(_ROOT / "assets" / "icons" / "app.ico"),
     contents_directory='.',
 )
 coll = COLLECT(

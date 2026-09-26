@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
-from ui.context_menus import attach_region_context_actions, attach_spectrum_context_actions
+from ui.trees.context_menus import attach_region_context_actions, attach_spectrum_context_actions
 
 
 @pytest.fixture(scope="module")
@@ -27,7 +27,7 @@ def test_spectrum_context_menu_exports_csv(
     actions = attach_spectrum_context_actions(menu, controller)
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "ui.context_menus.export_spectra",
+        "ui.trees.context_menus.export_spectra",
         lambda _controller, spectrum_ids, parent=None: calls.append(spectrum_ids) or True,
     )
 
@@ -48,7 +48,7 @@ def test_region_context_menu_exports_first_peak(
     actions = attach_region_context_actions(menu, controller, "r1", QWidget())
     calls: list[list[str]] = []
     monkeypatch.setattr(
-        "ui.context_menus.export_peaks",
+        "ui.trees.context_menus.export_peaks",
         lambda _controller, spectrum_ids, parent=None: calls.append(spectrum_ids) or True,
     )
 

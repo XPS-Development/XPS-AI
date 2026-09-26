@@ -11,7 +11,7 @@ from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, QRect, QR
 from PySide6.QtGui import QColor, QMouseEvent, QPainter
 from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QTreeView, QWidget
 
-from . import theme
+from .. import theme
 
 _ROW_INSET_X = 4
 _ROW_INSET_Y = 1

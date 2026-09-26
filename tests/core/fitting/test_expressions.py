@@ -4,6 +4,8 @@ from core.fitting.expressions import (
     match_component_reference,
     parse_parameter_expression,
     resolve_component_reference,
+    rewrite_expression_component_ids,
+    shortest_unique_prefix,
 )
 
 
@@ -150,3 +152,33 @@ class TestParseParameterExpression:
         )
         assert parsed.issues == ()
         assert parsed.lmfit_expr == "sqrt_amp"
+
+
+class TestRewriteExpressionComponentIds:
+    def test_rewrites_mapped_ids_and_leaves_external(self):
+        """Mapped component tokens are replaced; unknown ids stay."""
+        rewritten = rewrite_expression_component_ids(
+            "2 * pOld + externalPeak",
+            {"pOld": "pNew"},
+        )
+        assert rewritten == "2 * pNew + externalPeak"
+
+    def test_empty_map_or_expr_is_noop(self):
+        assert rewrite_expression_component_ids("pOld", {}) == "pOld"
+        assert rewrite_expression_component_ids("", {"pOld": "pNew"}) == ""
+
+
+class TestShortestUniquePrefix:
+    def test_prefers_min_len(self):
+        ids = ("pabcd123", "qxyz999")
+        assert shortest_unique_prefix("pabcd123", ids, min_len=5) == "pabcd"
+        assert shortest_unique_prefix("qxyz999", ids, min_len=5) == "qxyz9"
+
+    def test_lengthens_on_collision(self):
+        ids = ("pabcd111", "pabcd222")
+        assert shortest_unique_prefix("pabcd111", ids, min_len=5) == "pabcd1"
+        assert shortest_unique_prefix("pabcd222", ids, min_len=5) == "pabcd2"
+
+    def test_falls_back_to_full_id(self):
+        assert shortest_unique_prefix("sameid", ["sameid"], min_len=5) == "samei"
+        assert shortest_unique_prefix("aaaax", ["aaaax", "aaaay"], min_len=5) == "aaaax"
