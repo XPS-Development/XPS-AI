@@ -4,12 +4,13 @@ import sys
 from typing import cast
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 from tests.conftest import seed_hierarchy_metadata
 
 from ui.controller import ControllerWrapper
 from ui.spectrum_tree import SpectrumTreeModel
+from ui.spectrum_tree_panel import SpectrumTreePanel
 
 
 @pytest.fixture(scope="module")
@@ -80,3 +81,45 @@ def test_spectrum_tree_model_shows_spectrum_id_suffix_when_enabled(
     assert sorted(labels) == ["spec-1", "spec-2"]
     assert "s1" in prefixes
     assert "s2" in prefixes
+
+
+def _spectrum_row(panel: SpectrumTreePanel, spectrum_id: str) -> tuple[QModelIndex, int]:
+    model = panel.model
+
+    def walk(parent: QModelIndex) -> tuple[QModelIndex, int] | None:
+        for row in range(model.rowCount(parent)):
+            index = model.index(row, 0, parent)
+            item = model.item_from_index(index)
+            if item is not None and item.spectrum_id == spectrum_id:
+                return parent, row
+            found = walk(index)
+            if found is not None:
+                return found
+        return None
+
+    found = walk(QModelIndex())
+    assert found is not None
+    return found
+
+
+def test_spectrum_tree_search_matches_spectrum_id(
+    qapp: QApplication,
+    hierarchy_collection,
+) -> None:
+    """Typing a spectrum id keeps that row and hides the others."""
+    del qapp
+    controller = ControllerWrapper(collection=hierarchy_collection)
+    seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    panel = SpectrumTreePanel(controller)
+    panel._search_edit.setText("s3")
+
+    hidden_parent, hidden_row = _spectrum_row(panel, "s1")
+    shown_parent, shown_row = _spectrum_row(panel, "s3")
+    assert panel.tree.isRowHidden(hidden_row, hidden_parent)
+    assert not panel.tree.isRowHidden(shown_row, shown_parent)
+    assert panel._scroll_target.isValid()
+    shown_item = panel.model.item_from_index(panel._scroll_target)
+    assert shown_item is not None
+    assert shown_item.spectrum_id == "s3"
+    panel.deleteLater()
+    QApplication.processEvents()

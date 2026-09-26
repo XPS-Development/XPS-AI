@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox, QPushButton, 
 from .assets import icon_path
 from .controller import ControllerWrapper
 from .optimize_confirm import confirm_and_optimize
-from .spectrum_tree import SpectrumTreeModel, SpectrumTreeWidget
+from .spectrum_tree import SpectrumTreeItem, SpectrumTreeModel, SpectrumTreeWidget
 
 _SEARCH_ICON = QIcon(str(icon_path("search.svg")))
 _FLASK_ICON = QIcon(str(icon_path("flask.svg")))
@@ -15,13 +15,23 @@ _OPTIMIZE_ICON = QIcon(str(icon_path("optimize.svg")))
 _BTN_ICON_SIZE = QSize(14, 14)
 
 
+def _item_matches_query(item: SpectrumTreeItem | None, query: str) -> bool:
+    """Return True when ``query`` is in the row label or spectrum id."""
+    if item is None or not query:
+        return False
+    if query in item.label.lower():
+        return True
+    spectrum_id = item.spectrum_id
+    return isinstance(spectrum_id, str) and query in spectrum_id.lower()
+
+
 class SpectrumTreePanel(QWidget):
     """
     Composite widget hosting a search box, Auto fit / Optimize controls, and the spectrum tree.
 
-    The search box filters and highlights spectra, groups, and files by
-    matching the entered text against their labels. Matching branches are
-    expanded automatically.
+    The search box filters spectra, groups, and files by label and, for
+    spectrum rows, by spectrum id. Matching branches are expanded and the
+    first match is scrolled into view.
     """
 
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
@@ -29,7 +39,7 @@ class SpectrumTreePanel(QWidget):
         self.setObjectName("SpectrumTreePanel")
         self._controller = controller
         self._search_edit = QLineEdit(self)
-        self._search_edit.setPlaceholderText("Search spectra, groups, files…")
+        self._search_edit.setPlaceholderText("Search spectra, groups, files, IDs…")
         self._search_edit.addAction(_SEARCH_ICON, QLineEdit.ActionPosition.LeadingPosition)
         self._tree = SpectrumTreeWidget(controller, self)
         self._auto_fit_btn = QPushButton("Auto fit", self)
@@ -109,16 +119,19 @@ class SpectrumTreePanel(QWidget):
 
     def _apply_filter(self, text: str) -> None:
         """
-        Apply a simple filter to the tree by hiding non-matching items.
+        Hide rows that do not match ``text``.
+
+        A row stays visible when its label, its spectrum id, or any descendant
+        matches. Ancestors of a match are expanded, and the view scrolls to
+        the first match.
 
         Parameters
         ----------
         text : str
             Search text entered by the user.
-        Items whose own label or any descendant label contains the query
-        remain visible; all other branches are hidden.
         """
         query = text.strip().lower()
+        self._scroll_target = QModelIndex()
 
         if not query:
             self._show_all(QModelIndex())
@@ -126,6 +139,8 @@ class SpectrumTreePanel(QWidget):
             return
 
         self._visit(QModelIndex(), False, query)
+        if self._scroll_target.isValid():
+            self._tree.scrollTo(self._scroll_target)
 
     def _show_all(self, parent_index: QModelIndex) -> None:
         row_count = self.model.rowCount(parent_index)
@@ -147,8 +162,7 @@ class SpectrumTreePanel(QWidget):
             index = self.model.index(row, 0, parent_index)
             item = self.model.item_from_index(index)
 
-            label = item.label.lower() if item is not None else ""
-            matched = query in label
+            matched = _item_matches_query(item, query)
 
             child_has_match = self._visit(index, ancestor_visible or matched, query)
             has_match_here = matched or child_has_match
@@ -157,6 +171,14 @@ class SpectrumTreePanel(QWidget):
 
             if has_match_here:
                 any_visible = True
-                if matched:
-                    self._tree.expand(index)
+                self._expand_ancestors(index)
+                if matched and not self._scroll_target.isValid():
+                    self._scroll_target = index
         return any_visible
+
+    def _expand_ancestors(self, index: QModelIndex) -> None:
+        """Expand every parent of ``index`` so a match is reachable."""
+        parent = index.parent()
+        while parent.isValid():
+            self._tree.expand(parent)
+            parent = parent.parent()
