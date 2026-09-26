@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from core.evaluation import PlotCurve, SpectrumPlotData
@@ -42,6 +43,30 @@ def test_refresh_inverts_x_axis_from_parameters(
     widget.refresh()
     assert widget._main_plot.getViewBox().xInverted() is False
     assert widget._res_plot.getViewBox().xInverted() is False
+
+
+def test_edit_mode_crosshair_stays_off_the_plot_viewport(
+    qapp: QApplication,
+    simple_collection,
+    spectrum_id: str,
+) -> None:
+    """Leaving add-peak or split mode restores the arrow beside the data area."""
+    del qapp
+    controller = ControllerWrapper(collection=simple_collection)
+    controller.set_selection(spectrum_id)
+    widget = PlotAreaWidget(controller)
+    view_box = widget._main_plot.getViewBox()
+    viewport = widget._main_plot.viewport()
+
+    for mode in ("add_peak", "split_region"):
+        widget.set_edit_mode(mode)
+        assert view_box.hasCursor()
+        assert viewport.cursor().shape() != Qt.CursorShape.BitmapCursor
+
+        widget.set_edit_mode(None)
+        assert not view_box.hasCursor()
+        assert viewport.cursor().shape() == Qt.CursorShape.ArrowCursor
+        assert widget._main_plot.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
 def test_plot_area_refresh_uses_query_service(

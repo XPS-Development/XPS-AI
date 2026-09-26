@@ -554,15 +554,22 @@ class PlotAreaWidget(QWidget):
         self.set_edit_mode(None)
 
     def _sync_edit_cursor(self) -> None:
-        """Red crosshair while editing; arrow as soon as the mode ends."""
+        """Red crosshair over the spectrum; arrow on the band between the plots.
+
+        The crosshair belongs on the view box only. Qt remembers the viewport
+        cursor the first time the pointer enters that item and restores it
+        outside the data area. A crosshair stored there stays on the axis band
+        between the two plots after the mode ends.
+        """
+        view_box = self._main_plot.getViewBox()
         if self._edit_mode is None:
-            cursor = QCursor(Qt.CursorShape.ArrowCursor)
-        else:
-            cursor = _red_crosshair_cursor()
-        self._main_plot.setCursor(cursor)
-        self._main_plot.viewport().setCursor(cursor)
-        # setCursor updates immediately under the pointer; unsetCursor does not.
-        self._main_plot.getViewBox().setCursor(cursor)
+            view_box.unsetCursor()
+            arrow = QCursor(Qt.CursorShape.ArrowCursor)
+            # unsetCursor restores whatever Qt stored, which may be the cross.
+            self._main_plot.viewport().setCursor(arrow)
+            self._main_plot.setCursor(arrow)
+            return
+        view_box.setCursor(_red_crosshair_cursor())
 
     def commit_edit_at(self, x: float, y: float) -> None:
         """
