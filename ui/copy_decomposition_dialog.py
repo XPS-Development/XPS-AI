@@ -48,6 +48,7 @@ from .name_id_delegate import (
     ObjectIdRole,
 )
 from .optimize_confirm import confirm_and_optimize
+from .tree_search import make_search_text, matches_search
 from .tree_style import EditorTreeView, apply_editor_tree_style
 
 if TYPE_CHECKING:
@@ -199,7 +200,7 @@ class TargetSpectrumModel(_BaseTreeModel):
             file_item = _TreeItem(
                 label=file_label,
                 kind="file",
-                search_text=file_label.lower(),
+                search_text=make_search_text(file_label),
             )
             self._root.append_child(file_item)
             for group_key, spectra in sorted(groups.items(), key=lambda kv: str(kv[0] or "")):
@@ -207,7 +208,7 @@ class TargetSpectrumModel(_BaseTreeModel):
                 group_item = _TreeItem(
                     label=group_label,
                     kind="group",
-                    search_text=group_label.lower(),
+                    search_text=make_search_text(group_label),
                 )
                 file_item.append_child(group_item)
                 for name, spectrum_id in sorted(spectra, key=lambda t: str(t[0] or "")):
@@ -217,7 +218,7 @@ class TargetSpectrumModel(_BaseTreeModel):
                             label=spectrum_label,
                             kind="spectrum",
                             object_id=spectrum_id,
-                            search_text=f"{spectrum_label} {spectrum_id}".lower(),
+                            search_text=make_search_text(spectrum_label, spectrum_id),
                         )
                     )
         self.endResetModel()
@@ -333,11 +334,12 @@ class LinkTreeModel(_BaseTreeModel):
         for region_index, region_id in enumerate(
             query.get_regions_ids(self._source_spectrum_id), start=1
         ):
+            region_label = f"Region {region_index}"
             region_item = _TreeItem(
-                label=f"Region {region_index}",
+                label=region_label,
                 kind="region",
                 object_id=region_id,
-                search_text=f"region {region_index} {region_id}".lower(),
+                search_text=make_search_text(region_label, region_id),
             )
             self._root.append_child(region_item)
 
@@ -379,7 +381,7 @@ class LinkTreeModel(_BaseTreeModel):
             object_id=component_id,
             component_id=component_id,
             component_kind=component_kind,
-            search_text=f"{label} {component_id}".lower(),
+            search_text=make_search_text(label, component_id),
         )
         region_item.append_child(component_item)
         for name in dto.parameters:
@@ -390,7 +392,7 @@ class LinkTreeModel(_BaseTreeModel):
                     object_id=component_id,
                     component_id=component_id,
                     param_name=name,
-                    search_text=name.lower(),
+                    search_text=make_search_text(name),
                     linked=False,
                 )
             )
@@ -617,7 +619,7 @@ def _apply_filter(view: EditorTreeView, model: _BaseTreeModel, text: str) -> Non
     def match(item: _TreeItem) -> bool:
         if not needle:
             return True
-        if needle in item.search_text or needle in item.label.lower():
+        if matches_search(needle, item.search_text, item.label):
             return True
         return any(match(child) for child in item.children)
 

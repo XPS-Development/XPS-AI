@@ -20,6 +20,7 @@ from .name_id_delegate import (
     ObjectIdPrefixRole,
     ObjectIdRole,
 )
+from .tree_search import make_search_text
 from .tree_style import EditorTreeView, apply_editor_tree_style
 
 _DEFAULT_INDEX = QModelIndex()
@@ -52,6 +53,9 @@ class SpectrumTreeItem:
         Parent item in the hierarchy.
     spectrum_id : str or None, optional
         Identifier of the spectrum associated with this item (for leaf nodes).
+    search_text : str, optional
+        Lowercase text the search box matches. Spectrum rows include the
+        spectrum id and the ids of its regions and components.
     """
 
     _label: str
@@ -59,6 +63,7 @@ class SpectrumTreeItem:
     kind: str
     parent: Optional["SpectrumTreeItem"] = None
     spectrum_id: str | None = None
+    search_text: str = ""
     _row: int = 0
     children: list["SpectrumTreeItem"] = field(default_factory=list)
 
@@ -242,30 +247,37 @@ class SpectrumTreeModel(QAbstractItemModel):
             grouped[file_attr][group_attr].append((name_attr, spectrum_id))
 
         for file, groups in sorted(grouped.items()):
+            file_label = file.split("/")[-1] or "No file"
             file_item = SpectrumTreeItem(
                 _label=file,
-                label=file.split("/")[-1] or "No file",
+                label=file_label,
                 kind="file",
                 parent=self._root_item,
+                search_text=make_search_text(file_label),
             )
             self._root_item.append_child(file_item)
 
             for group, spectra in sorted(groups.items()):
+                group_label = group or "No group"
                 group_item = SpectrumTreeItem(
                     kind="group",
                     parent=file_item,
                     _label=group,
-                    label=group or "No group",
+                    label=group_label,
+                    search_text=make_search_text(group_label),
                 )
                 file_item.append_child(group_item)
 
                 for name, spectrum_id in sorted(spectra):
+                    spectrum_label = name or "No name"
+                    object_ids = self._controller.query.get_subtree_ids(spectrum_id)
                     spectrum_item = SpectrumTreeItem(
                         _label=name,
-                        label=name or "No name",
+                        label=spectrum_label,
                         kind="spectrum",
                         parent=group_item,
                         spectrum_id=spectrum_id,
+                        search_text=make_search_text(spectrum_label, *object_ids),
                     )
 
                     group_item.append_child(spectrum_item)

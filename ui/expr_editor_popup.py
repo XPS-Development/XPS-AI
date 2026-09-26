@@ -53,6 +53,7 @@ from .name_id_delegate import (
     ObjectIdRole,
 )
 from .theme import make_translucent_popup
+from .tree_search import make_search_text, matches_search
 from .tree_style import EditorTreeView, apply_editor_tree_style
 
 if TYPE_CHECKING:
@@ -141,7 +142,7 @@ class ExprPickerModel(QAbstractItemModel):
             file_item = ExprPickerItem(
                 label=file_label,
                 kind="file",
-                search_text=file_label.lower(),
+                search_text=make_search_text(file_label),
             )
             self._root.append_child(file_item)
 
@@ -150,7 +151,7 @@ class ExprPickerModel(QAbstractItemModel):
                 group_item = ExprPickerItem(
                     label=group_label,
                     kind="group",
-                    search_text=group_label.lower(),
+                    search_text=make_search_text(group_label),
                 )
                 file_item.append_child(group_item)
 
@@ -160,7 +161,7 @@ class ExprPickerModel(QAbstractItemModel):
                         label=spectrum_label,
                         kind="spectrum",
                         object_id=spectrum_id,
-                        search_text=f"{spectrum_label} {spectrum_id}".lower(),
+                        search_text=make_search_text(spectrum_label, spectrum_id),
                     )
                     group_item.append_child(spectrum_item)
 
@@ -172,7 +173,7 @@ class ExprPickerModel(QAbstractItemModel):
                             label=region_label,
                             kind="region",
                             object_id=region_id,
-                            search_text=f"{region_label} {region_id}".lower(),
+                            search_text=make_search_text(region_label, region_id),
                         )
                         spectrum_item.append_child(region_item)
 
@@ -186,7 +187,7 @@ class ExprPickerModel(QAbstractItemModel):
                                     kind="component",
                                     object_id=background_id,
                                     component_kind="background",
-                                    search_text=f"{bg_label} {background_id}".lower(),
+                                    search_text=make_search_text(bg_label, background_id),
                                 )
                             )
                             self._component_ids.append(background_id)
@@ -202,7 +203,7 @@ class ExprPickerModel(QAbstractItemModel):
                                     kind="component",
                                     object_id=peak_id,
                                     component_kind="peak",
-                                    search_text=f"{peak_label} {peak_id}".lower(),
+                                    search_text=make_search_text(peak_label, peak_id),
                                 )
                             )
                             self._component_ids.append(peak_id)
@@ -507,7 +508,7 @@ class ExprEditorPopup(QFrame):
                 if item is None:
                     continue
                 child_hit = walk(idx)
-                self_hit = needle in item.search_text
+                self_hit = matches_search(needle, item.search_text, item.label)
                 if self_hit or child_hit:
                     visible.add(id(item))
                     any_hit = True

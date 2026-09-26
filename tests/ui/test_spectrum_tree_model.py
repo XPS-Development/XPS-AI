@@ -117,9 +117,44 @@ def test_spectrum_tree_search_matches_spectrum_id(
     shown_parent, shown_row = _spectrum_row(panel, "s3")
     assert panel.tree.isRowHidden(hidden_row, hidden_parent)
     assert not panel.tree.isRowHidden(shown_row, shown_parent)
+    shown_by_id = panel.model.item_from_index(panel.model.index(shown_row, 0, shown_parent))
+    assert shown_by_id is not None
+    assert "s3" in shown_by_id.search_text
     assert panel._scroll_target.isValid()
     shown_item = panel.model.item_from_index(panel._scroll_target)
     assert shown_item is not None
     assert shown_item.spectrum_id == "s3"
+    panel.deleteLater()
+    QApplication.processEvents()
+
+
+def test_spectrum_tree_search_matches_peak_id(
+    qapp: QApplication,
+    hierarchy_collection,
+) -> None:
+    """A peak or region id finds the spectrum that owns it and hides the rest."""
+    del qapp
+    controller = ControllerWrapper(collection=hierarchy_collection)
+    seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    controller.create_region("s1", start=0, stop=10, region_id="r-owned", mode="index")
+    controller.create_peak(
+        "r-owned",
+        "pseudo-voigt",
+        parameters={"amp": 1.0, "cen": 0.0, "sig": 1.0, "frac": 0.5},
+        peak_id="p-owned",
+    )
+    panel = SpectrumTreePanel(controller)
+    panel._search_edit.setText("p-owned")
+
+    hidden_parent, hidden_row = _spectrum_row(panel, "s2")
+    shown_parent, shown_row = _spectrum_row(panel, "s1")
+    assert panel.tree.isRowHidden(hidden_row, hidden_parent)
+    assert not panel.tree.isRowHidden(shown_row, shown_parent)
+
+    panel._search_edit.setText("r-owned")
+    hidden_parent, hidden_row = _spectrum_row(panel, "s3")
+    shown_parent, shown_row = _spectrum_row(panel, "s1")
+    assert panel.tree.isRowHidden(hidden_row, hidden_parent)
+    assert not panel.tree.isRowHidden(shown_row, shown_parent)
     panel.deleteLater()
     QApplication.processEvents()
