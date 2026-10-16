@@ -1,5 +1,5 @@
 """
-App-level serialization service for collection and metadata.
+App-level serialization service for collection, metadata and saved series.
 
 Wraps core.io.serialization for dump/load. Dirty state is tracked on the
 undo stack (:class:`~app.command.core.UndoRedoStack`); the orchestrator
@@ -17,7 +17,7 @@ from core.services import MetadataService
 
 class SerializationService:
     """
-    App-level service for saving/loading collection and metadata.
+    App-level service for saving/loading the complete document.
 
     Does not clear the undo/redo stack or replace orchestrator state;
     the orchestrator must do that when loading.

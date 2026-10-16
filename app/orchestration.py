@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 
 from core.collection import CoreCollection
 from core.metadata import Metadata
+from core.post_processing import LinkConstraints, MatchingResult, MatchingSettings, MetricDefinition
 from core.services import CoreContext
 
 from .command.changes import (
@@ -39,6 +40,7 @@ from .nn_service import NNService
 from .optimization import OptimizationService
 from .parameters import AppParameters
 from .paths import resolve_resource_path
+from .post_processing import PostProcessingInput
 from .query_service import QueryService
 from .serialization import SerializationService
 from .usecases import (
@@ -48,6 +50,7 @@ from .usecases import (
     EditingUseCases,
     ExportUseCases,
     HierarchyUseCases,
+    PostProcessingUseCases,
 )
 from .usecases.analysis import FitScopePreview
 
@@ -99,6 +102,7 @@ class AppOrchestrator:
         self._copy = CopyDecompositionUseCases(self._query)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
+        self._post_processing = PostProcessingUseCases(self._query)
         self._export = ExportUseCases(self._query, self._csv_export)
         self._document = DocumentUseCases(
             self._core_collection,
@@ -839,6 +843,54 @@ class AppOrchestrator:
 
     # ---- Serialization ----
 
+    def create_post_processing_series(self, name: str, spectrum_ids: Sequence[str]) -> str:
+        """Create an ordered series and return its stable ID."""
+        change = self._post_processing.create(name, spectrum_ids)
+        self.execute(change)
+        return change.series_id
+
+    def edit_post_processing_series(
+        self,
+        series_id: str,
+        *,
+        name: str | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+        settings: MatchingSettings | None = None,
+        constraints: LinkConstraints | None = None,
+        metrics: tuple[MetricDefinition, ...] | None = None,
+        column_order: tuple[str, ...] | None = None,
+    ) -> None:
+        """Apply one undoable series configuration or analytical-column edit."""
+        self.execute(
+            self._post_processing.edit(
+                series_id,
+                name=name,
+                spectrum_ids=spectrum_ids,
+                settings=settings,
+                constraints=constraints,
+                metrics=metrics,
+                column_order=column_order,
+            )
+        )
+
+    def remove_post_processing_series(self, series_id: str) -> None:
+        """Remove a series through command history."""
+        self.execute(self._post_processing.remove(series_id))
+
+    def name_post_processing_track(self, series_id: str, track_id: str, name: str | None) -> None:
+        """Name a track using its persistent component anchor."""
+        self.execute(self._post_processing.name_track(series_id, track_id, name))
+
+    def prepare_post_processing(self, series_id: str) -> PostProcessingInput:
+        """Capture immutable inputs for a caller-owned background job."""
+        return self._post_processing.prepare(series_id)
+
+    def apply_post_processing_result(
+        self, job: PostProcessingInput, result: MatchingResult
+    ) -> None:
+        """Apply a current matching result as one undoable command."""
+        self.execute(self._post_processing.apply_result(job, result))
+
     def dump_collection(
         self,
         path: str | Path | None = None,
@@ -891,6 +943,7 @@ class AppOrchestrator:
             If None, uses AppParameters.default_serialization_mode (must be append or replace).
         """
         self._document.load_collection(path, mode=mode)
+        self._pending_ui_refresh |= UiRefresh.ALL
 
     def new_collection(self) -> None:
         """

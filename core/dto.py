@@ -1,11 +1,16 @@
 """Immutable DTO projections of core domain objects."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from numpy.typing import NDArray
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
-from core.math_models import ParametricModelLike
+    from core.math_models import ParametricModelLike
+    from core.post_processing.metrics import MetricValue
+    from core.post_processing.state import PostProcessingSeries
 
 
 @dataclass(frozen=True)
@@ -78,3 +83,19 @@ class SpectrumDTO(BaseDTO):
 
     x: NDArray
     y: NDArray
+
+
+@dataclass(frozen=True)
+class PostProcessingSeriesDTO:
+    """Immutable series projection with live availability and snapshot status."""
+
+    series: PostProcessingSeries
+    stale: bool
+    unavailable_spectrum_ids: tuple[str, ...]
+    conflicts: tuple[str, ...]
+    values: tuple[MetricValue, ...]
+
+    @property
+    def exportable(self) -> bool:
+        """Return whether the current result can be exported normally."""
+        return not self.stale and not self.unavailable_spectrum_ids and not self.conflicts

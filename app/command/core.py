@@ -21,6 +21,7 @@ from .changes import (
     ReplaceBackgroundModel,
     ReplacePeakModel,
     SetMetadata,
+    SetPostProcessingSeries,
     UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
@@ -39,6 +40,7 @@ from .commands import (
     ReplaceBackgroundModelCommand,
     ReplacePeakModelCommand,
     SetMetadataCommand,
+    SetPostProcessingSeriesCommand,
     UpdateMultipleParameterValuesCommand,
     UpdateParameterCommand,
     UpdateRegionSliceCommand,
@@ -263,6 +265,7 @@ def create_default_registry() -> CommandRegistry:
     registry.register(ReplaceBackgroundModel, ReplaceBackgroundModelCommand)
     registry.register(UpdateMultipleParameterValues, UpdateMultipleParameterValuesCommand)
     registry.register(SetMetadata, SetMetadataCommand)
+    registry.register(SetPostProcessingSeries, SetPostProcessingSeriesCommand)
     return registry
 
 
