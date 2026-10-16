@@ -1,0 +1,1075 @@
+{
+  "source": "ai-xps-series/scripts/match_components.py",
+  "source_sha256": "8d321e2ea1b3bb0010d6e69ceff2fa955dd0c849c3690131e9ea093bf1f60b5a",
+  "mode": "continuous, no doublet roles, one region per step",
+  "cases": [
+    {
+      "input": {
+        "id": "case-0",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p0-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 286,
+                  "Area": 30,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 10,
+            "components": [
+              {
+                "id": "p1-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284.3,
+                  "Area": 12,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p1-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 286.1,
+                  "Area": 25,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 17,
+            "components": [
+              {
+                "id": "p2-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284.8,
+                  "Area": 20,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-0",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          },
+          {
+            "step_index": 17,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 5,
+        "matched_components": 5,
+        "excluded_components": [],
+        "candidate_links": 6,
+        "objective": 40.33032140494523,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-0",
+                "parameters": {
+                  "Position": 284.3,
+                  "Area": 12,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 17,
+                "coordinates": {},
+                "component_id": "p2-0",
+                "parameters": {
+                  "Position": 284.8,
+                  "Area": 20,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p0-0",
+                "to_component_id": "p1-0",
+                "cost": 0.08048295268728856,
+                "terms": {
+                  "position": 0.08000000000000607,
+                  "gap": 0.0,
+                  "area_fraction": 0.0004829526872824934,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 44.52658347579514,
+                "cost_margin": 4.196262070849912,
+                "ambiguous": false
+              },
+              {
+                "from_component_id": "p1-0",
+                "to_component_id": "p2-0",
+                "cost": 0.24075569516435474,
+                "terms": {
+                  "position": 0.2222222222222222,
+                  "gap": 0.0,
+                  "area_fraction": 0.018533472942132548,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 41.42606762337643,
+                "cost_margin": 1.0957462184312021,
+                "ambiguous": false
+              }
+            ],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 17,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p0-1",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-1",
+                "parameters": {
+                  "Position": 286,
+                  "Area": 30,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-1",
+                "parameters": {
+                  "Position": 286.1,
+                  "Area": 25,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p0-1",
+                "to_component_id": "p1-1",
+                "cost": 0.009082757093585647,
+                "terms": {
+                  "position": 0.008888888888892929,
+                  "gap": 0.0,
+                  "area_fraction": 0.00019386820469271773,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 44.52658347579514,
+                "cost_margin": 4.196262070849912,
+                "ambiguous": false
+              }
+            ],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "unmatched_next_step",
+              "next_step_index": 17
+            },
+            "ambiguous": false
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "id": "case-1",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 10,
+            "components": []
+          },
+          {
+            "step_index": 17,
+            "components": [
+              {
+                "id": "p2-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 24,
+            "components": [
+              {
+                "id": "p3-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-1",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          },
+          {
+            "step_index": 17,
+            "coordinates": {}
+          },
+          {
+            "step_index": 24,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 3,
+        "matched_components": 3,
+        "excluded_components": [],
+        "candidate_links": 1,
+        "objective": 40.1,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 3,
+              "reason": "unmatched_next_step",
+              "next_step_index": 10
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p2-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 17,
+                "coordinates": {},
+                "component_id": "p2-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 24,
+                "coordinates": {},
+                "component_id": "p3-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p2-0",
+                "to_component_id": "p3-0",
+                "cost": 0.1,
+                "terms": {
+                  "position": 0.0,
+                  "gap": 0.0,
+                  "area_fraction": 0.1,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 60.0,
+                "cost_margin": 19.9,
+                "ambiguous": false
+              }
+            ],
+            "start": {
+              "step_index": 17,
+              "reason": "unmatched_previous_step"
+            },
+            "end": {
+              "step_index": 24,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "id": "case-2",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p0-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 10,
+            "components": [
+              {
+                "id": "p1-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p1-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-2",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 4,
+        "matched_components": 4,
+        "excluded_components": [],
+        "candidate_links": 4,
+        "objective": 40.0,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p0-0",
+                "to_component_id": "p1-0",
+                "cost": 0.0,
+                "terms": {
+                  "position": 0.0,
+                  "gap": 0.0,
+                  "area_fraction": 0.0,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 40.0,
+                "cost_margin": 0.0,
+                "ambiguous": true
+              }
+            ],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": true
+          },
+          {
+            "id": "track/p0-1",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-1",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-1",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p0-1",
+                "to_component_id": "p1-1",
+                "cost": 0.0,
+                "terms": {
+                  "position": 0.0,
+                  "gap": 0.0,
+                  "area_fraction": 0.0,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 40.0,
+                "cost_margin": 0.0,
+                "ambiguous": true
+              }
+            ],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": true
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "id": "case-3",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 280,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 10,
+            "components": [
+              {
+                "id": "p1-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 17,
+            "components": [
+              {
+                "id": "p2-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 288.01,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-3",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          },
+          {
+            "step_index": 17,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 3,
+        "matched_components": 3,
+        "excluded_components": [],
+        "candidate_links": 1,
+        "objective": 44.833333333333336,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 280,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              },
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [
+              {
+                "from_component_id": "p0-0",
+                "to_component_id": "p1-0",
+                "cost": 4.833333333333333,
+                "terms": {
+                  "position": 4.833333333333333,
+                  "gap": 0.0,
+                  "area_fraction": 0.0,
+                  "energy_rank": 0.0
+                },
+                "missing_features": [],
+                "skipped_steps": 0,
+                "alternative_objective": 60.0,
+                "cost_margin": 15.166666666666664,
+                "ambiguous": false
+              }
+            ],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "unmatched_next_step",
+              "next_step_index": 17
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p2-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 17,
+                "coordinates": {},
+                "component_id": "p2-0",
+                "parameters": {
+                  "Position": 288.01,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 17,
+              "reason": "unmatched_previous_step"
+            },
+            "end": {
+              "step_index": 17,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "id": "case-4",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p0-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 285,
+                  "Area": 5,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          },
+          {
+            "step_index": 10,
+            "components": [
+              {
+                "id": "p1-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284.5,
+                  "Area": 5,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              },
+              {
+                "id": "p1-1",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 285.5,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": true,
+      "expected": {
+        "id": "case-4",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 4,
+        "matched_components": 4,
+        "excluded_components": [],
+        "candidate_links": 4,
+        "objective": 0.08,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 3,
+              "reason": "unmatched_next_step",
+              "next_step_index": 10
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p0-1",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-1",
+                "parameters": {
+                  "Position": 285,
+                  "Area": 5,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 3,
+              "reason": "unmatched_next_step",
+              "next_step_index": 10
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p1-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-0",
+                "parameters": {
+                  "Position": 284.5,
+                  "Area": 5,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 10,
+              "reason": "unmatched_previous_step"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          },
+          {
+            "id": "track/p1-1",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 10,
+                "coordinates": {},
+                "component_id": "p1-1",
+                "parameters": {
+                  "Position": 285.5,
+                  "Area": 10,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 10,
+              "reason": "unmatched_previous_step"
+            },
+            "end": {
+              "step_index": 10,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "id": "case-5",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": []
+          },
+          {
+            "step_index": 10,
+            "components": []
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-5",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          },
+          {
+            "step_index": 10,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 0,
+        "matched_components": 0,
+        "excluded_components": [],
+        "candidate_links": 0,
+        "objective": 0.0,
+        "tracks": []
+      }
+    },
+    {
+      "input": {
+        "id": "case-6",
+        "steps": [
+          {
+            "step_index": 3,
+            "components": [
+              {
+                "id": "p0-0",
+                "region": "C1s",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "low_boundary_cost": false,
+      "expected": {
+        "id": "case-6",
+        "steps": [
+          {
+            "step_index": 3,
+            "coordinates": {}
+          }
+        ],
+        "input_components": 1,
+        "matched_components": 1,
+        "excluded_components": [],
+        "candidate_links": 0,
+        "objective": 20.0,
+        "tracks": [
+          {
+            "id": "track/p0-0",
+            "region": "C1s",
+            "points": [
+              {
+                "step_index": 3,
+                "coordinates": {},
+                "component_id": "p0-0",
+                "parameters": {
+                  "Position": 284,
+                  "Area": 0,
+                  "FWHM": 1.2,
+                  "GL": 0.5
+                },
+                "status": "observed"
+              }
+            ],
+            "links": [],
+            "start": {
+              "step_index": 3,
+              "reason": "series_start"
+            },
+            "end": {
+              "step_index": 3,
+              "reason": "series_end",
+              "next_step_index": null
+            },
+            "ambiguous": false
+          }
+        ]
+      }
+    }
+  ]
+}
