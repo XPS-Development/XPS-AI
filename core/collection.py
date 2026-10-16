@@ -2,6 +2,8 @@
 
 from typing import TypeVar
 
+from core.post_processing.state import PostProcessingSeries, new_revision
+
 from .objects import CoreObject, Region, Spectrum
 
 T = TypeVar("T")
@@ -22,6 +24,7 @@ class CoreCollection:
     - Object registration and lookup by ID
     - Maintaining parent-child relationships via `parent_id`
     - Cascading removal of hierarchical objects
+    - Holding saved post-processing series separately from the object tree
 
     It is intentionally *not* responsible for:
     - Validation of scientific correctness
@@ -63,6 +66,8 @@ class CoreCollection:
 
     def __init__(self) -> None:
         self.objects_index: dict[str, CoreObject] = {}
+        self.post_processing: dict[str, PostProcessingSeries] = {}
+        self.generation = new_revision()
 
     def add(self, obj: CoreObject) -> None:
         """
@@ -95,10 +100,13 @@ class CoreCollection:
         """
         Remove all objects from the collection.
 
-        Clears the internal index. Used when replacing collection contents
+        Clears the object index and saved series, and renews the document token.
+        Used when replacing collection contents
         in-place (e.g. load with replace mode). No cascade logic is applied.
         """
         self.objects_index.clear()
+        self.post_processing.clear()
+        self.generation = new_revision()
 
     def remove(self, obj: CoreObject | str) -> list[CoreObject]:
         """

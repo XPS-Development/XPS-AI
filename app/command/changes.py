@@ -14,6 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from core.metadata import Metadata
+from core.post_processing.state import PostProcessingSeries
 
 # Type alias for parameter field names; maps to RuntimeParameter attributes.
 ParameterField = Literal["name", "value", "lower", "upper", "vary", "expr"]
@@ -212,6 +213,15 @@ class CompositeChange:
 
 
 # Union type for typed dispatch in CommandRegistry and CommandExecutor.
+@dataclass(frozen=True)
+class SetPostProcessingSeries:
+    """Create, replace or remove one saved series as a single undoable edit."""
+
+    series_id: str
+    value: PostProcessingSeries | None
+    expected_revision: str | None = None
+
+
 BaseChange = (
     UpdateParameter
     | RenameComponent
@@ -228,4 +238,5 @@ BaseChange = (
     | UpdateMultipleParameterValues
     | SetMetadata
     | CompositeChange
+    | SetPostProcessingSeries
 )

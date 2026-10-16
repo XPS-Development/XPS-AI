@@ -6,6 +6,7 @@ from .document import DocumentUseCases
 from .editing import EditingUseCases
 from .export import ExportUseCases
 from .hierarchy import HierarchyUseCases
+from .post_processing import PostProcessingUseCases
 
 __all__ = [
     "AnalysisUseCases",
@@ -14,4 +15,5 @@ __all__ = [
     "EditingUseCases",
     "ExportUseCases",
     "HierarchyUseCases",
+    "PostProcessingUseCases",
 ]

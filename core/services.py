@@ -6,6 +6,7 @@ from typing import Literal, TypeVar, overload
 from numpy.typing import NDArray
 
 from core.numerics import find_closest_index
+from core.post_processing.state import PostProcessingSeries
 
 from .collection import CoreCollection
 from .math_models import (
@@ -1112,6 +1113,11 @@ class CoreContext:
     data: DataQueryService
     component: ComponentService
     metadata: MetadataService
+
+    @property
+    def post_processing(self) -> dict[str, PostProcessingSeries]:
+        """Return the document's series store, shared by commands and persistence."""
+        return self.query.collection.post_processing
 
     @classmethod
     def from_collection(cls, collection: CoreCollection) -> "CoreContext":

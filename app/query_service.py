@@ -12,13 +12,16 @@ from core.evaluation import (
     spectrum_bundle,
 )
 from core.math_models import ModelRegistry
+from core.post_processing.fingerprint import input_fingerprint
 
 from .dto_service import DTOService
+from .post_processing import project_series
 
 if TYPE_CHECKING:
-    from core.dto import ComponentDTO, RegionDTO, SpectrumDTO
+    from core.dto import ComponentDTO, PostProcessingSeriesDTO, RegionDTO, SpectrumDTO
     from core.math_models.base_models import ParameterSpec
     from core.metadata import Metadata
+    from core.post_processing.state import PostProcessingSeries
     from core.services import CoreContext
 
 
@@ -36,6 +39,23 @@ class QueryService:
         """
         self._ctx = ctx
         self._dto = DTOService(ctx)
+
+    @property
+    def document_generation(self) -> str:
+        """Return the lifecycle token used to reject jobs from another document."""
+        return self._ctx.query.collection.generation
+
+    def get_post_processing_fingerprint(self, series: PostProcessingSeries) -> str:
+        """Return the current version of all decomposition inputs for a series."""
+        return input_fingerprint(self._ctx.query.collection, series)
+
+    def get_post_processing_series(self, series_id: str) -> PostProcessingSeriesDTO:
+        """Project a saved series without exposing mutable document stores."""
+        return project_series(self, self._ctx.post_processing[series_id])
+
+    def get_post_processing_series_ids(self) -> tuple[str, ...]:
+        """Return saved series IDs in document order."""
+        return tuple(self._ctx.post_processing)
 
     # ---- Collection queries (read-only) ----
 
