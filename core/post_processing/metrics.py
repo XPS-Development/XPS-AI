@@ -96,7 +96,7 @@ class MetricDefinition:
         if self.operation in ("area_ratio", "area_sum_ratio"):
             return "1"
         if self.operation in ("area", "area_sum"):
-            return "area"
+            return ""
         return "eV"
 
 

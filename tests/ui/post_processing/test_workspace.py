@@ -508,6 +508,15 @@ def test_model_position_and_sig_have_separate_graphs_and_relative_area_label(
     quantities = [plot.getAxis("left").labelText for plot in plots]
     assert set(quantities) == {"Position", "sig", "Area", "Rel. area"}
     assert len(plots) == 4
+    axes = {plot.getAxis("left").labelText: plot.getAxis("left") for plot in plots}
+    assert axes["sig"].labelUnits == "eV"
+    assert not axes["sig"].autoSIPrefix
+    assert axes["sig"].autoSIPrefixScale == 1
+    assert axes["Area"].labelUnits == ""
+    assert not axes["Area"].autoSIPrefix
+    assert "Area" in [
+        panel.preview.columns.item(i).text() for i in range(panel.preview.columns.count())
+    ]
     assert panel.series_table.source.table is not None
     columns = panel.series_table.source.table.columns
     assert "fwhm" not in {column.id_ for column in columns}

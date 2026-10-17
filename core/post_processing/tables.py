@@ -29,7 +29,12 @@ def build_table(
     columns = (
         *base,
         *(
-            AnalysisColumn(id_, label, unit, quantity=label if unit else "")
+            AnalysisColumn(
+                id_,
+                label,
+                unit,
+                quantity=label if id_ in {"position", "area", "sig", "fraction"} else "",
+            )
             for id_, label, unit in (
                 ("region", "Region ID", ""),
                 ("component", "Component ID", ""),
@@ -37,7 +42,7 @@ def build_table(
                 ("track_name", "Track name", ""),
                 ("model", "Model", ""),
                 ("position", "Position", "eV"),
-                ("area", "Area", "area"),
+                ("area", "Area", ""),
                 ("sig", "sig", "eV"),
                 ("fraction", "Rel. area", "%"),
                 ("link", "Link status", ""),
