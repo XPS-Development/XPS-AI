@@ -34,7 +34,7 @@ def values(result, operation, tracks=("track/a",), **kwargs):
     ("operation", "tracks", "kwargs", "expected", "unit"),
     [
         ("position", ("track/a",), {}, [280, 281, None, None], "eV"),
-        ("area", ("track/a",), {}, [10, 20, None, None], "area"),
+        ("area", ("track/a",), {}, [10, 20, None, None], ""),
         ("sig", ("track/a",), {}, [0.5, 0.5, None, None], "eV"),
         ("position_difference", ("track/a", "track/b"), {}, [-10, -11, None, None], "eV"),
         ("position_difference", ("track/b", "track/a"), {}, [10, 11, None, None], "eV"),
@@ -45,7 +45,7 @@ def values(result, operation, tracks=("track/a",), **kwargs):
             [-1, 0, None, None],
             "eV",
         ),
-        ("area_sum", ("track/a", "track/b", "track/a"), {}, [40, 40, None, None], "area"),
+        ("area_sum", ("track/a", "track/b", "track/a"), {}, [40, 40, None, None], ""),
         ("area_ratio", ("track/a", "track/b"), {}, [1 / 3, 1, None, None], "1"),
         (
             "area_sum_ratio",

@@ -62,9 +62,10 @@ class TrendWidget(QWidget):
         self.columns.blockSignals(True)
         self.columns.clear()
         for column in table.columns[2:]:
-            if not column.unit:
+            if not column.unit and not column.quantity:
                 continue
-            item = QListWidgetItem(f"{column.label} ({column.unit})")
+            unit = "" if column.unit == "area" else column.unit
+            item = QListWidgetItem(f"{column.label} ({unit})" if unit else column.label)
             item.setData(Qt.ItemDataRole.UserRole, column.id_)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
@@ -106,10 +107,12 @@ class TrendWidget(QWidget):
                     row=len(plots), col=0, viewBox=DoubleClickAutoRangeViewBox(enableMenu=False)
                 )
                 plot.setLabel("bottom", "Row" if any(row.id_ for row in table.rows) else "Step")
+                unit = "" if column.unit == "area" else column.unit
+                plot.getAxis("left").enableAutoSIPrefix(False)
                 plot.setLabel(
                     "left",
-                    column.quantity or column.unit,
-                    units=column.unit if column.quantity else None,
+                    column.quantity or (column.label if not unit else unit),
+                    units=unit if column.quantity else None,
                 )
                 plot.showGrid(x=True, y=True, alpha=0.3)
                 plot.addLegend()

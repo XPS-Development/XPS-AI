@@ -60,7 +60,7 @@ def cells(data, op, operands, denominator=(), reference=None):
         ("sig", ("Ag",), (), [1, 1, 1], "eV"),
         ("position_difference", ("Ag", "C-A"), (), [84, 84.1, 84.2], "eV"),
         ("position_difference", ("C-A", "Ag"), (), [-84, -84.1, -84.2], "eV"),
-        ("area_sum", ("C-A", "C-B", "C-A"), (), [40, 40, None], "area"),
+        ("area_sum", ("C-A", "C-B", "C-A"), (), [40, 40, None], ""),
         ("area_ratio", ("Ag", "C-A"), (), [10, 10, 10], "1"),
         ("area_sum_ratio", ("Ag",), ("C-A", "C-B", "C-A"), [2.5, 5, None], "1"),
         ("area_fraction", ("C-A",), ("C-A", "C-B"), [25, 50, None], "%"),
