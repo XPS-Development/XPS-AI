@@ -12,6 +12,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -38,6 +39,18 @@ class LinkEditor(QWidget):
         self.pair, self.left, self.right = QComboBox(), QComboBox(), QComboBox()
         self.scope = QComboBox()
         self.scope.addItems(("Neighbouring pair", "Whole series"))
+        self.scope.setCurrentIndex(1)
+        self.spacing = QDoubleSpinBox()
+        self.spacing.setRange(0.05, 2.0)
+        self.spacing.setSingleStep(0.05)
+        self.spacing.setDecimals(2)
+        self.spacing.setValue(0.18)
+        self.spacing.setSuffix(" of height")
+        self.spacing.setToolTip(
+            "Vertical step as a fraction of spectrum height; smaller values overlap more"
+        )
+        self.components = QCheckBox("Decomposition")
+        self.show_links = QCheckBox("Peak links")
         self.normalize = QCheckBox("Normalize heights")
         self.normalize.setToolTip(
             "Scale each displayed spectrum to equal height; saved intensities stay unchanged"
@@ -54,7 +67,6 @@ class LinkEditor(QWidget):
         controls = QHBoxLayout()
         controls.addWidget(self.scope)
         controls.addWidget(self.pair, 1)
-        controls.addWidget(self.normalize)
         layout.addLayout(controls)
         row = QHBoxLayout()
         row.addWidget(self.left, 1)
@@ -65,8 +77,16 @@ class LinkEditor(QWidget):
             row.addWidget(button)
         layout.addLayout(row)
         layout.addWidget(self.error)
+        display = QHBoxLayout()
+        display.addWidget(QLabel("Vertical step"))
+        display.addWidget(self.spacing)
+        display.addWidget(self.normalize)
+        display.addWidget(self.components)
+        display.addWidget(self.show_links)
+        display.addStretch()
+        layout.addLayout(display)
         hint = QLabel(
-            "Spectra are offset vertically. Click a peak marker to select it; dashed lines show matches."
+            "Reduce the vertical step for a denser stack. Enable peak links to select peaks on the plot."
         )
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -74,6 +94,9 @@ class LinkEditor(QWidget):
         layout.addWidget(self.links)
         self.scope.currentIndexChanged.connect(self._draw)
         self.normalize.toggled.connect(self._draw)
+        self.spacing.valueChanged.connect(self._draw)
+        self.components.toggled.connect(self._draw)
+        self.show_links.toggled.connect(self._draw)
         self.pair.currentIndexChanged.connect(self._pair_changed)
         self.left.currentIndexChanged.connect(self._draw)
         self.right.currentIndexChanged.connect(self._draw)
@@ -198,7 +221,7 @@ class LinkEditor(QWidget):
                 continue
             baseline, maximum = bounds[sid]
             scale = ((maximum - baseline) or 1.0) if self.normalize.isChecked() else shared_scale
-            offset = (len(steps) - index - 1) * 1.4
+            offset = (len(steps) - index - 1) * self.spacing.value()
             active = sid in pair
             for curve in data[sid].curves:
                 if curve.kind == "residual":
@@ -214,10 +237,15 @@ class LinkEditor(QWidget):
                     if curve.kind == "model"
                     else pg.mkPen(color, width=2 if curve.component_id in selected_ids else 1)
                     if curve.kind == "peak"
-                    else pg.mkPen("#999999", width=0.8)
+                    else pg.mkPen("#333333", width=1.0)
                 )
                 item = plot.plot(curve.x, (curve.y - baseline) / scale + offset, pen=pen)
-                item.setOpacity(1.0 if active else 0.45)
+                item.setZValue(index * 10 + (0 if curve.kind == "raw" else 1))
+                item.setVisible(curve.kind == "raw" or self.components.isChecked())
+                if curve.kind == "raw":
+                    # Each nearer spectrum masks the curves behind it, like paper sheets.
+                    item.setFillLevel(offset)
+                    item.setBrush("w")
                 if curve.kind == "peak":
                     peak = next(
                         (p for p in step.peaks if p.component_id == curve.component_id), None
@@ -239,6 +267,7 @@ class LinkEditor(QWidget):
                     anchor=(1, 1),
                 )
                 label.setPos(min(float(x.min()) for x in raw_x), offset + 0.05)
+                label.setZValue(len(steps) * 10 + 3)
                 plot.addItem(label)
         # Connect peaks in the same coordinates as the measured spectra.
         for track in result.tracks:
@@ -253,11 +282,13 @@ class LinkEditor(QWidget):
                     else color_for_component(component_id=track.anchor_id)
                 )
                 color.setAlpha(190 if active else 65)
-                plot.plot(
-                    [a[0], b[0]],
-                    [a[1], b[1]],
-                    pen=pg.mkPen(color, width=1.5 if active else 1, style=Qt.PenStyle.DashLine),
-                )
+                if self.show_links.isChecked():
+                    line = plot.plot(
+                        [a[0], b[0]],
+                        [a[1], b[1]],
+                        pen=pg.mkPen(color, width=1.5 if active else 1, style=Qt.PenStyle.DashLine),
+                    )
+                    line.setZValue(len(steps) * 10 + 1)
                 if (component_steps[link.source_id], component_steps[link.target_id]) == pair:
                     status = (
                         "manual" if link.manual else "ambiguous" if link.ambiguous else "automatic"
@@ -265,7 +296,7 @@ class LinkEditor(QWidget):
                     self.links.addItem(f"{a[0]:.6g} → {b[0]:.6g} eV — {status}")
         for step in steps:
             for peak in step.peaks:
-                if peak.component_id not in markers:
+                if not self.show_links.isChecked() or peak.component_id not in markers:
                     continue
                 x, y = markers[peak.component_id]
                 color = color_for_component(component_id=by_component[peak.component_id].anchor_id)
@@ -280,6 +311,7 @@ class LinkEditor(QWidget):
                     tip=lambda _x, _y, info: info,
                     data=[f"{peak.position:.6g} eV"],
                 )
+                point.setZValue(len(steps) * 10 + 2)
                 point.sigClicked.connect(
                     lambda _item, _points, _event, sid=step.spectrum_id, cid=peak.component_id: (
                         QTimer.singleShot(0, self, lambda: self._select_peak(sid, cid))

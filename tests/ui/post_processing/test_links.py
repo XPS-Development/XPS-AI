@@ -42,7 +42,7 @@ def test_stack_uses_shared_energy_axis_and_preserves_saved_intensities(compariso
     assert plot.getAxis("bottom").labelUnits == "eV"
     raw = plot.listDataItems()[0]
     np.testing.assert_array_equal(raw.xData, original.x)
-    expected = (original.y - original.y.min()) / np.ptp(original.y) + 1.4
+    expected = (original.y - original.y.min()) / np.ptp(original.y) + 2 * editor.spacing.value()
     np.testing.assert_allclose(raw.yData, expected)
     editor.normalize.setChecked(True)
     editor.scope.setCurrentIndex(1)
@@ -60,6 +60,7 @@ def test_marker_selection_can_switch_pair_in_whole_series(comparison):
     editor = LinkEditor(controller)
     editor.set_series(sid)
     editor.scope.setCurrentIndex(1)
+    editor.show_links.setChecked(True)
     plot = editor.graphics.ci.getItem(0, 0)
     markers = [item for item in plot.items if isinstance(item, pg.ScatterPlotItem)]
     # Last marker belongs to the second peak in the last spectrum.
@@ -112,4 +113,31 @@ def test_absent_trend_does_not_select_an_unrelated_peak(comparison):
     editor.pair.setCurrentIndex(1)
     assert editor.left.currentData() is None
     assert editor.right.currentData() is None
+    editor.deleteLater()
+
+
+def test_waterfall_overlap_is_adjustable_and_overlays_are_optional(comparison):
+    _, controller, sid = comparison
+    editor = LinkEditor(controller)
+    editor.set_series(sid)
+    assert editor.scope.currentText() == "Whole series"
+    plot = editor.graphics.ci.getItem(0, 0)
+    layers = [item for item in plot.listDataItems() if item.opts["fillLevel"] is not None]
+    assert len(layers) == 3
+    # Nearer spectra mask the lower part of spectra behind them.
+    assert layers[0].zValue() < layers[1].zValue() < layers[2].zValue()
+    assert layers[0].opts["fillLevel"] == pytest.approx(0.36)
+    assert layers[2].opts["fillLevel"] == 0
+    assert not any(isinstance(item, pg.ScatterPlotItem) for item in plot.items)
+    assert len([item for item in plot.listDataItems() if item.isVisible()]) == 3
+    original = layers[0].yData.copy()
+    editor.spacing.setValue(0.1)
+    plot = editor.graphics.ci.getItem(0, 0)
+    np.testing.assert_allclose(plot.listDataItems()[0].yData, original - 0.16)
+    editor.components.setChecked(True)
+    plot = editor.graphics.ci.getItem(0, 0)
+    assert len([item for item in plot.listDataItems() if item.isVisible()]) > 3
+    editor.show_links.setChecked(True)
+    plot = editor.graphics.ci.getItem(0, 0)
+    assert any(isinstance(item, pg.ScatterPlotItem) for item in plot.items)
     editor.deleteLater()
