@@ -2,16 +2,43 @@
 
 from pathlib import Path
 
-from core.dto import ComponentDTO
+from core.dto import AnalysisTable, ComponentDTO
 from core.io.csv_export import (
     SpectrumRepr,
     export_spectrum_csv,
     export_spectrum_peak_parameters_csv,
 )
+from core.io.post_processing_csv import export_table
+from core.post_processing.analysis import AnalyticalTableState
+from core.post_processing.state import PostProcessingSeries
 
 
 class CSVExportService:
     """Service that exports DTO projections into CSV-like files."""
+
+    def export_post_processing(
+        self,
+        path: str | Path,
+        table: AnalysisTable,
+        series: PostProcessingSeries,
+        *,
+        separator: str = ",",
+        precision: int | None = None,
+    ) -> None:
+        """Write a post-processing table and its calculation description."""
+        export_table(path, table, series, separator=separator, precision=precision)
+
+    def export_analytical_table(
+        self,
+        path: str | Path,
+        table: AnalysisTable,
+        state: AnalyticalTableState,
+        sources: dict[str, PostProcessingSeries],
+        *,
+        precision: int | None = None,
+    ) -> None:
+        """Export an independent table with every contributing series snapshot."""
+        export_table(path, table, state, precision=precision, source_series=sources)
 
     def export_spectrum_peak_parameters(
         self,

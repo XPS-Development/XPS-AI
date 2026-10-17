@@ -9,7 +9,7 @@ from app.parameters import AppParameters
 from core.io.serialization import deserialize, serialize
 from core.math_models import PseudoVoigtPeakModel
 from core.objects import Peak, Region, Spectrum
-from core.post_processing import LinkConstraints, MatchingSettings, MetricDefinition, match_series
+from core.post_processing import LinkConstraints, MatchingSettings, match_series
 
 
 @pytest.fixture
@@ -112,49 +112,45 @@ def test_removal_preserves_step_and_undo_restores_availability(orchestrator):
 def test_columns_and_names_update_values_without_invalidating_matching(orchestrator):
     sid = create(orchestrator)
     run(orchestrator, sid)
-    metric = MetricDefinition(
-        "shift", "Energy shift", "position_shift", ("track/p1",), reference_spectrum_id="s1"
-    )
-    orchestrator.edit_post_processing_series(
-        sid, name="Renamed", metrics=(metric,), column_order=("shift", "position")
-    )
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    before = orchestrator.query.get_analytical_table(tid)
     orchestrator.name_post_processing_track(sid, "track/p1", "Carbon")
-    state = orchestrator.query.get_post_processing_series(sid)
-    assert not state.stale
-    assert [cell.value for cell in state.values] == [0, 0.2]
-    assert state.series.track_names == (("p1", "Carbon"),)
-    assert state.series.column_order == ("shift", "position")
-    assert run(orchestrator, sid).series.track_names == state.series.track_names
-    orchestrator.name_post_processing_track(sid, "track/p1", None)
-    assert orchestrator.query.get_post_processing_series(sid).series.track_names == ()
-    orchestrator.undo()
-    assert orchestrator.query.get_post_processing_series(sid).series.track_names == (
-        ("p1", "Carbon"),
-    )
+    orchestrator.edit_post_processing_series(sid, name="Renamed")
+    dto = orchestrator.query.get_analytical_table(tid)
+    assert not dto.stale
+    assert dto.table.columns[2].label.startswith("Renamed / Carbon")
+    assert dto.state.sources == before.state.sources
+    assert not hasattr(orchestrator.query.get_post_processing_series(sid).series, "metrics")
 
 
 def test_dangling_metric_operands_require_selection_after_recalculation(orchestrator):
     sid = create(orchestrator)
     run(orchestrator, sid)
-    metric = MetricDefinition("area", "Area", "area", ("track/p1",))
-    orchestrator.edit_post_processing_series(sid, metrics=(metric,), spectrum_ids=("s2",))
-    state = run(orchestrator, sid)
-    assert state.series.result.tracks[0].id_ == "track/p2"
-    assert state.values[0].reason == "operand_selection_required"
-    assert state.conflicts == ("operand_selection_required:area:track/p1",)
-    assert not state.exportable
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    orchestrator.edit_analytical_table(tid, selections=())
+    dto = orchestrator.query.get_analytical_table(tid)
+    assert dto.conflicts[0].startswith("operand_selection_required")
+    assert not dto.exportable
 
 
 def test_removed_reference_is_not_replaced(orchestrator):
     sid = create(orchestrator)
     run(orchestrator, sid)
-    metric = MetricDefinition(
-        "shift", "Shift", "position_shift", ("track/p1",), reference_spectrum_id="s2"
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    state = orchestrator.query.get_analytical_table(tid).state
+    orchestrator.save_analytical_metric(
+        tid,
+        name="Shift",
+        operation="position_shift",
+        tracks=(state.sources[0].id_,),
+        reference_row_id=state.rows[1].id_,
     )
-    orchestrator.edit_post_processing_series(sid, metrics=(metric,), spectrum_ids=("s1",))
-    state = run(orchestrator, sid)
-    assert state.values[0].reason == "reference_selection_required"
-    assert "reference_selection_required:shift" in state.conflicts
+    orchestrator.edit_post_processing_series(sid, spectrum_ids=("s1",))
+    run(orchestrator, sid)
+    orchestrator.edit_analytical_table(tid, refresh_alignment=True)
+    dto = orchestrator.query.get_analytical_table(tid)
+    assert dto.table.rows[0].cells[-1].reason == "reference_selection_required"
+    assert dto.conflicts[0].startswith("reference_selection_required")
 
 
 def test_named_anchor_can_move_inside_track_without_changing_identity(orchestrator):
@@ -198,7 +194,7 @@ def test_constraints_persist_across_recalculation(orchestrator):
 
 
 @pytest.mark.parametrize(
-    "mutation", ["fit", "settings", "columns", "remove_series", "new", "replace", "append"]
+    "mutation", ["fit", "settings", "rename", "remove_series", "new", "replace", "append"]
 )
 def test_outdated_jobs_are_rejected_without_adding_undo_entry(orchestrator, mutation):
     sid = create(orchestrator)
@@ -208,8 +204,8 @@ def test_outdated_jobs_are_rejected_without_adding_undo_entry(orchestrator, muta
         orchestrator.update_parameter("p1", "amp", "value", 5)
     elif mutation == "settings":
         orchestrator.edit_post_processing_series(sid, settings=MatchingSettings(energy_gate=3))
-    elif mutation == "columns":
-        orchestrator.edit_post_processing_series(sid, column_order=("area",))
+    elif mutation == "rename":
+        orchestrator.edit_post_processing_series(sid, name="Changed")
     elif mutation == "remove_series":
         orchestrator.remove_post_processing_series(sid)
     elif mutation == "new":
@@ -259,7 +255,7 @@ def test_merged_named_tracks_require_explicit_conflict_resolution(orchestrator):
     orchestrator.name_post_processing_track(sid, "track/p2", "Second")
     orchestrator.edit_post_processing_series(sid, constraints=LinkConstraints())
     job = orchestrator.prepare_post_processing(sid)
-    with pytest.raises(ValueError, match="Several named anchors merged"):
+    with pytest.raises(ValueError, match="Several named or selected anchors merged"):
         orchestrator.apply_post_processing_result(job, match_series(job.matching))
     orchestrator.name_post_processing_track(sid, "track/p2", None)
     state = run(orchestrator, sid)
@@ -308,9 +304,105 @@ def test_failed_load_retains_series_history_and_dirty_state(orchestrator, tmp_pa
     before = run(orchestrator, sid)
     previous = orchestrator.peek_undo_command()
     path = tmp_path / "broken.json"
-    path.write_text('{"version": "1.1", "objects": [], "post_processing": {}}')
+    path.write_text('{"version": "1.2", "objects": [], "post_processing": {}}')
     with pytest.raises(ValueError, match="Expected a JSON array"):
         orchestrator.load_collection(path)
     assert orchestrator.query.get_post_processing_series(sid) == before
     assert orchestrator.peek_undo_command() is previous
     assert orchestrator.is_dirty
+
+
+def test_synchronous_run_and_metric_editor_are_undoable(orchestrator):
+    sid = create(orchestrator)
+    orchestrator.run_post_processing(sid)
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    state = orchestrator.query.get_analytical_table(tid).state
+    metric = state.metrics[0]
+    orchestrator.save_analytical_metric(
+        tid, name="Area", operation="area", tracks=(state.sources[0].id_,), metric_id=metric.id_
+    )
+    assert [r.cells[-1].value for r in orchestrator.query.get_analytical_table(tid).table.rows] == [
+        1,
+        2,
+    ]
+    orchestrator.remove_analytical_metric(tid, metric.id_)
+    assert orchestrator.query.get_analytical_table(tid).state.metrics == ()
+    orchestrator.undo()
+    assert orchestrator.query.get_analytical_table(tid).state.metrics[0].name == "Area"
+    orchestrator.undo()
+    assert orchestrator.query.get_analytical_table(tid).state == state
+
+
+def test_export_uses_query_values_and_describes_operands_and_units(orchestrator, tmp_path):
+    import csv
+    import json
+
+    sid = create(orchestrator)
+    orchestrator.run_post_processing(sid)
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    state = orchestrator.query.get_analytical_table(tid).state
+    orchestrator.save_analytical_metric(
+        tid,
+        name="Shift",
+        operation="position_shift",
+        tracks=(state.sources[0].id_,),
+        reference_row_id=state.rows[1].id_,
+    )
+    metric = orchestrator.query.get_analytical_table(tid).state.metrics[-1]
+    path = tmp_path / "analysis.csv"
+    orchestrator.export_analytical_table(tid, path, precision=4)
+    rows = list(csv.DictReader(path.open()))
+    assert rows[0][f"{metric.id_} [eV]"] == "-0.2000"
+    metadata = json.loads(path.with_suffix(".calculations.json").read_text())
+    assert metadata["definitions"][-1]["reference_row_id"] == state.rows[1].id_
+    assert (
+        metadata["source_series"][sid]["result"]["series"]["steps"][1]["peaks"][0]["position"]
+        == 0.2
+    )
+
+
+def test_stale_or_conflicting_exports_do_not_write_files(orchestrator, tmp_path):
+    sid = create(orchestrator)
+    orchestrator.run_post_processing(sid)
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    orchestrator.update_parameter("p1", "amp", "value", 10)
+    path = tmp_path / "no.csv"
+    with pytest.raises(ValueError, match="resolve source conflicts"):
+        orchestrator.export_analytical_table(tid, path)
+    assert not path.exists()
+    assert not path.with_suffix(".calculations.json").exists()
+    orchestrator.undo()
+    orchestrator.remove_post_processing_series(sid)
+    with pytest.raises(ValueError, match="resolve source conflicts"):
+        orchestrator.export_analytical_table(tid, path)
+    assert not path.exists()
+
+
+def test_unknown_formula_is_rejected_without_mutating_saved_columns(orchestrator):
+    sid = create(orchestrator)
+    orchestrator.run_post_processing(sid)
+    tid = orchestrator.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    before = orchestrator.query.get_analytical_table(tid)
+    with pytest.raises(ValueError, match="Unknown metric operation"):
+        orchestrator.save_analytical_metric(
+            tid, name="Invalid", operation="eval", tracks=(before.state.sources[0].id_,)
+        )
+    assert orchestrator.query.get_analytical_table(tid) == before
+
+
+def test_navigation_uses_live_ancestry_and_does_not_select_another_spectrums_peak(orchestrator):
+    sid = create(orchestrator)
+    orchestrator.run_post_processing(sid)
+    assert orchestrator.query.get_post_processing_source(sid, "s1", component_id="p2") == (
+        "s1",
+        None,
+        None,
+    )
+    orchestrator.full_remove_object("p1")
+    assert orchestrator.query.get_post_processing_source(sid, "s1", "track/p1") == (
+        "s1",
+        None,
+        None,
+    )
+    orchestrator.full_remove_object("s1")
+    assert orchestrator.query.get_post_processing_source(sid, "s1", "track/p1") is None

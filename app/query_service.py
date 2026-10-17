@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from core.dto import AnalyticalTableDTO
 from core.evaluation import (
     SpectrumPlotData,
     peak_area,
@@ -12,13 +13,21 @@ from core.evaluation import (
     spectrum_bundle,
 )
 from core.math_models import ModelRegistry
+from core.post_processing.analysis import build_analysis, dependency_stamp
 from core.post_processing.fingerprint import input_fingerprint
+from core.post_processing.tables import TableView, build_table, build_trend_tables
 
 from .dto_service import DTOService
-from .post_processing import project_series
+from .post_processing import METRIC_OPERATIONS, MetricOperationOption, project_series
 
 if TYPE_CHECKING:
-    from core.dto import ComponentDTO, PostProcessingSeriesDTO, RegionDTO, SpectrumDTO
+    from core.dto import (
+        AnalysisTable,
+        ComponentDTO,
+        PostProcessingSeriesDTO,
+        RegionDTO,
+        SpectrumDTO,
+    )
     from core.math_models.base_models import ParameterSpec
     from core.metadata import Metadata
     from core.post_processing.state import PostProcessingSeries
@@ -56,6 +65,170 @@ class QueryService:
     def get_post_processing_series_ids(self) -> tuple[str, ...]:
         """Return saved series IDs in document order."""
         return tuple(self._ctx.post_processing)
+
+    def get_analytical_table_ids(self) -> tuple[str, ...]:
+        """Return independent analytical tables in document order."""
+        return tuple(self._ctx.analytical_tables)
+
+    def get_matching_settings(self, series_id: str) -> tuple[tuple[str, float], ...]:
+        """Return active editable matching parameters without exposing model classes."""
+        from dataclasses import asdict
+
+        return tuple(asdict(self._ctx.post_processing[series_id].settings).items())
+
+    def get_trend_tables(
+        self, series_id: str, track_id: str
+    ) -> tuple[AnalysisTable, AnalysisTable]:
+        """Return selected-trend components and its numerical preview."""
+        series = self._ctx.post_processing[series_id]
+        names = {
+            sid: getattr(self.get_metadata(sid), "name", None) or sid for sid in series.spectrum_ids
+        }
+        return build_trend_tables(series, names, track_id)
+
+    def get_analytical_source_labels(self, table_id: str) -> tuple[str, ...]:
+        """Describe qualified sources and their independently counted peaks and steps."""
+        labels = []
+        for source in self._ctx.analytical_tables[table_id].sources:
+            series = self._ctx.post_processing.get(source.series_id)
+            if series is None:
+                labels.append(f"Unavailable series: {source.series_id}")
+                continue
+            track = (
+                None
+                if series.result is None
+                else next((t for t in series.result.tracks if t.id_ == source.track_id), None)
+            )
+            labels.append(
+                f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}: "
+                f"{0 if track is None else len(track.component_ids)} peaks / {len(series.spectrum_ids)} steps"
+            )
+        return tuple(labels)
+
+    def get_used_trend_anchors(self, series_id: str) -> set[str]:
+        """Return anchors whose identity must survive a series recalculation."""
+        return {
+            source.anchor_id
+            for table in self._ctx.analytical_tables.values()
+            for source in table.sources
+            if source.series_id == series_id
+        }
+
+    def get_trend_color_keys(self, series_id: str) -> dict[str, str]:
+        """Return common colour identities for a series and source-spectrum navigation."""
+        result = self._ctx.post_processing[series_id].result
+        return (
+            {}
+            if result is None
+            else {cid: track.anchor_id for track in result.tracks for cid in track.component_ids}
+        )
+
+    def get_analytical_table(self, table_id: str) -> AnalyticalTableDTO:
+        """Calculate aligned cross-series values and expose stale dependency conflicts."""
+        state = self._ctx.analytical_tables[table_id]
+        saved = self._ctx.post_processing
+        stamps = dict(state.dependencies)
+        stale = False
+        conflicts = []
+        counts = []
+        for source in state.sources:
+            series = saved.get(source.series_id)
+            if series is None:
+                conflicts.append(f"unavailable_series:{source.series_id}")
+                counts.append((source.id_, 0, 0))
+                continue
+            dto = self.get_post_processing_series(source.series_id)
+            stale |= dto.stale or stamps.get(source.series_id) != dependency_stamp(series)
+            track = (
+                None
+                if series.result is None
+                else next(
+                    (
+                        t
+                        for t in series.result.tracks
+                        if t.id_ == source.track_id and t.anchor_id == source.anchor_id
+                    ),
+                    None,
+                )
+            )
+            if track is None:
+                conflicts.append(f"operand_selection_required:{source.id_}")
+            counts.append(
+                (
+                    f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}",
+                    len(series.spectrum_ids),
+                    0 if track is None else len(track.component_ids),
+                )
+            )
+        row_ids = {row.id_ for row in state.rows}
+        source_ids = {source.id_ for source in state.sources}
+        for metric in state.metrics:
+            if not set((*metric.tracks, *metric.denominator)).issubset(source_ids):
+                conflicts.append(f"operand_selection_required:{metric.id_}")
+            if metric.reference_row_id is not None and metric.reference_row_id not in row_ids:
+                conflicts.append(f"reference_selection_required:{metric.id_}")
+        warnings = ()
+        if len({(length, peaks) for _, length, peaks in counts}) > 1:
+            warnings = (
+                "Unequal source counts (steps / peaks): "
+                + "; ".join(
+                    f"{source_id}: {length} / {peaks}" for source_id, length, peaks in counts
+                ),
+            )
+        names = {
+            sid: getattr(self.get_metadata(sid), "name", None) or sid
+            for row in state.rows
+            for point in row.points
+            if (sid := point.spectrum_id)
+        }
+        projection = build_analysis(state, saved, names, set(self.get_all_spectra_ids()))
+        return AnalyticalTableDTO(state, projection, stale, tuple(conflicts), warnings)
+
+    def get_post_processing_table(
+        self, series_id: str, view: TableView = "components"
+    ) -> AnalysisTable:
+        """Return shared full precision values for a table, trends or export."""
+        series = self._ctx.post_processing[series_id]
+        snapshot_ids = (
+            ()
+            if series.result is None
+            else tuple(s.spectrum_id for s in series.result.series.steps)
+        )
+        names = {sid: getattr(self.get_metadata(sid), "name", None) or sid for sid in snapshot_ids}
+        return build_table(series, names, view)
+
+    def get_post_processing_operations(self) -> tuple[MetricOperationOption, ...]:
+        """Return supported operation labels and operand requirements."""
+        return METRIC_OPERATIONS
+
+    def get_post_processing_source(
+        self,
+        series_id: str,
+        spectrum_id: str,
+        track_id: str | None = None,
+        *,
+        component_id: str | None = None,
+    ) -> tuple[str, str | None, str | None] | None:
+        """Resolve a table/trend point to its live spectrum and optional peak."""
+        if spectrum_id not in self.get_all_spectra_ids():
+            return None
+        result = self._ctx.post_processing[series_id].result
+        if result is not None and track_id is not None:
+            track = next((track for track in result.tracks if track.id_ == track_id), None)
+            step = next(
+                (step for step in result.series.steps if step.spectrum_id == spectrum_id), None
+            )
+            if track is not None and step is not None:
+                peak = next(
+                    (peak for peak in step.peaks if peak.component_id in track.component_ids), None
+                )
+                if peak is not None:
+                    component_id = peak.component_id
+        if component_id in self.get_all_peaks_ids():
+            region_id = self.get_parent_id(component_id)
+            if self.get_parent_id(region_id) == spectrum_id:
+                return spectrum_id, region_id, component_id
+        return spectrum_id, None, None
 
     # ---- Collection queries (read-only) ----
 

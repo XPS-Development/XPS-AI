@@ -17,7 +17,12 @@ from uuid import uuid4
 import numpy as np
 
 from core.collection import CoreCollection
-from core.io.post_processing import deserialize_section, serialize_series
+from core.io.post_processing import (
+    deserialize_section,
+    deserialize_tables,
+    serialize_series,
+    serialize_table,
+)
 from core.math_models import BaseBackgroundModel, BasePeakModel, ModelRegistry
 from core.metadata import (
     BackgroundMetadata,
@@ -27,12 +32,13 @@ from core.metadata import (
     SpectrumMetadata,
 )
 from core.objects import Background, Component, Peak, Region, Spectrum
+from core.post_processing.analysis import dependency_stamp
 from core.services import MetadataService
 
 LoadMode = Literal["append", "replace", "new"]
 DeserializeResult = CoreCollection | tuple[CoreCollection, MetadataService]
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 
 def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) -> dict[str, Any]:
@@ -264,6 +270,9 @@ def serialize(
 
     return {
         "version": VERSION,
+        "analytical_tables": [
+            serialize_table(table) for table in collection.analytical_tables.values()
+        ],
         "objects": objects,
         "post_processing": [
             serialize_series(series) for series in collection.post_processing.values()
@@ -587,7 +596,7 @@ def deserialize(
     *,
     mode: LoadMode = "replace",
 ) -> DeserializeResult:
-    """Load a complete document transactionally, accepting versions 1.0 and 1.1.
+    """Load a complete document transactionally, accepting versions 1.0 and 1.2.
 
     New returns a fresh (collection, metadata) pair. Replace requires both
     existing stores and updates them in place. Append preserves existing object
@@ -606,18 +615,25 @@ def deserialize(
     if data["version"] == "1.0" and data.get("post_processing"):
         raise ValueError("Version 1.0 cannot contain post-processing series")
     incoming = deserialize_section(data.get("post_processing", []))
+    incoming_tables = deserialize_tables(data.get("analytical_tables", []))
+    if data["version"] == "1.0" and data.get("analytical_tables"):
+        raise ValueError("Release documents cannot contain independent analytical tables")
     staged = CoreCollection()
     staged_metadata = MetadataService(staged)
     if mode == "append" and collection is not None:
         staged.objects_index.update(collection.objects_index)
         staged.post_processing.update(collection.post_processing)
+        staged.analytical_tables.update(collection.analytical_tables)
         if metadata_service is not None:
             for obj_id in collection.objects_index:
                 metadata = metadata_service.get_metadata(obj_id)
                 if metadata is not None:
                     staged_metadata.set_metadata(obj_id, metadata)
     _deserialize_objects(data, staged, staged_metadata)
+    id_map = {}
+    originals = {series.id_: series for series in incoming}
     for series in incoming:
+        old_id = series.id_
         if series.id_ in staged.post_processing:
             series_id = uuid4().hex
             while series_id in staged.post_processing:
@@ -626,7 +642,25 @@ def deserialize(
             if result is not None:
                 result = replace(result, series=replace(result.series, id_=series_id))
             series = replace(series, id_=series_id, result=result)
+        id_map[old_id] = series.id_
         staged.post_processing[series.id_] = series
+    for table in incoming_tables:
+        sources = tuple(
+            replace(source, series_id=id_map.get(source.series_id, source.series_id))
+            for source in table.sources
+        )
+        dependencies = []
+        for sid, stamp in table.dependencies:
+            new_id = id_map.get(sid, sid)
+            if sid in originals and stamp == dependency_stamp(originals[sid]):
+                stamp = dependency_stamp(staged.post_processing[new_id])
+            dependencies.append((new_id, stamp))
+        table_id = table.id_
+        while table_id in staged.analytical_tables:
+            table_id = uuid4().hex
+        staged.analytical_tables[table_id] = replace(
+            table, id_=table_id, sources=sources, dependencies=tuple(dependencies)
+        )
     if mode == "new":
         return staged, staged_metadata
     if collection is None:
@@ -634,6 +668,7 @@ def deserialize(
     collection.clear()
     collection.objects_index.update(staged.objects_index)
     collection.post_processing.update(staged.post_processing)
+    collection.analytical_tables.update(staged.analytical_tables)
     if metadata_service is not None:
         metadata_service.clear()
         for obj_id in staged.objects_index:

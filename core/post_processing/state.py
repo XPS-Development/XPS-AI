@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from uuid import uuid4
 
-from core.post_processing.metrics import MetricDefinition
 from core.post_processing.types import (
     LinkConstraints,
     MatchingResult,
@@ -20,8 +19,8 @@ def new_revision() -> str:
 class PostProcessingSeries:
     """Saved series configuration and last result, retained even when stale.
 
-    Track names are keyed by component anchor IDs. Metric definitions refer to
-    stable track IDs. Availability and staleness are derived from the live
+    Trend names are keyed by component anchor IDs. Independent analytical tables
+    refer to stable trend IDs. Availability and staleness are derived from the live
     document, so undo restores them without modifying the saved snapshot.
     """
 
@@ -33,8 +32,6 @@ class PostProcessingSeries:
     result: MatchingResult | None = None
     input_fingerprint: str | None = None
     track_names: tuple[tuple[str, str], ...] = ()
-    metrics: tuple[MetricDefinition, ...] = ()
-    column_order: tuple[str, ...] = ()
     revision: str = field(default_factory=new_revision)
 
     def __post_init__(self) -> None:
@@ -50,11 +47,7 @@ class PostProcessingSeries:
             raise ValueError("A series requires at least one spectrum ID")
         if len(self.spectrum_ids) != len(set(self.spectrum_ids)):
             raise ValueError("Spectrum IDs must be unique in a series")
-        for values, label in (
-            ([anchor for anchor, _ in self.track_names], "Track name anchors"),
-            ([metric.id_ for metric in self.metrics], "Metric IDs"),
-            (list(self.column_order), "Column IDs"),
-        ):
+        for values, label in (([anchor for anchor, _ in self.track_names], "Track name anchors"),):
             if any(not value for value in values) or len(values) != len(set(values)):
                 raise ValueError(f"{label} must be nonempty and unique")
         if any(not name.strip() for _, name in self.track_names):

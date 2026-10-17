@@ -14,6 +14,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from core.metadata import Metadata
+from core.post_processing.analysis import AnalyticalTableState
 from core.post_processing.state import PostProcessingSeries
 
 # Type alias for parameter field names; maps to RuntimeParameter attributes.
@@ -222,6 +223,15 @@ class SetPostProcessingSeries:
     expected_revision: str | None = None
 
 
+@dataclass(frozen=True)
+class SetAnalyticalTable:
+    """Install or remove one complete independent analytical table."""
+
+    table_id: str
+    value: AnalyticalTableState | None
+    expected_revision: str | None = None
+
+
 BaseChange = (
     UpdateParameter
     | RenameComponent
@@ -239,4 +249,5 @@ BaseChange = (
     | SetMetadata
     | CompositeChange
     | SetPostProcessingSeries
+    | SetAnalyticalTable
 )
