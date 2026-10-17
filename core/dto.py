@@ -130,6 +130,7 @@ class AnalysisColumn:
     unit: str = ""
     track_id: str | None = None
     anchor_id: str | None = None
+    quantity: str = ""
 
 
 @dataclass(frozen=True)

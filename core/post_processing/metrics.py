@@ -9,7 +9,6 @@ from core.post_processing.types import MatchingResult, PeakDescriptor
 MetricOperation = Literal[
     "position",
     "area",
-    "fwhm",
     "sig",
     "spectrum_area_fraction",
     "position_difference",
@@ -45,7 +44,6 @@ class MetricDefinition:
         counts = {
             "position": 1,
             "area": 1,
-            "fwhm": 1,
             "sig": 1,
             "spectrum_area_fraction": 1,
             "position_difference": 2,
@@ -73,6 +71,22 @@ class MetricDefinition:
                 raise ValueError("Position shift requires an explicit reference spectrum ID")
         elif self.reference_spectrum_id is not None:
             raise ValueError("Only position shift accepts a reference spectrum")
+
+    @property
+    def quantity(self) -> str:
+        """Identify the plotted quantity independently of its unit or custom name."""
+        return {
+            "position": "Position",
+            "sig": "sig",
+            "area": "Area",
+            "area_sum": "Area",
+            "spectrum_area_fraction": "Rel. area",
+            "area_fraction": "Rel. area",
+            "area_ratio": "Area ratio",
+            "area_sum_ratio": "Area ratio",
+            "position_difference": "Position difference",
+            "position_shift": "Position shift",
+        }[self.operation]
 
     @property
     def unit(self) -> str:
@@ -157,7 +171,7 @@ class _Evaluator:
                 self.area_sum(definition.denominator, spectrum_id),
             )
         peak = self.peak(tracks[0], spectrum_id)
-        if op in ("position", "area", "fwhm", "sig"):
+        if op in ("position", "area", "sig"):
             return self.number(getattr(peak, op))
         if op == "position_difference":
             return peak.position - self.peak(tracks[1], spectrum_id).position

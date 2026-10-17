@@ -266,6 +266,7 @@ def build_analysis(
                 source_map[m.tracks[0]].anchor_id
                 if len(m.tracks) == 1 and m.tracks[0] in source_map
                 else None,
+                m.definition().quantity,
             )
             for m in metrics
         ),

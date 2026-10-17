@@ -35,7 +35,6 @@ def values(result, operation, tracks=("track/a",), **kwargs):
     [
         ("position", ("track/a",), {}, [280, 281, None, None], "eV"),
         ("area", ("track/a",), {}, [10, 20, None, None], "area"),
-        ("fwhm", ("track/a",), {}, [1, 1, None, None], "eV"),
         ("sig", ("track/a",), {}, [0.5, 0.5, None, None], "eV"),
         ("position_difference", ("track/a", "track/b"), {}, [-10, -11, None, None], "eV"),
         ("position_difference", ("track/b", "track/a"), {}, [10, 11, None, None], "eV"),
@@ -100,7 +99,7 @@ def test_zero_denominator_and_missing_width():
         _, cells = values(result, operation, tracks)
         assert cells[0].value is None
         assert cells[0].reason == "zero_denominator"
-    _, cells = values(result, "fwhm")
+    _, cells = values(result, "sig")
     assert cells[0].reason == "missing_feature"
 
 

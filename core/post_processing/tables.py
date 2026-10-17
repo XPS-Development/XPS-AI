@@ -29,7 +29,7 @@ def build_table(
     columns = (
         *base,
         *(
-            AnalysisColumn(id_, label, unit)
+            AnalysisColumn(id_, label, unit, quantity=label if unit else "")
             for id_, label, unit in (
                 ("region", "Region ID", ""),
                 ("component", "Component ID", ""),
@@ -38,9 +38,8 @@ def build_table(
                 ("model", "Model", ""),
                 ("position", "Position", "eV"),
                 ("area", "Area", "area"),
-                ("fwhm", "FWHM", "eV"),
                 ("sig", "sig", "eV"),
-                ("fraction", "Area / sum of spectrum peak areas", "%"),
+                ("fraction", "Rel. area", "%"),
                 ("link", "Link status", ""),
             )
         ),
@@ -83,7 +82,7 @@ def build_table(
                 AnalysisCell(value, "ambiguous" if track.ambiguous else "ok")
                 if value is not None
                 else AnalysisCell(None, "missing", "missing_feature")
-                for value in (peak.position, peak.area, peak.fwhm, peak.sig)
+                for value in (peak.position, peak.area, peak.sig)
             )
             cells = (
                 *identity,
@@ -147,10 +146,12 @@ def build_trend_tables(
     indices = [
         i
         for i, column in enumerate(detailed.columns)
-        if column.id_ in ("step", "spectrum", "position", "area", "fwhm", "sig", "fraction")
+        if column.id_ in ("step", "spectrum", "position", "area", "sig", "fraction")
     ]
     preview_columns = tuple(
-        AnalysisColumn(c.id_, c.label, c.unit, track_id, track.anchor_id) if i > 1 else c
+        AnalysisColumn(c.id_, c.label, c.unit, track_id, track.anchor_id, c.quantity)
+        if i > 1
+        else c
         for i, c in enumerate(detailed.columns)
         if i in indices
     )

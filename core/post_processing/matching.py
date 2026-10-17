@@ -56,7 +56,7 @@ def _transition(
     terms = [("position", config.energy_weight * _huber(delta / config.energy_scale))]
     missing = []
     for field, name, weight, scale in (
-        ("fwhm", "width", config.width_weight, config.width_scale),
+        ("sig", "width", config.width_weight, config.width_scale),
         ("shape_gl", "shape_gl", config.shape_weight, config.shape_scale),
     ):
         if weight == 0:
@@ -65,7 +65,7 @@ def _transition(
         if x is None or y is None:
             missing.append(field)
             continue
-        difference = log(y) - log(x) if field == "fwhm" else y - x
+        difference = log(y) - log(x) if field == "sig" else y - x
         terms.append((name, weight * _huber(difference / scale)))
     rank_a, area_a = features[source.component_id]
     rank_b, area_b = features[target.component_id]

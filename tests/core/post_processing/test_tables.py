@@ -62,7 +62,8 @@ def test_detailed_rows_preserve_provenance_widths_and_exclusion_reasons():
     assert table.rows[0].cells[columns["spectrum"]].value == "Spectrum"
     assert table.rows[0].cells[columns["track_name"]].value == "A"
     assert table.rows[0].cells[columns["fraction"]].value == 25
-    assert table.rows[1].cells[columns["fwhm"]].reason == "missing_feature"
+    assert "fwhm" not in columns
+    assert table.columns[columns["fraction"]].label == "Rel. area"
     assert table.rows[1].cells[columns["sig"]].value == 1
     assert table.rows[2].cells[-1].reason == "empty_step"
     assert table.rows[3].cells[-1].reason == "invalid_sig"
