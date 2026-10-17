@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QModelIndex, Qt, Signal
+from PySide6.QtCore import QModelIndex, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -81,6 +82,16 @@ class SeriesPanel(QWidget):
         self.tables = QListWidget()
         self.tables.setObjectName("AnalyticalTableList")
         self.tables.currentItemChanged.connect(self._table_changed)
+        self.tables.itemClicked.connect(self._table_changed)
+        self.list.itemClicked.connect(self._selected_changed)
+        for widget, table in ((self.list, False), (self.tables, True)):
+            widget.setEditTriggers(
+                QAbstractItemView.EditTrigger.DoubleClicked
+                | QAbstractItemView.EditTrigger.EditKeyPressed
+            )
+            widget.itemChanged.connect(
+                lambda item, table=table: self._rename_item(item, table=table)
+            )
         layout.addWidget(self.tables, 1)
         self.list.currentItemChanged.connect(self._selected_changed)
         controller.postProcessingChanged.connect(self.refresh, Qt.ConnectionType.QueuedConnection)
@@ -94,31 +105,35 @@ class SeriesPanel(QWidget):
             self._kind = "series"
             self._generation = self._controller.query.document_generation
         ids = self._controller.query.get_post_processing_series_ids()
+        tids = self._controller.query.get_analytical_table_ids()
+        if self._kind == "table" and self._table_id not in tids:
+            self._kind = "series"
         selected = self._selected if self._selected in ids else next(iter(ids), None)
         self.list.blockSignals(True)
         self.list.clear()
         for sid in ids:
             dto = self._controller.query.get_post_processing_series(sid)
-            suffix = " • recalculate" if dto.stale else ""
-            item = QListWidgetItem(dto.series.name + suffix)
+            item = QListWidgetItem(dto.series.name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setData(Qt.ItemDataRole.UserRole, sid)
-            item.setToolTip(sid)
+            item.setToolTip("Matching needs updating" if dto.stale else dto.series.name)
             self.list.addItem(item)
-            if sid == selected:
+            if self._kind == "series" and sid == selected:
                 self.list.setCurrentItem(item)
         self.list.blockSignals(False)
         self._selected = selected
-        tids = self._controller.query.get_analytical_table_ids()
         self.tables.blockSignals(True)
         self.tables.clear()
         for tid in tids:
             dto = self._controller.query.get_analytical_table(tid)
-            item = QListWidgetItem(
-                dto.state.name + (" • update" if dto.stale or dto.conflicts else "")
+            item = QListWidgetItem(dto.state.name)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setToolTip(
+                "Sources need updating" if dto.stale or dto.conflicts else dto.state.name
             )
             item.setData(Qt.ItemDataRole.UserRole, tid)
             self.tables.addItem(item)
-            if tid == self._table_id:
+            if self._kind == "table" and tid == self._table_id:
                 self.tables.setCurrentItem(item)
         self.tables.blockSignals(False)
         if self._kind == "table" and self._table_id in tids:
@@ -131,7 +146,27 @@ class SeriesPanel(QWidget):
         item = self.list.currentItem()
         self._selected = None if item is None else item.data(Qt.ItemDataRole.UserRole)
         self._kind = "series"
+        with QSignalBlocker(self.tables):
+            self.tables.setCurrentRow(-1)
         self.seriesSelected.emit(self._selected)
+
+    def _rename_item(self, item: QListWidgetItem, *, table: bool) -> None:
+        identity = item.data(Qt.ItemDataRole.UserRole)
+        old = (
+            self._controller.query.get_analytical_table(identity).state.name
+            if table
+            else self._controller.query.get_post_processing_series(identity).series.name
+        )
+        name = item.text().strip()
+        widget = self.tables if table else self.list
+        with QSignalBlocker(widget):
+            item.setText(name or old)
+        if not name or name == old:
+            return
+        if table:
+            self._controller.edit_analytical_table(identity, name=name)
+        else:
+            self._controller.edit_post_processing_series(identity, name=name)
 
     def _new(self) -> None:
         dialog = SeriesDialog(self._controller, self)
@@ -167,6 +202,8 @@ class SeriesPanel(QWidget):
         item = self.tables.currentItem()
         if item is not None:
             self._kind = "table"
+            with QSignalBlocker(self.list):
+                self.list.setCurrentRow(-1)
             self._table_id = item.data(Qt.ItemDataRole.UserRole)
             self.tableSelected.emit(self._table_id)
 
@@ -263,42 +300,57 @@ class PostProcessingPanel(QWidget):
         self.details.setToolTip("Show model, width and relative area")
         toolbar.addWidget(self.details)
         layout.addLayout(toolbar)
-        self.trend_hint = QLabel(
-            "Select a trend on the left. Double-click a row to open its decomposition."
-        )
-        layout.addWidget(self.trend_hint)
-        splitter = QSplitter()
+        self.series_tabs = QTabWidget()
+        self.series_tabs.setObjectName("PostProcessingViews")
         self.track_list = QListWidget()
         self.track_list.setObjectName("PostProcessingTrendList")
         self.track_list.setMinimumWidth(170)
         self.track_list.setMaximumWidth(280)
         self.track_list.currentItemChanged.connect(self._track_changed)
-        splitter.addWidget(self.track_list)
-        self.series_tabs = QTabWidget()
-        self.series_tabs.setObjectName("PostProcessingViews")
         self.series_table = AnalysisTableView(trend=True)
         self.details.toggled.connect(self.series_table.set_details)
         self.preview = TrendWidget()
         self.preview.columns.setMaximumWidth(150)
         self.links = LinkEditor(self._controller)
-        self.series_tabs.addTab(self.series_table, "Trend components")
-        self.series_tabs.addTab(self.preview, "Trend preview")
+        self.component_splitter = QSplitter()
+        self.component_splitter.addWidget(self.track_list)
+        self.component_splitter.addWidget(self.series_table)
+        self.component_splitter.setStretchFactor(1, 1)
+        self.component_splitter.setSizes([190, 800])
+        self.components_page = QWidget()
+        components_layout = QVBoxLayout(self.components_page)
+        components_layout.setContentsMargins(0, 6, 0, 0)
+        self.trend_hint = QLabel(
+            "Select a trend on the left. Double-click a row to open its decomposition."
+        )
+        components_layout.addWidget(self.trend_hint)
+        components_layout.addWidget(self.component_splitter, 1)
+        self.preview_splitter = QSplitter()
+        self.preview_splitter.addWidget(self.preview)
+        self.series_tabs.addTab(self.components_page, "Trend components")
+        self.series_tabs.addTab(self.preview_splitter, "Trend preview")
         self.series_tabs.addTab(self.links, "Neighbouring links")
-        splitter.addWidget(self.series_tabs)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([190, 800])
-        layout.addWidget(splitter, 1)
+        layout.addWidget(self.series_tabs, 1)
         self.series_tabs.currentChanged.connect(self._series_view_changed)
         self.series_table.doubleClicked.connect(self._activate_series_row)
         self.preview.sourceActivated.connect(self._activate_preview)
 
     def _series_view_changed(self) -> None:
         trends_visible = self.series_tabs.currentWidget() is not self.links
+        if trends_visible:
+            target = (
+                self.component_splitter
+                if self.series_tabs.currentIndex() == 0
+                else self.preview_splitter
+            )
+            if self.track_list.parentWidget() is not target:
+                target.insertWidget(0, self.track_list)
+                target.setStretchFactor(1, 1)
+                target.setSizes([190, 800])
         self.track_list.setVisible(trends_visible)
-        self.trend_hint.setVisible(trends_visible)
         self.name_track.setVisible(trends_visible)
         self.add_to_table.setVisible(trends_visible)
-        self.details.setVisible(self.series_tabs.currentWidget() is self.series_table)
+        self.details.setVisible(self.series_tabs.currentIndex() == 0)
         self.status.setText(
             self._series_status
             if trends_visible
