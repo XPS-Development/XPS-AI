@@ -44,6 +44,8 @@ def create(orchestrator):
 def test_series_and_result_are_undoable_single_commands(orchestrator):
     sid = create(orchestrator)
     assert orchestrator.query.get_post_processing_series(sid).series.spectrum_ids == ("s1", "s2")
+    created = orchestrator.query.get_post_processing_series(sid)
+    assert created.exportable
     assert orchestrator.is_dirty
     flags = orchestrator.consume_pending_ui_refresh()
     assert flags == UiRefresh.POST_PROCESSING | UiRefresh.DOCUMENT
@@ -51,14 +53,14 @@ def test_series_and_result_are_undoable_single_commands(orchestrator):
     assert matched.exportable
     assert matched.series.result.tracks[0].component_ids == ("p1", "p2")
     orchestrator.undo()
-    assert orchestrator.query.get_post_processing_series(sid).series.result is None
+    assert orchestrator.query.get_post_processing_series(sid) == created
     orchestrator.redo()
     assert orchestrator.query.get_post_processing_series(sid) == matched
     orchestrator.undo()
     orchestrator.undo()
     assert orchestrator.query.get_post_processing_series_ids() == ()
     orchestrator.redo()
-    assert orchestrator.query.get_post_processing_series(sid).series.result is None
+    assert orchestrator.query.get_post_processing_series(sid) == created
 
 
 def test_edit_and_delete_series_preserve_full_undo_state(orchestrator):

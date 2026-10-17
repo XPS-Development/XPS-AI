@@ -26,12 +26,18 @@ class PostProcessingUseCases:
         self._query = query
 
     def create(self, name: str, spectrum_ids: Sequence[str]) -> SetPostProcessingSeries:
-        """Create a saved series in explicit supplied order, deduplicating selection."""
+        """Create and match an ordered series as one undoable change."""
         ids = tuple(dict.fromkeys(spectrum_ids))
         available = set(self._query.get_all_spectra_ids())
         if any(sid not in available for sid in ids):
             raise ValueError("A new series can only contain existing spectra")
         series = PostProcessingSeries(uuid4().hex, name.strip(), ids)
+        result = match_series(build_matching_input(self._query, series))
+        series = replace(
+            series,
+            result=result,
+            input_fingerprint=self._query.get_post_processing_fingerprint(series),
+        )
         return SetPostProcessingSeries(series.id_, series)
 
     def edit(

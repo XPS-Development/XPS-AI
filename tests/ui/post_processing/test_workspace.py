@@ -400,3 +400,96 @@ def test_copy_skips_hidden_identities_and_preserves_zero(qapp):
     )
     assert qapp.clipboard().text() == "1\t0"
     view.deleteLater()
+
+
+def test_sidebar_repeatedly_switches_between_selected_series_and_table(
+    qapp, simple_collection, monkeypatch
+):
+    from PySide6.QtTest import QTest
+
+    controller = ControllerWrapper(collection=simple_collection)
+    sid = controller.create_post_processing_series("Series", ("s1",))
+    tid = controller.create_analytical_table("Table", ((sid, "track/p1"),))
+    window = MainWindow(controller)
+    window.resize(1200, 800)
+    window.show()
+    window._mode_tabs.setCurrentIndex(1)
+    qapp.processEvents()
+    navigation = window._series_panel
+    workspace = window._post_processing_panel
+    for _ in range(3):
+        item = navigation.tables.item(0)
+        QTest.mouseClick(
+            navigation.tables.viewport(),
+            Qt.MouseButton.LeftButton,
+            pos=navigation.tables.visualItemRect(item).center(),
+        )
+        assert workspace.stack.currentWidget() is workspace.analysis_page
+        assert workspace.table_id == tid
+        assert navigation.list.currentItem() is None
+        item = navigation.list.item(0)
+        QTest.mouseClick(
+            navigation.list.viewport(),
+            Qt.MouseButton.LeftButton,
+            pos=navigation.list.visualItemRect(item).center(),
+        )
+        assert workspace.stack.currentWidget() is workspace.series_page
+        assert workspace.series_id == sid
+        assert navigation.tables.currentItem() is None
+    monkeypatch.setattr(window, "_confirm_close", lambda: True)
+    window.close()
+
+
+@pytest.mark.parametrize("table", [False, True])
+def test_sidebar_names_edit_on_double_click_and_support_undo(qapp, simple_collection, table):
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLineEdit
+
+    from ui.post_processing.panel import SeriesPanel
+
+    controller = ControllerWrapper(collection=simple_collection)
+    sid = controller.create_post_processing_series("Series", ("s1",))
+    tid = controller.create_analytical_table("Table", ((sid, "track/p1"),))
+    panel = SeriesPanel(controller)
+    panel.resize(360, 650)
+    panel.show()
+    qapp.processEvents()
+    widget = panel.tables if table else panel.list
+    point = widget.visualItemRect(widget.item(0)).center()
+    QTest.mouseClick(widget.viewport(), Qt.MouseButton.LeftButton, pos=point)
+    QTest.mouseDClick(widget.viewport(), Qt.MouseButton.LeftButton, pos=point)
+    editor = widget.findChild(QLineEdit)
+    assert editor is not None
+    editor.setText("Renamed")
+    QTest.keyClick(editor, Qt.Key.Key_Return)
+    qapp.processEvents()
+    name = (
+        controller.query.get_analytical_table(tid).state.name
+        if table
+        else controller.query.get_post_processing_series(sid).series.name
+    )
+    assert name == "Renamed"
+    controller.undo()
+    qapp.processEvents()
+    assert widget.item(0).text() == ("Table" if table else "Series")
+    panel.close()
+
+
+def test_series_tab_bar_stays_in_place_when_showing_links(qapp, simple_collection):
+    from ui.post_processing.panel import PostProcessingPanel
+
+    controller = ControllerWrapper(collection=simple_collection)
+    sid = controller.create_post_processing_series("Series", ("s1",))
+    panel = PostProcessingPanel(controller)
+    panel.set_series(sid)
+    panel.resize(1200, 800)
+    panel.show()
+    qapp.processEvents()
+    bar = panel.series_tabs.tabBar()
+    position = bar.mapTo(panel, bar.rect().topLeft())
+    assert panel.series_tabs.isAncestorOf(panel.track_list)
+    for index in (2, 0, 1, 2, 0):
+        panel.series_tabs.setCurrentIndex(index)
+        qapp.processEvents()
+        assert bar.mapTo(panel, bar.rect().topLeft()) == position
+    panel.close()

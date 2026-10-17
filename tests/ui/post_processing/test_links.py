@@ -105,7 +105,7 @@ def test_table_trend_selection_is_independent_from_link_editor(comparison):
     assert panel.track_list.isHidden()
     assert panel.name_track.isHidden()
     assert panel.add_to_table.isHidden()
-    panel.series_tabs.setCurrentWidget(panel.series_table)
+    panel.series_tabs.setCurrentWidget(panel.components_page)
     assert not panel.track_list.isHidden()
     assert panel.track_list.currentRow() == 1
     panel.deleteLater()
