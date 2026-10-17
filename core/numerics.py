@@ -9,6 +9,24 @@ from numpy.typing import NDArray
 from scipy.interpolate import interp1d
 
 
+def continuous_axis_slices(x: NDArray, gap_factor: float = 5.0) -> tuple[slice, ...]:
+    """Split an energy axis at gaps larger than typical channel spacing.
+
+    Return contiguous index spans for display, without inserting, removing or
+    interpolating measurements. Both ascending and descending axes are supported.
+    """
+    if len(x) < 2:
+        return (slice(0, len(x)),)
+    differences = np.abs(np.diff(x))
+    positive = differences[differences > 0]
+    if not positive.size:
+        return (slice(0, len(x)),)
+    boundaries = np.flatnonzero(differences > gap_factor * np.median(positive)) + 1
+    starts = [0, *boundaries.tolist()]
+    stops = [*boundaries.tolist(), len(x)]
+    return tuple(slice(start, stop) for start, stop in zip(starts, stops, strict=True))
+
+
 def interpolate(x: NDArray, y: NDArray, num: int = 256) -> tuple[NDArray, NDArray]:
     """
     Linearly interpolate y-values over a new x-grid.

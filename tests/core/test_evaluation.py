@@ -141,3 +141,19 @@ def test_plot_data_from_evaluation_builds_curves(
     assert peaks
     assert all(c.component_id is not None for c in peaks)
     assert all(c.component_id is not None for c in backgrounds)
+
+
+def test_raw_plot_preserves_disjoint_windows_without_connecting_unmeasured_gap():
+    from core.evaluation import SpectrumEvaluationResult
+
+    x = np.concatenate((np.linspace(278, 300, 221), np.linspace(360, 382, 221)))
+    y = np.arange(len(x), dtype=float)
+    result = SpectrumEvaluationResult(
+        id_="paired", parent_id=None, normalized=False, x=x, y=y, regions=()
+    )
+    curves = plot_data_from_evaluation(result).curves
+    assert len(curves) == 2
+    assert all(curve.kind == "raw" for curve in curves)
+    assert curves[0].x[-1] == 300
+    assert curves[1].x[0] == 360
+    np.testing.assert_array_equal(np.concatenate([curve.y for curve in curves]), y)
