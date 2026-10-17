@@ -5,8 +5,12 @@ from __future__ import annotations
 from itertools import pairwise
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pyqtgraph as pg
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -17,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.component_colors import color_for_component
-from ui.plot.plot_area import PEN_BACKGROUND, PEN_MODEL, DoubleClickAutoRangeViewBox
+from ui.plot.plot_area import PEN_BACKGROUND, DoubleClickAutoRangeViewBox
 
 if TYPE_CHECKING:
     from ui.controller import ControllerWrapper
@@ -30,14 +34,28 @@ class LinkEditor(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.series_id = None
+        self.track_id: str | None = None
         self.pair, self.left, self.right = QComboBox(), QComboBox(), QComboBox()
+        self.scope = QComboBox()
+        self.scope.addItems(("Neighbouring pair", "Whole series"))
+        self.normalize = QCheckBox("Normalize heights")
+        self.normalize.setToolTip(
+            "Scale each displayed spectrum to equal height; saved intensities stay unchanged"
+        )
         self.links = QListWidget()
+        self.links.setObjectName("PostProcessingTrendColumns")
+        self.links.setMaximumHeight(86)
         self.error = QLabel()
         self.error.setWordWrap(True)
+        self.error.hide()
         self.graphics = pg.GraphicsLayoutWidget()
         self.graphics.setBackground("w")
         layout = QVBoxLayout(self)
-        layout.addWidget(self.pair)
+        controls = QHBoxLayout()
+        controls.addWidget(self.scope)
+        controls.addWidget(self.pair, 1)
+        controls.addWidget(self.normalize)
+        layout.addLayout(controls)
         row = QHBoxLayout()
         row.addWidget(self.left, 1)
         row.addWidget(self.right, 1)
@@ -47,8 +65,15 @@ class LinkEditor(QWidget):
             row.addWidget(button)
         layout.addLayout(row)
         layout.addWidget(self.error)
-        layout.addWidget(self.graphics, 3)
-        layout.addWidget(self.links, 1)
+        hint = QLabel(
+            "Spectra are offset vertically. Click a peak marker to select it; dashed lines show matches."
+        )
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addWidget(self.graphics, 1)
+        layout.addWidget(self.links)
+        self.scope.currentIndexChanged.connect(self._draw)
+        self.normalize.toggled.connect(self._draw)
         self.pair.currentIndexChanged.connect(self._pair_changed)
         self.left.currentIndexChanged.connect(self._draw)
         self.right.currentIndexChanged.connect(self._draw)
@@ -56,6 +81,8 @@ class LinkEditor(QWidget):
     def set_series(self, series_id: str | None) -> None:
         """Keep the selected neighbour pair when a command refreshes the workspace."""
         current = self.pair.currentData() if self.series_id == series_id else None
+        if self.series_id != series_id:
+            self.track_id = None
         self.series_id = series_id
         self.pair.blockSignals(True)
         self.pair.clear()
@@ -76,7 +103,13 @@ class LinkEditor(QWidget):
         self.pair.blockSignals(False)
         self._pair_changed()
 
+    def set_track(self, track_id: str) -> None:
+        """Keep the selected trend and the editable peak pair in agreement."""
+        self.track_id = track_id
+        self._pair_changed()
+
     def _pair_changed(self) -> None:
+        previous = (self.left.currentData(), self.right.currentData())
         for combo in (self.left, self.right):
             combo.blockSignals(True)
             combo.clear()
@@ -92,8 +125,24 @@ class LinkEditor(QWidget):
                             f"Peak {index} · {peak.position:.6g} eV",
                             peak.component_id,
                         )
+                track = next((t for t in result.tracks if t.id_ == self.track_id), None)
+                for combo, old in zip((self.left, self.right), previous, strict=True):
+                    selected = combo.findData(old)
+                    if track is not None:
+                        selected = next(
+                            (
+                                i
+                                for i in range(combo.count())
+                                if combo.itemData(i) in track.component_ids
+                            ),
+                            -1,
+                        )
+                    if track is not None or selected >= 0:
+                        combo.setCurrentIndex(selected)
         for combo in (self.left, self.right):
             combo.blockSignals(False)
+        self.error.clear()
+        self.error.hide()
         self._draw()
 
     def _draw(self) -> None:
@@ -106,18 +155,52 @@ class LinkEditor(QWidget):
             return
         by_component = {cid: track for track in result.tracks for cid in track.component_ids}
         pair = self.pair.currentData()
-        steps = [next(s for s in result.series.steps if s.spectrum_id == sid) for sid in pair]
-        for index, (step, combo) in enumerate(zip(steps, (self.left, self.right), strict=True)):
-            plot = self.graphics.ci.addPlot(
-                row=0, col=index, viewBox=DoubleClickAutoRangeViewBox(enableMenu=False)
-            )
-            plot.setLabel("bottom", "Binding energy", units="eV")
-            plot.setLabel("left", "Intensity")
-            plot.invertX(True)
-            if step.spectrum_id not in self.controller.query.get_all_spectra_ids():
+        step_numbers = {s.spectrum_id: i for i, s in enumerate(result.series.steps, 1)}
+        component_steps = {
+            p.component_id: s.spectrum_id for s in result.series.steps for p in s.peaks
+        }
+        steps = (
+            result.series.steps
+            if self.scope.currentIndex() == 1
+            else tuple(s for s in result.series.steps if s.spectrum_id in pair)
+        )
+        plot = self.graphics.ci.addPlot(viewBox=DoubleClickAutoRangeViewBox(enableMenu=False))
+        plot.setLabel("bottom", "Binding energy", units="eV")
+        plot.setLabel(
+            "left",
+            "Intensity (normalized, offset)"
+            if self.normalize.isChecked()
+            else "Intensity (shared scale, offset)",
+        )
+        plot.getAxis("left").setStyle(showValues=False)
+        plot.invertX(True)
+        live_ids = set(self.controller.query.get_all_spectra_ids())
+        data = {
+            s.spectrum_id: self.controller.query.get_spectrum_plot_data(s.spectrum_id)
+            for s in steps
+            if s.spectrum_id in live_ids
+        }
+        bounds = {}
+        for sid, spectrum in data.items():
+            values = [c.y[np.isfinite(c.y)] for c in spectrum.curves if c.kind == "raw"]
+            values = [v for v in values if v.size]
+            if values:
+                bounds[sid] = (
+                    min(float(v.min()) for v in values),
+                    max(float(v.max()) for v in values),
+                )
+        shared_scale = max((hi - lo for lo, hi in bounds.values()), default=1.0) or 1.0
+        markers = {}
+        selected_ids = {self.left.currentData(), self.right.currentData()}
+        for index, step in enumerate(steps):
+            sid = step.spectrum_id
+            if sid not in bounds:
                 continue
-            data = self.controller.query.get_spectrum_plot_data(step.spectrum_id)
-            for curve in data.curves:
+            baseline, maximum = bounds[sid]
+            scale = ((maximum - baseline) or 1.0) if self.normalize.isChecked() else shared_scale
+            offset = (len(steps) - index - 1) * 1.4
+            active = sid in pair
+            for curve in data[sid].curves:
                 if curve.kind == "residual":
                     continue
                 track = by_component.get(curve.component_id)
@@ -127,55 +210,103 @@ class LinkEditor(QWidget):
                 pen = (
                     PEN_BACKGROUND
                     if curve.kind == "background"
-                    else PEN_MODEL
+                    else pg.mkPen("#333333", width=1.3)
                     if curve.kind == "model"
-                    else pg.mkPen(
-                        color, width=3 if curve.component_id == combo.currentData() else 1
-                    )
+                    else pg.mkPen(color, width=2 if curve.component_id in selected_ids else 1)
                     if curve.kind == "peak"
-                    else pg.mkPen("#999999")
+                    else pg.mkPen("#999999", width=0.8)
                 )
-                plot.plot(curve.x, curve.y, pen=pen)
-        diagram = self.graphics.ci.addPlot(
-            row=1, col=0, colspan=2, viewBox=DoubleClickAutoRangeViewBox(enableMenu=False)
-        )
-        diagram.setLabel("bottom", "Peak position", units="eV")
-        diagram.getAxis("left").setTicks([[(0, "Previous"), (1, "Next")]])
-        for level, step in enumerate(steps):
-            for peak in step.peaks:
-                diagram.plot(
-                    [peak.position],
-                    [level],
-                    pen=None,
-                    symbol="o",
-                    symbolBrush=color_for_component(
-                        component_id=by_component[peak.component_id].anchor_id
-                    ),
+                item = plot.plot(curve.x, (curve.y - baseline) / scale + offset, pen=pen)
+                item.setOpacity(1.0 if active else 0.45)
+                if curve.kind == "peak":
+                    peak = next(
+                        (p for p in step.peaks if p.component_id == curve.component_id), None
+                    )
+                    if peak is not None and curve.x.size:
+                        nearest = int(np.argmin(np.abs(curve.x - peak.position)))
+                        y = float((curve.y[nearest] - baseline) / scale + offset)
+                        if np.isfinite(y):
+                            markers[peak.component_id] = (peak.position, y)
+            raw_x = [c.x for c in data[sid].curves if c.kind == "raw" and c.x.size]
+            if raw_x:
+                name = (
+                    getattr(self.controller.query.get_metadata(sid), "name", None)
+                    or f"Step {index + 1}"
                 )
-        source = {p.component_id: p for p in steps[0].peaks}
-        target = {p.component_id: p for p in steps[1].peaks}
+                label = pg.TextItem(
+                    f"{step_numbers[sid]}. {name}",
+                    color="#444444" if active else "#888888",
+                    anchor=(1, 1),
+                )
+                label.setPos(min(float(x.min()) for x in raw_x), offset + 0.05)
+                plot.addItem(label)
+        # Connect peaks in the same coordinates as the measured spectra.
         for track in result.tracks:
             for link in track.links:
-                if link.source_id not in source or link.target_id not in target:
+                if link.source_id not in markers or link.target_id not in markers:
                     continue
-                status = "manual" if link.manual else "ambiguous" if link.ambiguous else "automatic"
-                self.links.addItem(
-                    f"{source[link.source_id].position:.6g} → {target[link.target_id].position:.6g} eV — {status}"
-                )
-                color = (
+                a, b = markers[link.source_id], markers[link.target_id]
+                active = link.source_id in selected_ids or link.target_id in selected_ids
+                color = QColor(
                     "#e6a817"
                     if link.ambiguous
                     else color_for_component(component_id=track.anchor_id)
                 )
-                diagram.plot(
-                    [source[link.source_id].position, target[link.target_id].position],
-                    [0, 1],
-                    pen=pg.mkPen(color, width=3 if link.manual else 1),
+                color.setAlpha(190 if active else 65)
+                plot.plot(
+                    [a[0], b[0]],
+                    [a[1], b[1]],
+                    pen=pg.mkPen(color, width=1.5 if active else 1, style=Qt.PenStyle.DashLine),
                 )
+                if (component_steps[link.source_id], component_steps[link.target_id]) == pair:
+                    status = (
+                        "manual" if link.manual else "ambiguous" if link.ambiguous else "automatic"
+                    )
+                    self.links.addItem(f"{a[0]:.6g} → {b[0]:.6g} eV — {status}")
+        for step in steps:
+            for peak in step.peaks:
+                if peak.component_id not in markers:
+                    continue
+                x, y = markers[peak.component_id]
+                color = color_for_component(component_id=by_component[peak.component_id].anchor_id)
+                point = pg.ScatterPlotItem(
+                    [x],
+                    [y],
+                    size=9 if peak.component_id in selected_ids else 6,
+                    pen=pg.mkPen(color),
+                    brush="w",
+                    hoverable=True,
+                    hoverBrush=color,
+                    tip=lambda _x, _y, info: info,
+                    data=[f"{peak.position:.6g} eV"],
+                )
+                point.sigClicked.connect(
+                    lambda _item, _points, _event, sid=step.spectrum_id, cid=peak.component_id: (
+                        QTimer.singleShot(0, self, lambda: self._select_peak(sid, cid))
+                    )
+                )
+                plot.addItem(point)
+        plot.autoRange()
+
+    def _select_peak(self, spectrum_id: str, component_id: str) -> None:
+        pair = self.pair.currentData()
+        if pair is None:
+            return
+        if spectrum_id not in pair:
+            for index in range(self.pair.count()):
+                if spectrum_id in self.pair.itemData(index):
+                    self.pair.setCurrentIndex(index)
+                    pair = self.pair.currentData()
+                    break
+        combo = self.left if spectrum_id == pair[0] else self.right
+        index = combo.findData(component_id)
+        if index >= 0:
+            combo.setCurrentIndex(index)
 
     def _apply(self, linked: bool) -> None:
         if not self.series_id or not self.left.currentData() or not self.right.currentData():
             self.error.setText("Select a component in each neighbouring spectrum.")
+            self.error.show()
             return
         try:
             self.controller.set_post_processing_link(
@@ -183,5 +314,7 @@ class LinkEditor(QWidget):
             )
         except ValueError as error:
             self.error.setText(str(error))
+            self.error.show()
         else:
             self.error.clear()
+            self.error.hide()
