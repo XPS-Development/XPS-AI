@@ -8,7 +8,6 @@ from core.io.serialization import VERSION, DeserializeResult, deserialize, dump,
 from core.metadata import SpectrumMetadata
 from core.post_processing import (
     MatchingSeries,
-    MetricDefinition,
     PeakDescriptor,
     SeriesStep,
     match_series,
@@ -30,12 +29,6 @@ def saved(simple_collection):
         "Experiment",
         ("s1",),
         track_names=(("p1", "Main"),),
-        metrics=(
-            MetricDefinition(
-                "shift", "Shift", "position_shift", ("track/p1",), reference_spectrum_id="s1"
-            ),
-        ),
-        column_order=("shift", "area"),
     )
     matching = MatchingSeries(
         "pp", (SeriesStep("s1", (PeakDescriptor("p1", "r1", "pseudo-voigt", 0, 1, 2, 1, 0),)),)
@@ -52,8 +45,8 @@ def saved(simple_collection):
 def test_series_full_round_trip_through_dict_and_json(saved, tmp_path):
     collection, definition = saved
     data = serialize(collection)
-    assert data["version"] == "1.1"
-    assert data["post_processing"][0]["metrics"][0]["reference_spectrum_id"] == "s1"
+    assert data["version"] == "1.2"
+    assert "metrics" not in data["post_processing"][0]
     restored, _ = new_document(deserialize(data, mode="new"))
     assert restored.post_processing == {"pp": definition}
     assert input_fingerprint(restored, definition) == definition.input_fingerprint
@@ -77,7 +70,6 @@ def test_unsolved_series_and_unresolved_operands_round_trip(simple_collection):
         "pp",
         "S",
         ("s1", "missing"),
-        metrics=(MetricDefinition("m", "Area", "area", ("track/gone",)),),
     )
     simple_collection.post_processing["pp"] = definition
     restored, _ = new_document(deserialize(serialize(simple_collection), mode="new"))
@@ -105,7 +97,6 @@ def test_append_remaps_only_series_collisions_and_keeps_references(saved):
     assert imported.id_ != "pp"
     assert imported.result.series.id_ == imported.id_
     assert imported.spectrum_ids == definition.spectrum_ids
-    assert imported.metrics == definition.metrics
     assert imported.track_names == definition.track_names
     assert imported.result.tracks == definition.result.tracks
     assert input_fingerprint(collection, imported) == imported.input_fingerprint
@@ -149,7 +140,7 @@ def test_v1_cannot_silently_contain_series(saved):
 
 
 @pytest.mark.parametrize(
-    "broken", ["section", "duplicate", "result", "tracks", "metric", "objects"]
+    "broken", ["section", "duplicate", "result", "tracks", "identity", "objects"]
 )
 @pytest.mark.parametrize("mode", ["replace", "append"])
 def test_invalid_document_leaves_target_and_metadata_untouched(saved, broken, mode):
@@ -166,13 +157,15 @@ def test_invalid_document_leaves_target_and_metadata_untouched(saved, broken, mo
         data["post_processing"][0]["result"]["series"]["id_"] = "other"
     elif broken == "tracks":
         data["post_processing"][0]["result"]["tracks"] = []
-    elif broken == "metric":
-        data["post_processing"][0]["metrics"][0]["reference_spectrum_id"] = None
+    elif broken == "identity":
+        data["post_processing"][0]["spectrum_ids"] = []
     else:
         data["objects"].append({"id": "bad", "type": "Unknown"})
     original_objects = dict(collection.objects_index)
     generation = collection.generation
-    with pytest.raises(ValueError, match=r"Expected|Duplicate|Result|cover|requires|Unknown"):
+    with pytest.raises(
+        ValueError, match=r"Expected|Duplicate|Result|cover|requires|Unknown|requires at least"
+    ):
         deserialize(data, collection, metadata, mode=mode)
     assert collection.objects_index == original_objects
     assert collection.post_processing == {"pp": definition}
@@ -185,4 +178,4 @@ def test_new_v1_document_starts_without_series():
     assert isinstance(restored, CoreCollection)
     assert restored.post_processing == {}
     assert metadata.collection is restored
-    assert VERSION == "1.1"
+    assert VERSION == "1.2"

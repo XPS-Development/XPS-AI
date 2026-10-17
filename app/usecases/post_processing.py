@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from app.command.changes import SetPostProcessingSeries
 from app.post_processing import PostProcessingInput, build_matching_input
+from core.post_processing.matching import match_series
 from core.post_processing.state import PostProcessingSeries, new_revision
 from core.post_processing.validation import validate_result
 
@@ -15,7 +16,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from app.query_service import QueryService
-    from core.post_processing.metrics import MetricDefinition
     from core.post_processing.types import LinkConstraints, MatchingResult, MatchingSettings
 
 
@@ -42,8 +42,6 @@ class PostProcessingUseCases:
         spectrum_ids: Sequence[str] | None = None,
         settings: MatchingSettings | None = None,
         constraints: LinkConstraints | None = None,
-        metrics: tuple[MetricDefinition, ...] | None = None,
-        column_order: tuple[str, ...] | None = None,
     ) -> SetPostProcessingSeries:
         """Edit configuration without discarding the previous result or unresolved operands."""
         old = self._query.get_post_processing_series(series_id).series
@@ -53,8 +51,6 @@ class PostProcessingUseCases:
             spectrum_ids=old.spectrum_ids if spectrum_ids is None else tuple(spectrum_ids),
             settings=old.settings if settings is None else settings,
             constraints=old.constraints if constraints is None else constraints,
-            metrics=old.metrics if metrics is None else metrics,
-            column_order=old.column_order if column_order is None else column_order,
             revision=new_revision(),
         )
         return SetPostProcessingSeries(series_id, updated, old.revision)
@@ -63,6 +59,11 @@ class PostProcessingUseCases:
         """Remove one series while retaining its full state for undo."""
         old = self._query.get_post_processing_series(series_id).series
         return SetPostProcessingSeries(series_id, None, old.revision)
+
+    def run(self, series_id: str) -> SetPostProcessingSeries:
+        """Match an immutable snapshot synchronously and build one result command."""
+        snapshot = self.prepare(series_id)
+        return self.apply_result(snapshot, match_series(snapshot.matching))
 
     def name_track(
         self, series_id: str, track_id: str, name: str | None
@@ -83,7 +84,7 @@ class PostProcessingUseCases:
         return SetPostProcessingSeries(series_id, updated, old.revision)
 
     def prepare(self, series_id: str) -> PostProcessingInput:
-        """Build immutable worker input and capture the current version guards."""
+        """Build an immutable synchronous input snapshot with current version guards."""
         saved = self._query.get_post_processing_series(series_id).series
         return PostProcessingInput(
             series_id,
@@ -107,30 +108,74 @@ class PostProcessingUseCases:
         if result.series != job.matching:
             raise ValueError("Matching result does not belong to the supplied job")
         validate_result(result)
+        result = self._preserve_tracks(old, result)
+        updated = replace(
+            old,
+            result=result,
+            input_fingerprint=job.fingerprint,
+            revision=new_revision(),
+        )
+        return SetPostProcessingSeries(old.id_, updated, old.revision)
+
+    def _preserve_tracks(self, old: PostProcessingSeries, result: MatchingResult) -> MatchingResult:
+        """Preserve named and selected anchors, rejecting implicit identity changes."""
         old_anchors = (
             {}
             if old.result is None
             else {track.anchor_id: track.id_ for track in old.result.tracks}
         )
-        named = set(dict(old.track_names))
+        named = set(dict(old.track_names)) | self._query.get_used_trend_anchors(old.id_)
         observed = {cid for track in result.tracks for cid in track.component_ids}
         if named - observed:
-            raise ValueError("Named track anchor disappeared; resolve the track name conflict")
+            raise ValueError(
+                "Named or selected trend anchor disappeared; resolve the track name conflict"
+            )
         tracks = []
         for track in result.tracks:
             named_anchors = named.intersection(track.component_ids)
             if len(named_anchors) > 1:
-                raise ValueError("Several named anchors merged; resolve the track name conflict")
+                raise ValueError(
+                    "Several named or selected anchors merged; resolve the track name conflict"
+                )
             anchor = next(iter(named_anchors), None)
             if anchor is None:
                 anchor = next(
                     (cid for cid in track.component_ids if cid in old_anchors), track.anchor_id
                 )
             tracks.append(replace(track, id_=f"track/{anchor}", anchor_id=anchor))
+        return replace(result, tracks=tuple(tracks))
+
+    def set_link(
+        self, series_id: str, source_id: str, target_id: str, linked: bool
+    ) -> SetPostProcessingSeries:
+        """Assign or break an adjacent link and recalculate in the same undo step."""
+        from core.post_processing.types import LinkConstraints
+
+        old = self._query.get_post_processing_series(series_id).series
+        required = set(old.constraints.required)
+        forbidden = set(old.constraints.forbidden)
+        pair = source_id, target_id
+        if linked:
+            if any(
+                (a == source_id and b != target_id) or (b == target_id and a != source_id)
+                for a, b in required
+            ):
+                raise ValueError("Conflicting manual predecessor or successor; break it first")
+            required.add(pair)
+            forbidden.discard(pair)
+        else:
+            required.discard(pair)
+            forbidden.add(pair)
+        edited = replace(
+            old, constraints=LinkConstraints(tuple(sorted(required)), tuple(sorted(forbidden)))
+        )
+        matching = build_matching_input(self._query, edited)
+        result = match_series(matching)
+        result = self._preserve_tracks(old, result)
         updated = replace(
-            old,
-            result=replace(result, tracks=tuple(tracks)),
-            input_fingerprint=job.fingerprint,
+            edited,
+            result=result,
+            input_fingerprint=self._query.get_post_processing_fingerprint(edited),
             revision=new_revision(),
         )
-        return SetPostProcessingSeries(old.id_, updated, old.revision)
+        return SetPostProcessingSeries(series_id, updated, old.revision)

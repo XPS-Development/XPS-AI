@@ -2,9 +2,10 @@
 
 import json
 from dataclasses import asdict
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from core.post_processing.metrics import MetricDefinition
+if TYPE_CHECKING:
+    from core.post_processing.analysis import AnalyticalTableState
 from core.post_processing.state import PostProcessingSeries
 from core.post_processing.types import (
     ExcludedComponent,
@@ -115,14 +116,6 @@ def deserialize_series(value: object) -> PostProcessingSeries:
         data["constraints"] = _constraints(data["constraints"])
         data["result"] = None if data["result"] is None else _result(data["result"])
         data["track_names"] = _pairs(data["track_names"])
-        metrics = []
-        for raw in _items(data["metrics"]):
-            metric = dict(_record(raw))
-            metric["tracks"] = _strings(metric["tracks"])
-            metric["denominator"] = _strings(metric["denominator"])
-            metrics.append(MetricDefinition(**metric))
-        data["metrics"] = tuple(metrics)
-        data["column_order"] = _strings(data["column_order"])
         return PostProcessingSeries(**data)
     except (TypeError, KeyError, OverflowError) as error:
         raise ValueError(f"Invalid post_processing series: {error}") from error
@@ -135,3 +128,51 @@ def deserialize_section(value: object) -> tuple[PostProcessingSeries, ...]:
     if len(ids) != len(set(ids)):
         raise ValueError("Duplicate post-processing series IDs")
     return series
+
+
+def deserialize_table(value: object) -> "AnalyticalTableState":
+    """Decode independent source identities, point rows, columns and plot selection."""
+    from core.post_processing.analysis import (
+        AlignedRow,
+        AnalyticalTableState,
+        PointReference,
+        TableMetric,
+        TrendSource,
+    )
+
+    try:
+        data = dict(_record(value))
+        data["sources"] = tuple(TrendSource(**_record(s)) for s in _items(data["sources"]))
+        data["rows"] = tuple(
+            AlignedRow(
+                _record(r)["id_"],
+                tuple(PointReference(**_record(p)) for p in _items(_record(r)["points"])),
+            )
+            for r in _items(data["rows"])
+        )
+        metrics = []
+        for item in _items(data["metrics"]):
+            metric = dict(_record(item))
+            metric["tracks"] = _strings(metric["tracks"])
+            metric["denominator"] = _strings(metric["denominator"])
+            metrics.append(TableMetric(**metric))
+        data["metrics"] = tuple(metrics)
+        data["column_order"] = _strings(data["column_order"])
+        data["plotted_columns"] = _strings(data["plotted_columns"])
+        data["dependencies"] = _pairs(data["dependencies"])
+        return AnalyticalTableState(**data)
+    except (TypeError, KeyError, OverflowError) as error:
+        raise ValueError(f"Invalid analytical table: {error}") from error
+
+
+def serialize_table(table: "AnalyticalTableState") -> dict[str, Any]:
+    """Encode every independent table field as JSON-native values."""
+    return json.loads(json.dumps(asdict(table), allow_nan=False))
+
+
+def deserialize_tables(value: object) -> tuple["AnalyticalTableState", ...]:
+    """Validate the table section itself before decoding its entries."""
+    tables = tuple(deserialize_table(item) for item in _items(value))
+    if len({table.id_ for table in tables}) != len(tables):
+        raise ValueError("Duplicate analytical table IDs")
+    return tables

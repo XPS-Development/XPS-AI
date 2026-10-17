@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from core.dto import PostProcessingSeriesDTO
-from core.post_processing import MatchingSeries, SeriesStep, calculate_metrics, step_from_components
+from core.post_processing import MatchingSeries, SeriesStep, step_from_components
 from core.post_processing.matching import validate_constraints
 
 if TYPE_CHECKING:
@@ -54,18 +54,36 @@ def project_series(query: QueryService, series: PostProcessingSeries) -> PostPro
             conflicts.append(f"constraint_conflict:{error}")
     if series.result is not None:
         anchors = {track.anchor_id for track in series.result.tracks}
-        track_ids = {track.id_ for track in series.result.tracks}
         for anchor, _ in series.track_names:
             if anchor not in anchors:
                 conflicts.append(f"missing_track_anchor:{anchor}")
-        for metric in series.metrics:
-            for track_id in dict.fromkeys((*metric.tracks, *metric.denominator)):
-                if track_id not in track_ids:
-                    conflicts.append(f"operand_selection_required:{metric.id_}:{track_id}")
-            if metric.reference_spectrum_id is not None and (
-                metric.reference_spectrum_id not in series.spectrum_ids
-                or metric.reference_spectrum_id not in available
-            ):
-                conflicts.append(f"reference_selection_required:{metric.id_}")
-    values = () if series.result is None else calculate_metrics(series.result, series.metrics)
-    return PostProcessingSeriesDTO(series, stale, unavailable, tuple(conflicts), values)
+    return PostProcessingSeriesDTO(series, stale, unavailable, tuple(conflicts))
+
+
+@dataclass(frozen=True)
+class MetricOperationOption:
+    """Presentation metadata for a supported operation's explicit operands."""
+
+    id_: str
+    label: str
+    operands: str
+    reference: bool = False
+
+
+METRIC_OPERATIONS = (
+    MetricOperationOption("position", "Position (eV)", "one"),
+    MetricOperationOption("area", "Area", "one"),
+    MetricOperationOption("fwhm", "FWHM (eV)", "one"),
+    MetricOperationOption("sig", "sig (eV)", "one"),
+    MetricOperationOption("spectrum_area_fraction", "Area / sum of spectrum peak areas (%)", "one"),
+    MetricOperationOption("position_difference", "Position A - position B (eV)", "two"),
+    MetricOperationOption(
+        "position_shift", "Position - position at reference step (eV)", "one", True
+    ),
+    MetricOperationOption("area_sum", "Sum of selected areas", "sum"),
+    MetricOperationOption("area_ratio", "Area A / area B", "two"),
+    MetricOperationOption(
+        "area_sum_ratio", "Sum of numerator areas / sum of denominator areas", "two_sets"
+    ),
+    MetricOperationOption("area_fraction", "Area A / sum of selected areas (%)", "fraction"),
+)

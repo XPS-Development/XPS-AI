@@ -1,7 +1,11 @@
 """Core object registry: spectra, regions, peaks, and backgrounds."""
 
-from typing import TypeVar
+from __future__ import annotations
 
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from core.post_processing.analysis import AnalyticalTableState
 from core.post_processing.state import PostProcessingSeries, new_revision
 
 from .objects import CoreObject, Region, Spectrum
@@ -67,6 +71,7 @@ class CoreCollection:
     def __init__(self) -> None:
         self.objects_index: dict[str, CoreObject] = {}
         self.post_processing: dict[str, PostProcessingSeries] = {}
+        self.analytical_tables: dict[str, AnalyticalTableState] = {}
         self.generation = new_revision()
 
     def add(self, obj: CoreObject) -> None:
@@ -106,6 +111,7 @@ class CoreCollection:
         """
         self.objects_index.clear()
         self.post_processing.clear()
+        self.analytical_tables.clear()
         self.generation = new_revision()
 
     def remove(self, obj: CoreObject | str) -> list[CoreObject]:

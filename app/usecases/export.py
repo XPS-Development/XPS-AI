@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from app.csv_export import CSVExportService
     from app.query_service import QueryService
+    from core.post_processing.tables import TableView
 
 
 class ExportUseCases:
@@ -27,6 +28,39 @@ class ExportUseCases:
         """
         self._query = query
         self._csv_export = csv_export
+
+    def export_post_processing(
+        self,
+        series_id: str,
+        path: str | Path,
+        *,
+        view: TableView = "components",
+        separator: str = ",",
+        precision: int | None = None,
+    ) -> None:
+        """Export a current conflict-free snapshot using the same query projection as the UI."""
+        dto = self._query.get_post_processing_series(series_id)
+        if not dto.exportable:
+            raise ValueError("Recalculate the series and resolve conflicts before exporting")
+        table = self._query.get_post_processing_table(series_id, view)
+        self._csv_export.export_post_processing(
+            path, table, dto.series, separator=separator, precision=precision
+        )
+
+    def export_analytical_table(
+        self, table_id: str, path: str | Path, *, precision: int | None = None
+    ) -> None:
+        """Reject stale dependencies, then export values and complete provenance."""
+        dto = self._query.get_analytical_table(table_id)
+        if not dto.exportable:
+            raise ValueError("Update alignment and resolve source conflicts before exporting")
+        sources = {
+            s.series_id: self._query.get_post_processing_series(s.series_id).series
+            for s in dto.state.sources
+        }
+        self._csv_export.export_analytical_table(
+            path, dto.table, dto.state, sources, precision=precision
+        )
 
     def export_peak_parameters(
         self,

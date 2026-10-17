@@ -6,6 +6,7 @@ from typing import Literal, TypeVar, overload
 from numpy.typing import NDArray
 
 from core.numerics import find_closest_index
+from core.post_processing.analysis import AnalyticalTableState
 from core.post_processing.state import PostProcessingSeries
 
 from .collection import CoreCollection
@@ -1118,6 +1119,11 @@ class CoreContext:
     def post_processing(self) -> dict[str, PostProcessingSeries]:
         """Return the document's series store, shared by commands and persistence."""
         return self.query.collection.post_processing
+
+    @property
+    def analytical_tables(self) -> dict[str, AnalyticalTableState]:
+        """Return independent saved analytical tables."""
+        return self.query.collection.analytical_tables
 
     @classmethod
     def from_collection(cls, collection: CoreCollection) -> "CoreContext":
