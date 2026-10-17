@@ -60,12 +60,12 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) ->
         x_step = 0.0
         x_num_points = 0
     elif len(x) == 1:
-        x_start = round(x[0], 3)
+        x_start = float(x[0])
         x_step = 0.0
         x_num_points = 1
     else:
-        x_start = round(x[0], 3)
-        x_step = round(x[1] - x[0], 3)
+        x_start = float(x[0])
+        x_step = float((x[-1] - x[0]) / (len(x) - 1))
         x_num_points = len(x)
 
     # Convert y array to list
@@ -80,6 +80,11 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) ->
         "x_num_points": x_num_points,
         "y": y_list,
     }
+    # A document can contain several measured energy windows in one spectrum.
+    # Keep every energy when the compact regular-grid representation is lossy.
+    compact_x = x_start + np.arange(x_num_points) * x_step
+    if not np.allclose(x, compact_x, rtol=0, atol=1e-9):
+        result["x"] = x.tolist()
 
     # Add metadata if available
     if metadata is not None:
@@ -392,7 +397,11 @@ def _deserialize_spectrum(obj_data: dict[str, Any]) -> Spectrum:
     x_step = obj_data["x_step"]
     x_num_points = obj_data["x_num_points"]
 
-    if x_num_points == 0:
+    if "x" in obj_data:
+        x = np.asarray(obj_data["x"], dtype=np.float64)
+        if x.ndim != 1 or len(x) != x_num_points or not np.all(np.isfinite(x)):
+            raise ValueError("Invalid explicit spectrum energy axis")
+    elif x_num_points == 0:
         x = np.array([], dtype=np.float64)
     elif x_num_points == 1:
         x = np.array([x_start], dtype=np.float64)
@@ -401,6 +410,8 @@ def _deserialize_spectrum(obj_data: dict[str, Any]) -> Spectrum:
 
     # Reconstruct y array
     y = np.array(obj_data["y"], dtype=np.float64)
+    if y.ndim != 1 or len(y) != len(x):
+        raise ValueError("Spectrum energy and intensity arrays must have equal lengths")
 
     # Create Spectrum with explicit ID
     spectrum = Spectrum(x=x, y=y, id_=obj_data["id"])

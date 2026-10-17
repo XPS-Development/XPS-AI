@@ -604,3 +604,37 @@ def test_dump_failed_gzip_write_preserves_existing_file(simple_collection, tmp_p
     assert file_path.read_bytes() == original_bytes
     leftovers = list(tmp_path.glob(".collection.json.gz.*.tmp"))
     assert leftovers == []
+
+
+def test_disjoint_measured_windows_roundtrip_without_regularizing_energy_axis():
+    x = np.concatenate((np.linspace(278, 300, 221), np.linspace(360, 382, 221)))
+    y = np.arange(len(x), dtype=float) + 1
+    collection = CoreCollection()
+    collection.add(Spectrum(x, y, id_="paired"))
+    data = serialize(collection)
+    assert data["objects"][0]["x"] == x.tolist()
+    restored = _collection_from_new_result(deserialize(data, mode="new"))
+    spectrum = restored.get_typed("paired", Spectrum)
+    np.testing.assert_array_equal(spectrum.x, x)
+    np.testing.assert_array_equal(spectrum.y, y)
+
+
+def test_uniform_energy_axis_keeps_compact_legacy_encoding():
+    collection = CoreCollection()
+    collection.add(Spectrum(np.linspace(278, 300, 221), np.arange(221.0), id_="uniform"))
+    data = serialize(collection)
+    assert "x" not in data["objects"][0]
+    restored = _collection_from_new_result(deserialize(data, mode="new"))
+    np.testing.assert_allclose(
+        restored.get_typed("uniform", Spectrum).x, np.linspace(278, 300, 221)
+    )
+
+
+@pytest.mark.parametrize("axis", [[1, 2], [[1, 2, 3]], [1, float("nan"), 3]])
+def test_malformed_explicit_axis_is_rejected(axis):
+    collection = CoreCollection()
+    collection.add(Spectrum(np.arange(3.0), np.arange(3.0), id_="s"))
+    data = serialize(collection)
+    data["objects"][0]["x"] = axis
+    with pytest.raises(ValueError, match="Invalid explicit"):
+        deserialize(data, mode="new")

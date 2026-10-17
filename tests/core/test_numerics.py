@@ -36,3 +36,14 @@ def test_recalculate_idx_out_of_range_returns_len_original() -> None:
     original = np.array([0.0, 1.0, 2.0])
     interpolated = np.array([0.0, 0.5, 1.0])
     assert recalculate_idx(len(interpolated), interpolated, original) == len(original)
+
+
+def test_continuous_axis_slices_preserves_measured_windows_in_either_direction():
+    from core.numerics import continuous_axis_slices
+
+    x = np.concatenate((np.linspace(278, 300, 221), np.linspace(360, 382, 221)))
+    assert continuous_axis_slices(x) == (slice(0, 221), slice(221, 442))
+    assert continuous_axis_slices(x[::-1]) == (slice(0, 221), slice(221, 442))
+    assert continuous_axis_slices(np.arange(10.0)) == (slice(0, 10),)
+    assert continuous_axis_slices(np.array([])) == (slice(0, 0),)
+    assert continuous_axis_slices(np.ones(3)) == (slice(0, 3),)
