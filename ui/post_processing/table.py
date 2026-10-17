@@ -69,7 +69,7 @@ class AnalysisTableModel(QAbstractTableModel):
             label = column.label
             if column.track_id and " — " in label:
                 label = label.replace(" / ", "\n", 1).replace(" — ", "\n", 1)
-            return f"{label} ({column.unit})" if column.unit else label
+            return f"{label} ({column.unit})" if column.unit and column.unit != "area" else label
         if role == Qt.ItemDataRole.ToolTipRole:
             return f"{column.label}\n{column.id_}"
         return None
@@ -113,8 +113,11 @@ class AnalysisTableModel(QAbstractTableModel):
 class AnalysisTableView(QTableView):
     """Keep row navigation stable through proxy sorting and copy selected cells as TSV."""
 
-    def __init__(self, parent: Any = None) -> None:
+    def __init__(self, parent: Any = None, *, trend: bool = False) -> None:
         super().__init__(parent)
+        self._trend = trend
+        self._details = False
+        self.setShowGrid(False)
         self.setObjectName("PostProcessingTable")
         self.source = AnalysisTableModel(self)
         self.proxy = QSortFilterProxyModel(self)
@@ -133,10 +136,35 @@ class AnalysisTableView(QTableView):
         table = self.source.table
         if table is not None:
             self.horizontalHeader().setMinimumHeight(
-                56 if any(c.track_id for c in table.columns) else 24
+                56 if not self._trend and any(c.track_id for c in table.columns) else 28
             )
             for index, column in enumerate(table.columns):
-                self.setColumnHidden(index, column.id_ == "row_id")
+                hidden = column.id_ in {
+                    "row_id",
+                    "region_id",
+                    "component_id",
+                    "track_id",
+                    "region",
+                    "component",
+                    "track",
+                    "track_name",
+                }
+                if self._trend and not self._details:
+                    hidden |= column.id_ not in {
+                        "step",
+                        "spectrum",
+                        "position",
+                        "area",
+                        "fwhm",
+                        "link",
+                    }
+                self.setColumnHidden(index, hidden)
+
+    def set_details(self, enabled: bool) -> None:
+        """Show additional scientific fields while keeping internal identities hidden."""
+        self._details = enabled
+        self._identity_columns()
+        self.resizeColumnsToContents()
 
     def source_row(self, index: QModelIndex) -> AnalysisRow | None:
         """Resolve the original spectrum/component from a visible sorted row."""
@@ -149,11 +177,18 @@ class AnalysisTableView(QTableView):
         if event.matches(QKeySequence.StandardKey.Copy):
             indices = self.selectedIndexes()
             if indices:
-                selected = {(index.row(), index.column()): index.data() or "" for index in indices}
+                selected = {
+                    (index.row(), index.column()): "" if index.data() is None else index.data()
+                    for index in indices
+                }
                 rows = range(min(i.row() for i in indices), max(i.row() for i in indices) + 1)
-                columns = range(
-                    min(i.column() for i in indices), max(i.column() for i in indices) + 1
-                )
+                columns = [
+                    col
+                    for col in range(
+                        min(i.column() for i in indices), max(i.column() for i in indices) + 1
+                    )
+                    if not self.isColumnHidden(col)
+                ]
                 QApplication.clipboard().setText(
                     "\n".join(
                         "\t".join(str(selected.get((row, col), "")) for col in columns)

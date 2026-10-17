@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -41,26 +42,30 @@ class SeriesDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Spectrum series")
+        self.setObjectName("PostProcessingDialog")
         self.resize(780, 520)
         self.name_edit = QLineEdit(name)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search files, groups, spectra or IDs…")
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Available spectra (tree order)")
+        self.tree.setHeaderLabel("Decomposed spectra")
         self.ordered = QListWidget()
         self.ordered.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self._leaves: dict[str, QTreeWidgetItem] = {}
         self._labels: dict[str, str] = {}
-        for file in iter_spectrum_groups(controller.query):
+        excluded = {
+            sid
+            for sid in controller.query.get_all_spectra_ids()
+            if controller.query.get_spectrum_structure_status(sid) != "peaks"
+        }
+        for file in iter_spectrum_groups(controller.query, skip_ids=excluded):
             file_item = QTreeWidgetItem(self.tree, [file.label])
-            self._checkable(file_item, branch=True)
+            self._checkable(file_item)
             for group in file.groups:
                 group_item = QTreeWidgetItem(file_item, [group.label])
-                self._checkable(group_item, branch=True)
+                self._checkable(group_item)
                 for spectrum in group.spectra:
-                    item = QTreeWidgetItem(
-                        group_item, [f"{spectrum.label} [{spectrum.spectrum_id[:5]}]"]
-                    )
+                    item = QTreeWidgetItem(group_item, [spectrum.label])
                     self._checkable(item)
                     item.setData(0, Qt.ItemDataRole.UserRole, spectrum.spectrum_id)
                     item.setToolTip(0, spectrum.spectrum_id)
@@ -74,14 +79,14 @@ class SeriesDialog(QDialog):
         self._renumber()
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setContentsMargins(0, 0, 4, 0)
         left_layout.addWidget(self.search)
-        left_layout.addWidget(self.tree)
+        left_layout.addWidget(self.tree, 1)
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setContentsMargins(4, 0, 0, 0)
         right_layout.addWidget(QLabel("Series steps — drag to reorder"))
-        right_layout.addWidget(self.ordered)
+        right_layout.addWidget(self.ordered, 1)
         row = QHBoxLayout()
         for label, callback in (
             ("Up", lambda: self._move(-1)),
@@ -99,11 +104,13 @@ class SeriesDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Series name"))
-        layout.addWidget(self.name_edit)
-        layout.addWidget(splitter)
+        form = QFormLayout()
+        form.addRow("Series name", self.name_edit)
+        layout.addLayout(form)
+        layout.addWidget(splitter, 1)
         layout.addWidget(self.buttons)
-        self.tree.itemChanged.connect(self._sync_selection)
+        self.tree.itemChanged.connect(self._item_changed)
+        self._update_branches()
         self.search.textChanged.connect(self._filter)
         self.name_edit.textChanged.connect(self._validate)
         self.ordered.model().rowsMoved.connect(self._renumber)
@@ -112,10 +119,8 @@ class SeriesDialog(QDialog):
         self._validate()
 
     @staticmethod
-    def _checkable(item: QTreeWidgetItem, *, branch: bool = False) -> None:
+    def _checkable(item: QTreeWidgetItem) -> None:
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-        if branch:
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsAutoTristate)
         item.setCheckState(0, Qt.CheckState.Unchecked)
 
     def spectrum_ids(self) -> tuple[str, ...]:
@@ -130,6 +135,46 @@ class SeriesDialog(QDialog):
         item.setData(Qt.ItemDataRole.UserRole, spectrum_id)
         item.setToolTip(spectrum_id)
         self.ordered.addItem(item)
+
+    def _visible_leaves(self, item: QTreeWidgetItem) -> list[QTreeWidgetItem]:
+        if item.isHidden():
+            return []
+        if not item.childCount():
+            return [item]
+        return [
+            leaf for i in range(item.childCount()) for leaf in self._visible_leaves(item.child(i))
+        ]
+
+    def _item_changed(self, item: QTreeWidgetItem, _column: int) -> None:
+        with QSignalBlocker(self.tree):
+            if item.childCount():
+                state = item.checkState(0)
+                for leaf in self._visible_leaves(item):
+                    leaf.setCheckState(0, state)
+        self._update_branches()
+        self._sync_selection()
+
+    def _update_branches(self) -> None:
+        def update(item: QTreeWidgetItem) -> None:
+            for i in range(item.childCount()):
+                update(item.child(i))
+            if item.childCount():
+                leaves = self._visible_leaves(item)
+                count = sum(leaf.checkState(0) == Qt.CheckState.Checked for leaf in leaves)
+                state = (
+                    Qt.CheckState.Unchecked
+                    if not count
+                    else Qt.CheckState.Checked
+                    if count == len(leaves)
+                    else Qt.CheckState.PartiallyChecked
+                )
+                item.setCheckState(0, state)
+
+        with QSignalBlocker(self.tree):
+            for i in range(self.tree.topLevelItemCount()):
+                item = self.tree.topLevelItem(i)
+                if item is not None:
+                    update(item)
 
     def _sync_selection(self) -> None:
         checked = {
@@ -197,3 +242,4 @@ class SeriesDialog(QDialog):
             item = self.tree.topLevelItem(index)
             if item is not None:
                 show(item)
+        self._update_branches()

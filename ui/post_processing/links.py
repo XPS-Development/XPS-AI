@@ -87,9 +87,9 @@ class LinkEditor(QWidget):
                     (self.left, self.right), self.pair.currentData(), strict=True
                 ):
                     step = next(s for s in result.series.steps if s.spectrum_id == sid)
-                    for peak in step.peaks:
+                    for index, peak in enumerate(step.peaks, 1):
                         combo.addItem(
-                            f"{peak.component_id} — E={peak.position:.6g}; S={peak.area}",
+                            f"Peak {index} · {peak.position:.6g} eV",
                             peak.component_id,
                         )
         for combo in (self.left, self.right):
@@ -159,7 +159,9 @@ class LinkEditor(QWidget):
                 if link.source_id not in source or link.target_id not in target:
                     continue
                 status = "manual" if link.manual else "ambiguous" if link.ambiguous else "automatic"
-                self.links.addItem(f"{link.source_id} → {link.target_id} — {status}")
+                self.links.addItem(
+                    f"{source[link.source_id].position:.6g} → {target[link.target_id].position:.6g} eV — {status}"
+                )
                 color = (
                     "#e6a817"
                     if link.ambiguous

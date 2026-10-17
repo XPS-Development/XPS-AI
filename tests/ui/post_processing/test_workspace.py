@@ -25,6 +25,9 @@ def qapp():
 def test_selection_of_multiple_branches_search_and_independent_order(qapp, hierarchy_collection):
     controller = ControllerWrapper(collection=hierarchy_collection)
     seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    for sid in ("s1", "s2", "s3"):
+        controller.create_region(sid, region_id=f"region-{sid}")
+        controller.create_peak(f"region-{sid}", "pseudo-voigt", peak_id=f"peak-{sid}")
     dialog = SeriesDialog(controller)
     file = dialog.tree.topLevelItem(0)
     assert file is not None
@@ -49,6 +52,9 @@ def test_edit_selection_preserves_missing_steps_and_explicit_initial_order(
 ):
     controller = ControllerWrapper(collection=hierarchy_collection)
     seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    for sid in ("s1", "s2", "s3"):
+        controller.create_region(sid, region_id=f"region-{sid}")
+        controller.create_peak(f"region-{sid}", "pseudo-voigt", peak_id=f"peak-{sid}")
     dialog = SeriesDialog(controller, spectrum_ids=("s3", "deleted", "s1"))
     assert dialog.spectrum_ids() == ("s3", "deleted", "s1")
     dialog._leaves["s2"].setCheckState(0, Qt.CheckState.Checked)
@@ -297,3 +303,100 @@ def test_independent_table_navigation_and_saved_graph_selection(
     monkeypatch.setattr(window, "_confirm_close", lambda: True)
     window.close()
     window.deleteLater()
+
+
+def test_filtered_parent_only_toggles_visible_decompositions(qapp, hierarchy_collection):
+    controller = ControllerWrapper(collection=hierarchy_collection)
+    seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    for sid in ("s1", "s2", "s3"):
+        controller.create_region(sid, region_id=f"region-{sid}")
+        controller.create_peak(f"region-{sid}", "pseudo-voigt")
+    dialog = SeriesDialog(controller)
+    file = dialog.tree.topLevelItem(0)
+    assert file is not None
+    dialog.search.setText("spec-1")
+    file.setCheckState(0, Qt.CheckState.Checked)
+    assert dialog.spectrum_ids() == ("s1",)
+    dialog.search.setText("spec-3")
+    assert file.checkState(0) == Qt.CheckState.Unchecked
+    file.setCheckState(0, Qt.CheckState.Checked)
+    assert dialog.spectrum_ids() == ("s1", "s3")
+    file.setCheckState(0, Qt.CheckState.Unchecked)
+    assert dialog.spectrum_ids() == ("s1",)
+    dialog.search.clear()
+    assert file.checkState(0) == Qt.CheckState.PartiallyChecked
+    assert dialog._leaves["s2"].checkState(0) == Qt.CheckState.Unchecked
+    dialog.deleteLater()
+
+
+def test_series_picker_excludes_empty_and_background_only_steps(qapp, hierarchy_collection):
+    controller = ControllerWrapper(collection=hierarchy_collection)
+    seed_hierarchy_metadata(controller.orchestrator.ctx.metadata)
+    controller.create_region("s1", region_id="fitted")
+    controller.create_peak("fitted", "pseudo-voigt")
+    controller.create_region("s2", region_id="background")
+    controller.create_background("background", "constant")
+    dialog = SeriesDialog(controller, spectrum_ids=("s2", "deleted"))
+    assert set(dialog._leaves) == {"s1"}
+    file = dialog.tree.topLevelItem(0)
+    assert file is not None
+    assert file.childCount() == 1
+    assert dialog.spectrum_ids() == ("s2", "deleted")
+    dialog.resize(1000, 750)
+    dialog.show()
+    qapp.processEvents()
+    assert dialog.name_edit.geometry().top() < 80
+    assert dialog.tree.height() > dialog.height() / 2
+    dialog.close()
+
+
+def test_trend_workspace_hides_identities_and_keeps_source_navigation(qapp, simple_collection):
+    from ui.post_processing.panel import PostProcessingPanel
+
+    controller = ControllerWrapper(collection=simple_collection)
+    panel = PostProcessingPanel(controller)
+    assert panel.stack.currentWidget() is panel.empty_page
+    sid = controller.create_post_processing_series("Silver", ("s1",))
+    controller.run_post_processing(sid)
+    panel.set_series(sid)
+    assert panel.track_list.item(0).text().startswith("Trend 1\n")
+    table = panel.series_table
+    assert table.source.table is not None
+    columns = table.source.table.columns
+    visible = {c.id_ for i, c in enumerate(columns) if not table.isColumnHidden(i)}
+    assert visible == {"step", "spectrum", "position", "area", "fwhm", "link"}
+    row = table.source_row(table.proxy.index(0, 7))
+    assert row is not None
+    assert row.component_id == "p1"
+    panel.details.setChecked(True)
+    visible = {c.id_ for i, c in enumerate(columns) if not table.isColumnHidden(i)}
+    assert "model" in visible
+    assert "sig" in visible
+    assert not {"region", "component", "track", "track_name"} & visible
+    tid = controller.create_analytical_table("Analysis", ((sid, "track/p1"),))
+    dto = controller.query.get_analytical_table(tid)
+    assert "Trend 1" in dto.table.columns[2].label
+    assert "track/p1" not in dto.table.columns[2].label
+    panel.deleteLater()
+
+
+def test_copy_skips_hidden_identities_and_preserves_zero(qapp):
+    from PySide6.QtGui import QKeyEvent
+
+    view = AnalysisTableView(trend=True)
+    view.source.set_table(
+        AnalysisTable(
+            (
+                AnalysisColumn("step", "Step"),
+                AnalysisColumn("component", "Component ID"),
+                AnalysisColumn("area", "Area"),
+            ),
+            (AnalysisRow(1, "s1", (AnalysisCell(1), AnalysisCell("secret"), AnalysisCell(0))),),
+        )
+    )
+    view.selectAll()
+    view.keyPressEvent(
+        QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
+    )
+    assert qapp.clipboard().text() == "1\t0"
+    view.deleteLater()

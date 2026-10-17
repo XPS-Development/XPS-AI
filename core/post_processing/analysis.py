@@ -9,6 +9,7 @@ from math import isfinite
 from typing import TYPE_CHECKING
 
 from core.dto import AnalysisCell, AnalysisColumn, AnalysisRow, AnalysisTable, SourceLocation
+from core.post_processing.labels import trend_label
 from core.post_processing.metrics import MetricDefinition
 from core.post_processing.state import new_revision
 
@@ -242,9 +243,9 @@ def build_analysis(
     for source in table.sources:
         saved = series.get(source.series_id)
         label = (
-            source.track_id
+            "Unavailable trend"
             if saved is None
-            else f"{saved.name} / {dict(saved.track_names).get(source.anchor_id, source.track_id)}"
+            else f"{saved.name} / {trend_label(saved, source.track_id)}"
         )
         base.append(
             AnalysisColumn(

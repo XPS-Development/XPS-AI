@@ -15,6 +15,7 @@ from core.evaluation import (
 from core.math_models import ModelRegistry
 from core.post_processing.analysis import build_analysis, dependency_stamp
 from core.post_processing.fingerprint import input_fingerprint
+from core.post_processing.labels import trend_label
 from core.post_processing.tables import TableView, build_table, build_trend_tables
 
 from .dto_service import DTOService
@@ -86,13 +87,17 @@ class QueryService:
         }
         return build_trend_tables(series, names, track_id)
 
+    def get_trend_label(self, series_id: str, track_id: str) -> str:
+        """Describe a trend without displaying its internal identity."""
+        return trend_label(self._ctx.post_processing[series_id], track_id)
+
     def get_analytical_source_labels(self, table_id: str) -> tuple[str, ...]:
         """Describe qualified sources and their independently counted peaks and steps."""
         labels = []
         for source in self._ctx.analytical_tables[table_id].sources:
             series = self._ctx.post_processing.get(source.series_id)
             if series is None:
-                labels.append(f"Unavailable series: {source.series_id}")
+                labels.append("Unavailable series")
                 continue
             track = (
                 None
@@ -100,7 +105,7 @@ class QueryService:
                 else next((t for t in series.result.tracks if t.id_ == source.track_id), None)
             )
             labels.append(
-                f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}: "
+                f"{series.name} / {trend_label(series, source.track_id)}: "
                 f"{0 if track is None else len(track.component_ids)} peaks / {len(series.spectrum_ids)} steps"
             )
         return tuple(labels)
@@ -155,7 +160,7 @@ class QueryService:
                 conflicts.append(f"operand_selection_required:{source.id_}")
             counts.append(
                 (
-                    f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}",
+                    f"{series.name} / {trend_label(series, source.track_id)}",
                     len(series.spectrum_ids),
                     0 if track is None else len(track.component_ids),
                 )

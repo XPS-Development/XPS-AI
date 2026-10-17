@@ -34,6 +34,7 @@ class MetricDialog(QDialog):
         metric_id: str | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("PostProcessingDialog")
         self.setWindowTitle("Analysis column")
         self.resize(600, 560)
         self._controller, self._table_id, self._metric_id = controller, table_id, metric_id
@@ -50,13 +51,13 @@ class MetricDialog(QDialog):
         for source in table.sources:
             if source.series_id in controller.query.get_post_processing_series_ids():
                 series = controller.query.get_post_processing_series(source.series_id).series
-                label = f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}"
+                label = f"{series.name} / {controller.query.get_trend_label(source.series_id, source.track_id)}"
             else:
-                label = f"Unavailable: {source.series_id} / {source.track_id}"
+                label = "Unavailable source"
             tracks[source.id_] = label
         if existing is not None:
             for tid in (*existing.tracks, *existing.denominator):
-                tracks.setdefault(tid, f"Unavailable: {tid}")
+                tracks.setdefault(tid, "Unavailable source")
         for tid, label in tracks.items():
             self.track_a.addItem(label, tid)
             self.track_b.addItem(label, tid)
