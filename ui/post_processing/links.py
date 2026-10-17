@@ -354,7 +354,7 @@ class LinkEditor(QWidget):
                     brush="w",
                     hoverable=True,
                     hoverBrush=color,
-                    tip=lambda _x, _y, info: info,
+                    tip=lambda x, y, data: data,
                     data=[f"{peak.position:.6g} eV"],
                 )
                 point.setZValue(len(steps) * 10 + 2)
