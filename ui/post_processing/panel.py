@@ -213,6 +213,7 @@ class PostProcessingPanel(QWidget):
         self.table_id = None
         self._selected_tracks = {}
         self._kind = "series"
+        self._series_status = ""
         self.status = QLabel()
         self.status.setWordWrap(True)
         self.stack = QStackedWidget()
@@ -262,9 +263,10 @@ class PostProcessingPanel(QWidget):
         self.details.setToolTip("Show model, width and relative area")
         toolbar.addWidget(self.details)
         layout.addLayout(toolbar)
-        layout.addWidget(
-            QLabel("Select a trend on the left. Double-click a row to open its decomposition.")
+        self.trend_hint = QLabel(
+            "Select a trend on the left. Double-click a row to open its decomposition."
         )
+        layout.addWidget(self.trend_hint)
         splitter = QSplitter()
         self.track_list = QListWidget()
         self.track_list.setObjectName("PostProcessingTrendList")
@@ -286,8 +288,25 @@ class PostProcessingPanel(QWidget):
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([190, 800])
         layout.addWidget(splitter, 1)
+        self.series_tabs.currentChanged.connect(self._series_view_changed)
         self.series_table.doubleClicked.connect(self._activate_series_row)
         self.preview.sourceActivated.connect(self._activate_preview)
+
+    def _series_view_changed(self) -> None:
+        trends_visible = self.series_tabs.currentWidget() is not self.links
+        self.track_list.setVisible(trends_visible)
+        self.trend_hint.setVisible(trends_visible)
+        self.name_track.setVisible(trends_visible)
+        self.add_to_table.setVisible(trends_visible)
+        self.details.setVisible(self.series_tabs.currentWidget() is self.series_table)
+        self.status.setText(
+            self._series_status
+            if trends_visible
+            else self._series_status.replace(
+                "Select a peak trend, inspect its components, then add it to a table",
+                "Compare spectra and edit links between neighbouring steps",
+            )
+        )
 
     def _build_analysis_page(self) -> None:
         layout = QVBoxLayout(self.analysis_page)
@@ -410,6 +429,8 @@ class PostProcessingPanel(QWidget):
         self.add_to_table.setEnabled(dto.exportable and self.track_list.count() > 0)
         self.links.set_series(sid)
         self._track_changed()
+        self._series_status = self.status.text()
+        self._series_view_changed()
 
     def _track_changed(self) -> None:
         item = self.track_list.currentItem()
@@ -419,7 +440,6 @@ class PostProcessingPanel(QWidget):
             return
         track_id = item.data(Qt.ItemDataRole.UserRole)
         self._selected_tracks[self.series_id] = track_id
-        self.links.set_track(track_id)
         detailed, preview = self._controller.query.get_trend_tables(self.series_id, track_id)
         self.series_table.source.set_table(detailed)
         self.series_table.resizeColumnsToContents()
