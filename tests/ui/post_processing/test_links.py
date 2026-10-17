@@ -3,6 +3,7 @@
 import numpy as np
 import pyqtgraph as pg
 import pytest
+from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QApplication
 from tests.conftest import seed_hierarchy_metadata
 
@@ -87,33 +88,25 @@ def test_marker_selection_can_switch_pair_in_whole_series(comparison):
     editor.deleteLater()
 
 
-def test_selected_trend_controls_peak_pair_and_survives_pair_changes(comparison):
+def test_table_trend_selection_is_independent_from_link_editor(comparison):
     _, controller, sid = comparison
     panel = PostProcessingPanel(controller)
     panel.set_series(sid)
+    panel.links.left.setCurrentIndex(1)
+    panel.links.right.setCurrentIndex(0)
+    choices = (panel.links.left.currentData(), panel.links.right.currentData())
+    plot = panel.links._plot
     panel.track_list.setCurrentRow(1)
-    track = controller.query.get_post_processing_series(sid).series.result.tracks[1]
-    assert panel.links.left.currentData() in track.component_ids
-    assert panel.links.right.currentData() in track.component_ids
-    panel.links.pair.setCurrentIndex(1)
-    assert panel.links.left.currentData() in track.component_ids
-    assert panel.links.right.currentData() in track.component_ids
+    assert (panel.links.left.currentData(), panel.links.right.currentData()) == choices
+    assert panel.links._plot is plot
+    panel.series_tabs.setCurrentWidget(panel.links)
+    assert panel.track_list.isHidden()
+    assert panel.name_track.isHidden()
+    assert panel.add_to_table.isHidden()
+    panel.series_tabs.setCurrentWidget(panel.series_table)
+    assert not panel.track_list.isHidden()
+    assert panel.track_list.currentRow() == 1
     panel.deleteLater()
-
-
-def test_absent_trend_does_not_select_an_unrelated_peak(comparison):
-    _, controller, sid = comparison
-    controller.set_post_processing_link(sid, "q-s1", "q-s2", False)
-    controller.set_post_processing_link(sid, "q-s1", "p-s2", False)
-    editor = LinkEditor(controller)
-    editor.set_series(sid)
-    editor.set_track("track/q-s1")
-    assert editor.left.currentData() == "q-s1"
-    assert editor.right.currentData() is None
-    editor.pair.setCurrentIndex(1)
-    assert editor.left.currentData() is None
-    assert editor.right.currentData() is None
-    editor.deleteLater()
 
 
 def test_waterfall_overlap_is_adjustable_and_overlays_are_optional(comparison):
@@ -122,13 +115,13 @@ def test_waterfall_overlap_is_adjustable_and_overlays_are_optional(comparison):
     editor.set_series(sid)
     assert editor.scope.currentText() == "Whole series"
     plot = editor.graphics.ci.getItem(0, 0)
-    layers = [item for item in plot.listDataItems() if item.opts["fillLevel"] is not None]
+    layers = [item for item in plot.listDataItems() if item.opts.get("fillLevel") is not None]
     assert len(layers) == 3
     # Nearer spectra mask the lower part of spectra behind them.
     assert layers[0].zValue() < layers[1].zValue() < layers[2].zValue()
     assert layers[0].opts["fillLevel"] == pytest.approx(0.36)
     assert layers[2].opts["fillLevel"] == 0
-    assert not any(isinstance(item, pg.ScatterPlotItem) for item in plot.items)
+    assert not any(isinstance(item, pg.ScatterPlotItem) and item.isVisible() for item in plot.items)
     assert len([item for item in plot.listDataItems() if item.isVisible()]) == 3
     original = layers[0].yData.copy()
     editor.spacing.setValue(0.1)
@@ -140,4 +133,61 @@ def test_waterfall_overlap_is_adjustable_and_overlays_are_optional(comparison):
     editor.show_links.setChecked(True)
     plot = editor.graphics.ci.getItem(0, 0)
     assert any(isinstance(item, pg.ScatterPlotItem) for item in plot.items)
+    editor.deleteLater()
+
+
+def test_pair_and_peak_selection_reuse_curves_and_preserve_zoom(comparison, monkeypatch):
+    _, controller, sid = comparison
+    editor = LinkEditor(controller)
+    editor.set_series(sid)
+    editor.components.setChecked(True)
+    editor.show_links.setChecked(True)
+    plot = editor._plot
+    assert plot is not None
+    curves = tuple(plot.listDataItems())
+    view = plot.getViewBox()
+    view.setXRange(-2, 4, padding=0)
+    view.setYRange(0.2, 1.2, padding=0)
+    ranges = view.viewRange()
+
+    def unexpected_evaluation(*_args):
+        pytest.fail("Selection must not evaluate spectrum curves again")
+
+    monkeypatch.setattr(controller.query, "get_spectrum_plot_data", unexpected_evaluation)
+    editor.pair.setCurrentIndex(1)
+    editor.left.setCurrentIndex(1)
+    editor.right.setCurrentIndex(0)
+    editor.set_series(sid)
+    editor.components.setChecked(False)
+    editor.show_links.setChecked(False)
+    editor.show_links.setChecked(True)
+    assert editor._plot is plot
+    assert tuple(plot.listDataItems()) == curves
+    np.testing.assert_allclose(view.viewRange(), ranges)
+    for _, _, line, color in editor._link_items:
+        assert color.alpha() == 255
+        pen = line.opts["pen"]
+        assert isinstance(pen, QPen)
+        assert pen.widthF() >= 2
+    editor.deleteLater()
+
+
+def test_changed_inputs_rebuild_curves_but_pair_mode_only_rebuilds_when_needed(comparison):
+    _, controller, sid = comparison
+    editor = LinkEditor(controller)
+    editor.set_series(sid)
+    initial = editor._plot
+    editor.scope.setCurrentIndex(0)
+    pair_plot = editor._plot
+    assert pair_plot is not initial
+    editor.left.setCurrentIndex(1)
+    assert editor._plot is pair_plot
+    editor.set_series(sid)
+    assert editor._plot is pair_plot
+    editor.pair.setCurrentIndex(1)
+    assert editor._plot is not pair_plot
+    old = editor._plot
+    controller.update_parameter("p-s2", "amp", "value", 8)
+    editor.set_series(sid)
+    assert editor._plot is not old
     editor.deleteLater()
