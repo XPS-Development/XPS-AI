@@ -419,6 +419,7 @@ class PostProcessingPanel(QWidget):
             return
         track_id = item.data(Qt.ItemDataRole.UserRole)
         self._selected_tracks[self.series_id] = track_id
+        self.links.set_track(track_id)
         detailed, preview = self._controller.query.get_trend_tables(self.series_id, track_id)
         self.series_table.source.set_table(detailed)
         self.series_table.resizeColumnsToContents()
