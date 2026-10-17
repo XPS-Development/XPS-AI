@@ -13,6 +13,7 @@ from core.post_processing.analysis import (
     align_rows,
     dependency_stamp,
 )
+from core.post_processing.labels import trend_label
 from core.post_processing.state import new_revision
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ class AnalyticalTableUseCases:
 
     def _label(self, source: TrendSource) -> str:
         series = self.query.get_post_processing_series(source.series_id).series
-        return f"{series.name} / {dict(series.track_names).get(source.anchor_id, source.track_id)}"
+        return f"{series.name} / {trend_label(series, source.track_id)}"
 
     def _sources(self, selections: tuple[tuple[str, str], ...]) -> tuple[TrendSource, ...]:
         sources = []

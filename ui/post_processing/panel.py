@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -63,8 +64,8 @@ class SeriesPanel(QWidget):
             button = QPushButton(name)
             button.clicked.connect(callback)
             row.addWidget(button)
-        layout.addLayout(row)
         layout.addWidget(QLabel("Spectrum series"))
+        layout.addLayout(row)
         layout.addWidget(self.list, 1)
         layout.addWidget(QLabel("Analytical tables"))
         table_buttons = QHBoxLayout()
@@ -207,6 +208,7 @@ class PostProcessingPanel(QWidget):
     def __init__(self, controller: ControllerWrapper, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._controller = controller
+        self.setObjectName("PostProcessingPanel")
         self.series_id = None
         self.table_id = None
         self._selected_tracks = {}
@@ -221,6 +223,23 @@ class PostProcessingPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
         layout.addWidget(self.stack, 1)
+        self.empty_page = QWidget()
+        empty_layout = QVBoxLayout(self.empty_page)
+        empty_layout.addStretch()
+        heading = QLabel("Peak trends and analytical tables")
+        heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(heading)
+        hint = QLabel(
+            "Create a series from decomposed spectra, then match its peaks.\nSelect a series or table in the sidebar to continue."
+        )
+        hint.setWordWrap(True)
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_layout.addWidget(hint)
+        create = QPushButton("Create series…")
+        create.clicked.connect(self._create_series)
+        empty_layout.addWidget(create, 0, Qt.AlignmentFlag.AlignHCenter)
+        empty_layout.addStretch()
+        self.stack.addWidget(self.empty_page)
         self._build_series_page()
         self._build_analysis_page()
         self.set_series(None)
@@ -234,19 +253,29 @@ class PostProcessingPanel(QWidget):
         self.name_track.clicked.connect(self._name_track)
         self.add_to_table = QPushButton("Add trend to table…")
         self.add_to_table.clicked.connect(self._add_to_table)
-        settings = QPushButton("Matching settings…")
-        settings.clicked.connect(self._settings)
-        for button in (self.run_button, self.name_track, self.add_to_table, settings):
+        self.settings_button = QPushButton("Matching settings…")
+        self.settings_button.clicked.connect(self._settings)
+        for button in (self.run_button, self.name_track, self.add_to_table, self.settings_button):
             toolbar.addWidget(button)
         toolbar.addStretch(1)
+        self.details = QCheckBox("Details")
+        self.details.setToolTip("Show model, width and relative area")
+        toolbar.addWidget(self.details)
         layout.addLayout(toolbar)
+        layout.addWidget(
+            QLabel("Select a trend on the left. Double-click a row to open its decomposition.")
+        )
         splitter = QSplitter()
         self.track_list = QListWidget()
-        self.track_list.setMinimumWidth(210)
+        self.track_list.setObjectName("PostProcessingTrendList")
+        self.track_list.setMinimumWidth(170)
+        self.track_list.setMaximumWidth(280)
         self.track_list.currentItemChanged.connect(self._track_changed)
         splitter.addWidget(self.track_list)
         self.series_tabs = QTabWidget()
-        self.series_table = AnalysisTableView()
+        self.series_tabs.setObjectName("PostProcessingViews")
+        self.series_table = AnalysisTableView(trend=True)
+        self.details.toggled.connect(self.series_table.set_details)
         self.preview = TrendWidget()
         self.preview.columns.setMaximumWidth(150)
         self.links = LinkEditor(self._controller)
@@ -255,6 +284,7 @@ class PostProcessingPanel(QWidget):
         self.series_tabs.addTab(self.links, "Neighbouring links")
         splitter.addWidget(self.series_tabs)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([190, 800])
         layout.addWidget(splitter, 1)
         self.series_table.doubleClicked.connect(self._activate_series_row)
         self.preview.sourceActivated.connect(self._activate_preview)
@@ -298,6 +328,7 @@ class PostProcessingPanel(QWidget):
         self.trends = TrendWidget()
         self.trends.selectionChanged.connect(self._plot_selection)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName("PostProcessingViews")
         self.tabs.addTab(self.table, "Analytical table")
         self.tabs.addTab(self.trends, "Graphs")
         layout.addWidget(self.tabs, 1)
@@ -323,6 +354,9 @@ class PostProcessingPanel(QWidget):
             return
         sid = self.series_id
         exists = sid in self._controller.query.get_post_processing_series_ids()
+        self.status.setVisible(exists)
+        self.stack.setCurrentWidget(self.series_page if exists else self.empty_page)
+        self.settings_button.setEnabled(exists)
         self.run_button.setEnabled(exists)
         self.name_track.setEnabled(exists)
         self.add_to_table.setEnabled(exists)
@@ -347,12 +381,20 @@ class PostProcessingPanel(QWidget):
             )
         )
         if dto.conflicts:
-            self.status.setText(self.status.text() + "\n" + "\n".join(dto.conflicts))
-        names = dict(dto.series.track_names)
+            self.status.setText(
+                self.status.text()
+                + "\n"
+                + "\n".join(
+                    dict.fromkeys(
+                        issue.split(":", 1)[0].replace("_", " ").capitalize()
+                        for issue in dto.conflicts
+                    )
+                )
+            )
         if dto.series.result is not None:
             for track in dto.series.result.tracks:
                 label = (
-                    f"{names.get(track.anchor_id, track.id_)}\n{len(track.component_ids)} / {len(dto.series.spectrum_ids)} peaks"
+                    f"{self._controller.query.get_trend_label(sid, track.id_)}\n{len(track.component_ids)} / {len(dto.series.spectrum_ids)} peaks"
                     + (" • ambiguous" if track.ambiguous else "")
                 )
                 item = QListWidgetItem(label)
@@ -364,6 +406,7 @@ class PostProcessingPanel(QWidget):
         if self.track_list.currentRow() < 0 and self.track_list.count():
             self.track_list.setCurrentRow(0)
         self.track_list.blockSignals(False)
+        self.name_track.setEnabled(self.track_list.count() > 0)
         self.add_to_table.setEnabled(dto.exportable and self.track_list.count() > 0)
         self.links.set_series(sid)
         self._track_changed()
@@ -382,6 +425,7 @@ class PostProcessingPanel(QWidget):
         self.preview.set_table(self.series_id + track_id, preview)
 
     def _refresh_analysis(self) -> None:
+        self.status.show()
         if self.table_id not in self._controller.query.get_analytical_table_ids():
             return
         dto = self._controller.query.get_analytical_table(self.table_id)
@@ -392,7 +436,17 @@ class PostProcessingPanel(QWidget):
                 if dto.stale
                 else " — steps paired by series order"
             )
-            + ("\n" + "\n".join(dto.conflicts) if dto.conflicts else "")
+            + (
+                "\n"
+                + "\n".join(
+                    dict.fromkeys(
+                        issue.split(":", 1)[0].replace("_", " ").capitalize()
+                        for issue in dto.conflicts
+                    )
+                )
+                if dto.conflicts
+                else ""
+            )
         )
         self.source_summary.setText(
             "\n".join(
@@ -414,6 +468,14 @@ class PostProcessingPanel(QWidget):
                 index, 48 if column.id_ == "step" else min(self.table.columnWidth(index), 165)
             )
         self.trends.set_table(self.table_id, dto.table, selected_columns=dto.state.plotted_columns)
+
+    def _create_series(self) -> None:
+        dialog = SeriesDialog(self._controller, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            sid = self._controller.create_post_processing_series(
+                dialog.name_edit.text().strip(), dialog.spectrum_ids()
+            )
+            self.set_series(sid)
 
     def _run(self) -> None:
         if self.series_id:
@@ -444,8 +506,8 @@ class PostProcessingPanel(QWidget):
         labels = [
             "New analytical table…",
             *(
-                self._controller.query.get_analytical_table(t).state.name + f" [{t[:6]}]"
-                for t in tids
+                f"{index}. {self._controller.query.get_analytical_table(t).state.name}"
+                for index, t in enumerate(tids, 1)
             ),
         ]
         label, accepted = QInputDialog.getItem(
@@ -578,7 +640,7 @@ class PostProcessingPanel(QWidget):
         chosen = sources[0]
         if len(sources) > 1:
             labels = [
-                f"{getattr(self._controller.query.get_metadata(s.spectrum_id), 'name', None) or s.spectrum_id} / {s.component_id}"
+                f"{getattr(self._controller.query.get_metadata(s.spectrum_id), 'name', None) or s.spectrum_id[:6]} / component {s.component_id[:6]}"
                 for s in sources
             ]
             label, accepted = QInputDialog.getItem(

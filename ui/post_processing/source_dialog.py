@@ -32,6 +32,7 @@ class SourceDialog(QDialog):
         selected: tuple[tuple[str, str], ...] = (),
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("PostProcessingDialog")
         self.setWindowTitle("Analytical table sources")
         self.resize(720, 540)
         self.name_edit = QLineEdit(name)
@@ -43,7 +44,6 @@ class SourceDialog(QDialog):
             self.tree.addTopLevelItem(root)
             if dto.series.result is None:
                 continue
-            names = dict(dto.series.track_names)
             for track in dto.series.result.tracks:
                 points = [
                     (step, peak)
@@ -57,7 +57,7 @@ class SourceDialog(QDialog):
                 )
                 item = QTreeWidgetItem(
                     [
-                        names.get(track.anchor_id, track.id_),
+                        controller.query.get_trend_label(sid, track.id_),
                         f"{len(track.component_ids)} / {len(dto.series.spectrum_ids)}",
                         "E: " + ", ".join(f"{p.position:.6g}" for _, p in points[:4]) + " eV",
                     ]
@@ -86,7 +86,7 @@ class SourceDialog(QDialog):
                         represented.add(child.data(0, Qt.ItemDataRole.UserRole))
         for pair in selected:
             if pair not in represented:
-                item = QTreeWidgetItem([f"Unavailable: {pair[0]} / {pair[1]}"])
+                item = QTreeWidgetItem(["Unavailable source"])
                 item.setData(0, Qt.ItemDataRole.UserRole, pair)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(0, Qt.CheckState.Checked)
