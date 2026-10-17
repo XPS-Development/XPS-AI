@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 class TrendWidget(QWidget):
-    """Separate measurement units into panels and leave missing values as gaps."""
+    """Separate measurement quantities into panels and leave missing values as gaps."""
 
     sourceActivated = Signal(str, object)
     selectionChanged = Signal(object)
@@ -96,20 +96,25 @@ class TrendWidget(QWidget):
             for i in range(self.columns.count())
             if self.columns.item(i).checkState() == Qt.CheckState.Checked
         }
-        plots: dict[str, Any] = {}
+        plots: dict[tuple[str, str], Any] = {}
         for column_index, column in enumerate(table.columns[2:], 2):
             if column.id_ not in checked:
                 continue
-            if column.unit not in plots:
+            key = (column.quantity, column.unit)
+            if key not in plots:
                 plot = self.graphics.ci.addPlot(
                     row=len(plots), col=0, viewBox=DoubleClickAutoRangeViewBox(enableMenu=False)
                 )
                 plot.setLabel("bottom", "Row" if any(row.id_ for row in table.rows) else "Step")
-                plot.setLabel("left", column.unit)
+                plot.setLabel(
+                    "left",
+                    column.quantity or column.unit,
+                    units=column.unit if column.quantity else None,
+                )
                 plot.showGrid(x=True, y=True, alpha=0.3)
                 plot.addLegend()
-                plots[column.unit] = plot
-            plot = plots[column.unit]
+                plots[key] = plot
+            plot = plots[key]
             color = color_for_component(component_id=column.anchor_id or column.id_)
             cells = [row.cells[column_index] for row in table.rows]
             x = [row.step for row in table.rows]

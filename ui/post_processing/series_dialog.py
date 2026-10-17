@@ -48,7 +48,7 @@ class SeriesDialog(QDialog):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search files, groups, spectra or IDs…")
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Decomposed spectra")
+        self.tree.setHeaderHidden(True)
         self.ordered = QListWidget()
         self.ordered.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self._leaves: dict[str, QTreeWidgetItem] = {}

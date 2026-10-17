@@ -395,7 +395,7 @@ class PostProcessingPanel(QWidget):
         self.source_summary = QLabel()
         self.source_summary.setWordWrap(True)
         layout.addWidget(self.source_summary)
-        self.table = AnalysisTableView()
+        self.table = AnalysisTableView(sortable=False)
         self.trends = TrendWidget()
         self.trends.selectionChanged.connect(self._plot_selection)
         self.tabs = QTabWidget()

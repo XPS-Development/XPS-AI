@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QIdentityProxyModel,
     QModelIndex,
     QPersistentModelIndex,
     QSortFilterProxyModel,
@@ -113,19 +114,23 @@ class AnalysisTableModel(QAbstractTableModel):
 class AnalysisTableView(QTableView):
     """Keep row navigation stable through proxy sorting and copy selected cells as TSV."""
 
-    def __init__(self, parent: Any = None, *, trend: bool = False) -> None:
+    def __init__(self, parent: Any = None, *, trend: bool = False, sortable: bool = True) -> None:
         super().__init__(parent)
         self._trend = trend
         self._details = False
         self.setShowGrid(False)
         self.setObjectName("PostProcessingTable")
         self.source = AnalysisTableModel(self)
-        self.proxy = QSortFilterProxyModel(self)
+        self.proxy = QSortFilterProxyModel(self) if sortable else QIdentityProxyModel(self)
         self.proxy.setSourceModel(self.source)
-        self.proxy.setSortRole(Qt.ItemDataRole.UserRole)
+        if isinstance(self.proxy, QSortFilterProxyModel):
+            self.proxy.setSortRole(Qt.ItemDataRole.UserRole)
         self.setModel(self.proxy)
-        self.setSortingEnabled(True)
-        self.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        self.setSortingEnabled(sortable)
+        self.horizontalHeader().setSectionsClickable(sortable)
+        self.horizontalHeader().setSortIndicatorShown(sortable)
+        if sortable:
+            self.sortByColumn(0, Qt.SortOrder.AscendingOrder)
         self.setAlternatingRowColors(True)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -155,7 +160,8 @@ class AnalysisTableView(QTableView):
                         "spectrum",
                         "position",
                         "area",
-                        "fwhm",
+                        "sig",
+                        "fraction",
                         "link",
                     }
                 self.setColumnHidden(index, hidden)

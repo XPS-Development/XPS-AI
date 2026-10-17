@@ -364,7 +364,7 @@ def test_trend_workspace_hides_identities_and_keeps_source_navigation(qapp, simp
     assert table.source.table is not None
     columns = table.source.table.columns
     visible = {c.id_ for i, c in enumerate(columns) if not table.isColumnHidden(i)}
-    assert visible == {"step", "spectrum", "position", "area", "fwhm", "link"}
+    assert visible == {"step", "spectrum", "position", "area", "sig", "fraction", "link"}
     row = table.source_row(table.proxy.index(0, 7))
     assert row is not None
     assert row.component_id == "p1"
@@ -493,3 +493,58 @@ def test_series_tab_bar_stays_in_place_when_showing_links(qapp, simple_collectio
         qapp.processEvents()
         assert bar.mapTo(panel, bar.rect().topLeft()) == position
     panel.close()
+
+
+def test_model_position_and_sig_have_separate_graphs_and_relative_area_label(
+    qapp, simple_collection
+):
+    from ui.post_processing.panel import PostProcessingPanel
+
+    controller = ControllerWrapper(collection=simple_collection)
+    sid = controller.create_post_processing_series("Series", ("s1",))
+    panel = PostProcessingPanel(controller)
+    panel.set_series(sid)
+    plots = list(panel.preview.graphics.ci.items)
+    quantities = [plot.getAxis("left").labelText for plot in plots]
+    assert set(quantities) == {"Position", "sig", "Area", "Rel. area"}
+    assert len(plots) == 4
+    assert panel.series_table.source.table is not None
+    columns = panel.series_table.source.table.columns
+    assert "fwhm" not in {column.id_ for column in columns}
+    assert "fwhm" not in {op.id_ for op in controller.query.get_post_processing_operations()}
+    dialog = SeriesDialog(controller)
+    assert dialog.tree.isHeaderHidden()
+    dialog.deleteLater()
+    panel.deleteLater()
+
+
+def test_analytical_table_order_cannot_be_sorted_by_header_or_programmatically(
+    qapp, simple_collection
+):
+    from PySide6.QtTest import QTest
+
+    from ui.post_processing.panel import PostProcessingPanel
+
+    controller = ControllerWrapper(collection=simple_collection)
+    panel = PostProcessingPanel(controller)
+    panel.table.source.set_table(
+        AnalysisTable(
+            (AnalysisColumn("step", "Step"), AnalysisColumn("area", "Area")),
+            (
+                AnalysisRow(1, "a", (AnalysisCell(1), AnalysisCell(30))),
+                AnalysisRow(2, "b", (AnalysisCell(2), AnalysisCell(10))),
+            ),
+        )
+    )
+    panel.table.show()
+    qapp.processEvents()
+    assert not panel.table.isSortingEnabled()
+    assert not panel.table.horizontalHeader().sectionsClickable()
+    panel.table.sortByColumn(1, Qt.SortOrder.AscendingOrder)
+    header = panel.table.horizontalHeader()
+    QTest.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=header.rect().center())
+    assert [panel.table.proxy.index(i, 1).data() for i in range(2)] == ["30", "10"]
+    row = panel.table.source_row(panel.table.proxy.index(0, 1))
+    assert row is not None
+    assert row.spectrum_id == "a"
+    panel.deleteLater()

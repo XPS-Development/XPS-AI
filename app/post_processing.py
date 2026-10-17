@@ -73,9 +73,8 @@ class MetricOperationOption:
 METRIC_OPERATIONS = (
     MetricOperationOption("position", "Position (eV)", "one"),
     MetricOperationOption("area", "Area", "one"),
-    MetricOperationOption("fwhm", "FWHM (eV)", "one"),
     MetricOperationOption("sig", "sig (eV)", "one"),
-    MetricOperationOption("spectrum_area_fraction", "Area / sum of spectrum peak areas (%)", "one"),
+    MetricOperationOption("spectrum_area_fraction", "Rel. area (%)", "one"),
     MetricOperationOption("position_difference", "Position A - position B (eV)", "two"),
     MetricOperationOption(
         "position_shift", "Position - position at reference step (eV)", "one", True
@@ -85,5 +84,5 @@ METRIC_OPERATIONS = (
     MetricOperationOption(
         "area_sum_ratio", "Sum of numerator areas / sum of denominator areas", "two_sets"
     ),
-    MetricOperationOption("area_fraction", "Area A / sum of selected areas (%)", "fraction"),
+    MetricOperationOption("area_fraction", "Rel. area of selected peaks (%)", "fraction"),
 )

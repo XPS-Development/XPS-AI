@@ -142,7 +142,7 @@ def test_missing_width_feature_with_enabled_weights():
             settings=MatchingSettings(width_weight=1, shape_weight=1),
         )
     )
-    assert result.tracks[0].links[0].missing_features == ("fwhm", "shape_gl")
+    assert result.tracks[0].links[0].missing_features == ("sig", "shape_gl")
 
 
 @pytest.mark.parametrize(
@@ -168,3 +168,22 @@ def test_immutable_unique_inputs():
         series([peak("a")], [peak("a")])
     with pytest.raises(ValueError, match="Spectrum IDs"):
         MatchingSeries("s", (SeriesStep("s0"), SeriesStep("s0")))
+
+
+def test_width_matching_uses_model_sig_and_ignores_legacy_fwhm():
+    result = match_series(
+        series(
+            [PeakDescriptor("a", "r1", "asym", 284, fwhm=100, sig=1)],
+            [PeakDescriptor("b", "r2", "asym", 284, fwhm=0.01, sig=1)],
+            settings=MatchingSettings(width_weight=1),
+        )
+    )
+    link = result.tracks[0].links[0]
+    assert dict(link.terms)["width"] == 0
+    assert "sig" not in link.missing_features
+
+
+@pytest.mark.parametrize("sig", [0, -1])
+def test_nonpositive_model_sig_is_rejected_before_logarithmic_width_cost(sig):
+    with pytest.raises(ValueError, match="sig must be positive"):
+        PeakDescriptor("p", "r", "asym", 284, sig=sig)

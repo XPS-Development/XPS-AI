@@ -34,7 +34,8 @@ def test_physical_area_width_and_multiple_regions():
     step = step_from_components("s", components)
     assert [p.region_id for p in step.peaks] == ["r1", "r2"]
     assert [p.area for p in step.peaks] == [120, 0]
-    assert step.peaks[0].fwhm == pytest.approx(1.4)
+    assert step.peaks[0].sig == pytest.approx(0.7)
+    assert step.peaks[0].fwhm is None
     components[0].parameters["amp"] = replace(components[0].parameters["amp"], value=999)
     assert step.peaks[0].area == 120
 
@@ -88,5 +89,6 @@ def test_adapter_accepts_physical_dtos_from_existing_service(dto_service):
     assert len(step.peaks) == 1
     assert step.peaks[0].component_id == "p1"
     assert step.peaks[0].area == 1
-    assert step.peaks[0].fwhm == 2
+    assert step.peaks[0].sig == 1
+    assert step.peaks[0].fwhm is None
     assert step.excluded[0].component_id == "b1"

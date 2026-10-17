@@ -50,10 +50,6 @@ def step_from_components(spectrum_id: str, components: Iterable[ComponentDTO]) -
             excluded.append(ExcludedComponent(component.id_, region_id, "invalid_area"))
             continue
         sig = parameters.get("sig")
-        fwhm = 2 * sig if component.model.name == "pseudo-voigt" and sig is not None else None
-        if fwhm is not None and not isfinite(fwhm):
-            excluded.append(ExcludedComponent(component.id_, region_id, "invalid_fwhm"))
-            continue
         peaks.append(
             PeakDescriptor(
                 component_id=component.id_,
@@ -61,7 +57,6 @@ def step_from_components(spectrum_id: str, components: Iterable[ComponentDTO]) -
                 model_name=component.model.name,
                 position=parameters["cen"],
                 area=area,
-                fwhm=fwhm,
                 sig=sig,
                 shape_gl=parameters.get("frac"),
             )

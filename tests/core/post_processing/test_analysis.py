@@ -57,7 +57,6 @@ def cells(data, op, operands, denominator=(), reference=None):
     ("op", "operands", "denominator", "expected", "unit"),
     [
         ("position", ("Ag",), (), [368, 368.2, 368.4], "eV"),
-        ("fwhm", ("Ag",), (), [2, 2, 2], "eV"),
         ("sig", ("Ag",), (), [1, 1, 1], "eV"),
         ("position_difference", ("Ag", "C-A"), (), [84, 84.1, 84.2], "eV"),
         ("position_difference", ("C-A", "Ag"), (), [-84, -84.1, -84.2], "eV"),
@@ -147,3 +146,17 @@ def test_zero_denominator_nonfinite_and_ambiguity(data):
     assert dependency_stamp(
         replace(ag, name="Renamed", track_names=(("ag0-0", "Silver"),))
     ) == dependency_stamp(ag)
+
+
+def test_position_and_sig_project_distinct_quantities_with_the_same_unit(data):
+    saved, table = data
+    table = replace(
+        table,
+        metrics=(
+            TableMetric("energy", "Custom energy", "position", ("Ag",)),
+            TableMetric("width", "Custom width", "sig", ("Ag",)),
+        ),
+    )
+    columns = build_analysis(table, saved, {}).columns[-2:]
+    assert [column.quantity for column in columns] == ["Position", "sig"]
+    assert [column.unit for column in columns] == ["eV", "eV"]

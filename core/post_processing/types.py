@@ -41,6 +41,7 @@ class PeakDescriptor:
     model_name: str
     position: float
     area: float | None = None
+    # Retained for reading saved prototype snapshots; new calculations use sig only.
     fwhm: float | None = None
     sig: float | None = None
     shape_gl: float | None = None
@@ -58,6 +59,8 @@ class PeakDescriptor:
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite or absent")
+        if self.sig is not None and self.sig <= 0:
+            raise ValueError("sig must be positive or absent")
         if self.fwhm is not None and self.fwhm <= 0:
             raise ValueError("FWHM must be positive or absent")
 
