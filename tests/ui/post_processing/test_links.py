@@ -1,5 +1,7 @@
 """Stacked spectral comparison and stable editing of adjacent links."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pyqtgraph as pg
 import pytest
@@ -191,3 +193,22 @@ def test_changed_inputs_rebuild_curves_but_pair_mode_only_rebuilds_when_needed(c
     editor.set_series(sid)
     assert editor._plot is not old
     editor.deleteLater()
+
+
+def test_hovering_peak_shows_energy_tooltip_and_clears_it_on_exit(comparison):
+    app, controller, sid = comparison
+    editor = LinkEditor(controller)
+    editor.set_series(sid)
+    editor.show_links.setChecked(True)
+    editor.show()
+    app.processEvents()
+    marker = next(iter(editor._markers.values()))
+    point = marker.points()[0]
+    marker.hoverEvent(SimpleNamespace(exit=False, pos=point.pos))
+    view = marker.getViewBox()
+    assert view is not None
+    assert view.toolTip() == point.data()
+    assert "eV" in view.toolTip()
+    marker.hoverEvent(SimpleNamespace(exit=True))
+    assert view.toolTip() == ""
+    editor.close()
