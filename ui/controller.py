@@ -36,6 +36,7 @@ class ControllerWrapper(QObject):
     plotNeedsRefresh: Signal = Signal()
     propertiesNeedsRefresh: Signal = Signal()
     documentStateChanged: Signal = Signal()
+    postProcessingChanged: Signal = Signal()
     undoRedoStateChanged: Signal = Signal(bool, bool)
     selectionChanged: Signal = Signal(object, object, object)
 
@@ -59,6 +60,8 @@ class ControllerWrapper(QObject):
         self._selected_spectrum_id: str | None = None
         self._selected_region_id: str | None = None
         self._selected_component_id: str | None = None
+        self._trend_color_keys: dict[str, str] = {}
+        self._trend_color_generation = self.query.document_generation
 
     @property
     def collection(self) -> CoreCollection:
@@ -133,6 +136,18 @@ class ControllerWrapper(QObject):
         self._selected_region_id = region_id
         self._selected_component_id = component_id
         self.selectionChanged.emit(spectrum_id, region_id, component_id)
+
+    def set_trend_color_context(self, series_id: str) -> None:
+        """Retain the chosen series' colour scheme when opening a source spectrum."""
+        self._trend_color_keys = self.query.get_trend_color_keys(series_id)
+        self._trend_color_generation = self.query.document_generation
+
+    def component_color_key(self, component_id: str | None) -> str | None:
+        """Return the active trend anchor or the component's ordinary colour identity."""
+        if self._trend_color_generation != self.query.document_generation:
+            self._trend_color_keys.clear()
+            self._trend_color_generation = self.query.document_generation
+        return self._trend_color_keys.get(component_id, component_id) if component_id else None
 
     # ------------------------------------------------------------------
     # Mutation API
@@ -549,6 +564,127 @@ class ControllerWrapper(QObject):
         """Clear the document and emit a full UI refresh."""
         self._mutate(self._orchestrator.new_collection)
 
+    def create_post_processing_series(self, name: str, spectrum_ids: Sequence[str]) -> str:
+        """Create a saved series through the application command pipeline."""
+        return self._mutate(self._orchestrator.create_post_processing_series, name, spectrum_ids)
+
+    def edit_post_processing_series(
+        self,
+        series_id: str,
+        *,
+        name: str | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+    ) -> None:
+        """Edit series presentation and ordered spectrum selection."""
+        self._mutate(
+            self._orchestrator.edit_post_processing_series,
+            series_id,
+            name=name,
+            spectrum_ids=spectrum_ids,
+        )
+
+    def remove_post_processing_series(self, series_id: str) -> None:
+        """Delete a saved series with undo support."""
+        self._mutate(self._orchestrator.remove_post_processing_series, series_id)
+
+    def run_post_processing(self, series_id: str) -> None:
+        """Run synchronous matching and refresh from the resulting command flags."""
+        self._mutate(self._orchestrator.run_post_processing, series_id)
+
+    def name_post_processing_track(self, series_id: str, track_id: str, name: str | None) -> None:
+        """Save a track label by its stable anchor."""
+        self._mutate(self._orchestrator.name_post_processing_track, series_id, track_id, name)
+
+    def create_analytical_table(
+        self, name: str, selections: tuple[tuple[str, str], ...] = ()
+    ) -> str:
+        """Create a table without modifying its source series."""
+        return self._mutate(self._orchestrator.create_analytical_table, name, selections)
+
+    def edit_analytical_table(
+        self,
+        table_id: str,
+        *,
+        name: str | None = None,
+        selections: tuple[tuple[str, str], ...] | None = None,
+        refresh_alignment: bool = False,
+        column_order: tuple[str, ...] | None = None,
+        plotted_columns: tuple[str, ...] | None = None,
+    ) -> None:
+        """Save table configuration, source selection or graph selection."""
+        self._mutate(
+            self._orchestrator.edit_analytical_table,
+            table_id,
+            name=name,
+            selections=selections,
+            refresh_alignment=refresh_alignment,
+            column_order=column_order,
+            plotted_columns=plotted_columns,
+        )
+
+    def remove_analytical_table(self, table_id: str) -> None:
+        """Delete a table through the command pipeline."""
+        self._mutate(self._orchestrator.remove_analytical_table, table_id)
+
+    def set_post_processing_link(
+        self, series_id: str, source_id: str, target_id: str, linked: bool
+    ) -> None:
+        """Save a manual neighbouring link decision."""
+        self._mutate(
+            self._orchestrator.set_post_processing_link, series_id, source_id, target_id, linked
+        )
+
+    def set_post_processing_settings(self, series_id: str, values: Mapping[str, float]) -> None:
+        """Edit the active matching settings through application validation."""
+        self._mutate(self._orchestrator.set_post_processing_settings, series_id, values)
+
+    def export_analytical_table(
+        self, table_id: str, path: str | Path, *, precision: int | None = None
+    ) -> None:
+        """Export the same cells used by the table and graph."""
+        self._orchestrator.export_analytical_table(table_id, path, precision=precision)
+
+    def save_analytical_metric(
+        self,
+        table_id: str,
+        *,
+        name: str,
+        operation: str,
+        tracks: tuple[str, ...],
+        denominator: tuple[str, ...] = (),
+        reference_row_id: str | None = None,
+        metric_id: str | None = None,
+    ) -> None:
+        """Validate and save a column without evaluating formulas in widgets."""
+        self._mutate(
+            self._orchestrator.save_analytical_metric,
+            table_id,
+            name=name,
+            operation=operation,
+            tracks=tracks,
+            denominator=denominator,
+            reference_row_id=reference_row_id,
+            metric_id=metric_id,
+        )
+
+    def remove_analytical_metric(self, table_id: str, metric_id: str) -> None:
+        """Remove a calculated or source column with undo support."""
+        self._mutate(self._orchestrator.remove_analytical_metric, table_id, metric_id)
+
+    def export_post_processing(
+        self,
+        series_id: str,
+        path: str | Path,
+        *,
+        view: Literal["components"] = "components",
+        separator: str = ",",
+        precision: int | None = None,
+    ) -> None:
+        """Export the shared projection after checking its snapshot status."""
+        self._orchestrator.export_post_processing(
+            series_id, path, view=view, separator=separator, precision=precision
+        )
+
     def set_default_save_path(self, path: str | Path) -> None:
         """Set the default save path in the serialization service."""
         self._orchestrator.set_default_save_path(path)
@@ -644,6 +780,8 @@ class ControllerWrapper(QObject):
             self.propertiesNeedsRefresh.emit()
         if flags & UiRefresh.DOCUMENT:
             self.documentStateChanged.emit()
+        if flags & UiRefresh.POST_PROCESSING:
+            self.postProcessingChanged.emit()
         self._emit_undo_redo_state()
 
     def _emit_ui_for_command(self, cmd: Command) -> None:

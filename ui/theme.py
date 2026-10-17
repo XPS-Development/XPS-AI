@@ -268,7 +268,9 @@ QDialog {{
 
 /* --- Side panels --- */
 QWidget#SpectrumTreePanel,
-QWidget#PropertiesPanel {{
+QWidget#PropertiesPanel,
+QWidget#PostProcessingSeriesPanel,
+QWidget#PostProcessingPanel {{
     background: {PANEL_BG};
 }}
 QWidget#SpectrumTreePanel QLineEdit {{
@@ -278,19 +280,72 @@ QWidget#SpectrumTreePanel QLineEdit {{
     padding: 3px 6px;
 }}
 QWidget#SpectrumTreePanel QPushButton,
-QWidget#PropertiesPanel QPushButton {{
+QWidget#PropertiesPanel QPushButton,
+QWidget#PostProcessingSeriesPanel QPushButton,
+QWidget#PostProcessingPanel QPushButton {{
     background: {SURFACE};
     border: 1px solid {BORDER};
     border-radius: 4px;
     padding: 3px 10px;
 }}
 QWidget#SpectrumTreePanel QPushButton:hover,
-QWidget#PropertiesPanel QPushButton:hover {{
+QWidget#PropertiesPanel QPushButton:hover,
+QWidget#PostProcessingSeriesPanel QPushButton:hover,
+QWidget#PostProcessingPanel QPushButton:hover {{
     background: {BUTTON_HOVER_BG};
 }}
-QWidget#PropertiesPanel QPushButton:disabled {{
+QWidget#PropertiesPanel QPushButton:disabled,
+QWidget#PostProcessingSeriesPanel QPushButton:disabled,
+QWidget#PostProcessingPanel QPushButton:disabled {{
     color: {TEXT_DISABLED};
     background: {BUTTON_DISABLED_BG};
+}}
+
+/* --- Post-processing tables and navigation --- */
+QTableView#PostProcessingTable {{
+    background: {SURFACE};
+    alternate-background-color: {PANEL_BG};
+    border: 1px solid {BORDER_SOFT};
+    gridline-color: {HAIRLINE};
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT};
+}}
+QTableView#PostProcessingTable QHeaderView::section {{
+    background: {PANEL_BG};
+    color: {TEXT_HEADER};
+    border: none;
+    border-bottom: 1px solid {BORDER_SOFT};
+    padding: 4px 8px;
+}}
+QListWidget#PostProcessingSeriesList,
+QListWidget#PostProcessingTrendColumns {{
+    background: {SURFACE};
+    border: 1px solid {BORDER_SOFT};
+    outline: none;
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT};
+}}
+QListWidget#PostProcessingSeriesList::item,
+QListWidget#PostProcessingTrendColumns::item {{
+    padding: 4px;
+}}
+QTabWidget#AnalysisModeTabs::pane,
+QTabWidget#PostProcessingViews::pane {{
+    border: none;
+    background: {PANEL_BG};
+}}
+QTabWidget#AnalysisModeTabs QTabBar::tab,
+QTabWidget#PostProcessingViews QTabBar::tab {{
+    background: {PANEL_BG};
+    color: {TEXT_MUTED};
+    padding: 5px 8px;
+    border-bottom: 1px solid {BORDER_SOFT};
+}}
+QTabWidget#AnalysisModeTabs QTabBar::tab:selected,
+QTabWidget#PostProcessingViews QTabBar::tab:selected {{
+    background: {SURFACE};
+    color: {TEXT};
+    border-bottom: 1px solid {TEXT_MUTED};
 }}
 
 /* --- Expression editor popup (chrome only; tree uses editorRows) --- */

@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
+    QTabWidget,
     QWidget,
 )
 
@@ -20,6 +22,7 @@ from .dialogs.export_options_dialog import export_peaks, export_spectra
 from .dialogs.file_dialogs import ensure_suffix_from_filter, split_open_paths
 from .dialogs.options_dialog import OptionsDialog
 from .plot.plot_area import PlotAreaWidget
+from .post_processing.panel import PostProcessingPanel, SeriesPanel
 from .trees.context_menus import optimize_from_selection
 from .trees.properties_panel import PropertiesPanel
 from .trees.spectrum_tree_panel import SpectrumTreePanel
@@ -211,28 +214,74 @@ class MainWindow(QMainWindow):
         splitter.setObjectName("MainSplitter")
         splitter.setHandleWidth(1)
 
-        self._spectrum_tree_panel = SpectrumTreePanel(self._controller, splitter)
+        self._mode_tabs = QTabWidget(splitter)
+        self._mode_tabs.setObjectName("AnalysisModeTabs")
+        self._spectrum_tree_panel = SpectrumTreePanel(self._controller, self._mode_tabs)
         self._spectrum_tree_panel.setObjectName("SpectrumTreePanel")
+        self._series_panel = SeriesPanel(self._controller, self._mode_tabs)
+        self._mode_tabs.addTab(self._spectrum_tree_panel, "Decomposition")
+        self._mode_tabs.addTab(self._series_panel, "Post-processing")
 
-        self._plot_area = PlotAreaWidget(self._controller, splitter)
+        self._workspace_stack = QStackedWidget(splitter)
+        self._plot_area = PlotAreaWidget(self._controller, self._workspace_stack)
         self._plot_area.setObjectName("PlotArea")
+        self._post_processing_panel = PostProcessingPanel(self._controller, self._workspace_stack)
+        self._workspace_stack.addWidget(self._plot_area)
+        self._workspace_stack.addWidget(self._post_processing_panel)
 
         self._properties_panel = PropertiesPanel(self._controller, splitter)
         self._properties_panel.setObjectName("PropertiesPanel")
 
-        splitter.addWidget(self._spectrum_tree_panel)
-        splitter.addWidget(self._plot_area)
+        splitter.addWidget(self._mode_tabs)
+        splitter.addWidget(self._workspace_stack)
         splitter.addWidget(self._properties_panel)
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setStretchFactor(2, 0)
-        splitter.setSizes([200, 430, 470])
+        splitter.setSizes([260, 670, 470])
 
         self.setCentralWidget(splitter)
+        self._decomposition_sizes = splitter.sizes()
+        self._mode_tabs.currentChanged.connect(self._on_mode_changed)
+        self._series_panel.seriesSelected.connect(self._post_processing_panel.set_series)
+        self._series_panel.tableSelected.connect(self._post_processing_panel.set_analytical_table)
+        self._post_processing_panel.tableCreated.connect(self._series_panel.select_table)
+        self._post_processing_panel.sourceActivated.connect(self._open_post_processing_source)
+        self._series_panel.refresh()
 
         if self._plot_area is not None:
             self._plot_area.refresh()
+
+    def _on_mode_changed(self, index: int) -> None:
+        """Retain both workspaces while giving post-processing the central area."""
+        splitter = self.centralWidget()
+        if isinstance(splitter, QSplitter) and index == 1:
+            self._decomposition_sizes = splitter.sizes()
+        self._workspace_stack.setCurrentIndex(index)
+        if self._properties_panel is not None:
+            self._properties_panel.setVisible(index == 0)
+        if index == 0 and isinstance(splitter, QSplitter):
+            splitter.setSizes(self._decomposition_sizes)
+        if index == 1 and self._plot_area is not None:
+            self._plot_area.set_edit_mode(None)
+        for action in (
+            self._action_optimize,
+            self._action_split_region,
+            self._action_add_peak_at_point,
+        ):
+            if action is not None:
+                action.setEnabled(index == 0)
+
+    def _open_post_processing_source(
+        self,
+        spectrum_id: str,
+        region_id: str | None,
+        component_id: str | None,
+    ) -> None:
+        """Reuse the decomposition plot and its component highlighting for navigation."""
+        self._mode_tabs.setCurrentIndex(0)
+        self._controller.set_selection(spectrum_id, region_id, component_id)
 
     def _create_status_bar(self) -> None:
         """Create a status bar whose path and selection labels stay visible.
