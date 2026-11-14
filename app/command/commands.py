@@ -12,6 +12,8 @@ from typing import ClassVar, cast
 
 from core.metadata import Metadata
 from core.objects import Background, CoreObject, Peak, Spectrum
+from core.post_processing.analysis import AnalyticalTableState
+from core.post_processing.state import PostProcessingSeries
 from core.services import ComponentService, CoreContext, RegionService, SpectrumService
 
 from .changes import (
@@ -27,7 +29,9 @@ from .changes import (
     RenameComponent,
     ReplaceBackgroundModel,
     ReplacePeakModel,
+    SetAnalyticalTable,
     SetMetadata,
+    SetPostProcessingSeries,
     UpdateMultipleParameterValues,
     UpdateParameter,
     UpdateRegionSlice,
@@ -58,6 +62,94 @@ class Command(ABC):
     @abstractmethod
     def undo(self, ctx: CoreContext) -> None:
         """Revert the command on the core model."""
+
+
+class SetPostProcessingSeriesCommand(Command):
+    """Install one immutable series and retain the previous value for undo."""
+
+    ui_refresh = UiRefresh.POST_PROCESSING | UiRefresh.DOCUMENT
+
+    def __init__(
+        self,
+        series_id: str,
+        value: PostProcessingSeries | None,
+        previous: PostProcessingSeries | None,
+    ) -> None:
+        self.series_id = series_id
+        self.value = value
+        self.previous = previous
+
+    @classmethod
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "SetPostProcessingSeriesCommand":
+        """Validate identity and revision before constructing the undo record."""
+        if not isinstance(change, SetPostProcessingSeries):
+            raise TypeError("Expected SetPostProcessingSeries")
+        previous = ctx.post_processing.get(change.series_id)
+        if change.value is not None and change.value.id_ != change.series_id:
+            raise ValueError("Series identity does not match the change")
+        if change.expected_revision is not None and (
+            previous is None or previous.revision != change.expected_revision
+        ):
+            raise ValueError("The post-processing series changed; discard the outdated edit")
+        return cls(change.series_id, change.value, previous)
+
+    def _install(self, ctx: CoreContext, value: PostProcessingSeries | None) -> None:
+        if value is None:
+            ctx.post_processing.pop(self.series_id, None)
+        else:
+            ctx.post_processing[self.series_id] = value
+
+    def apply(self, ctx: CoreContext) -> None:
+        """Apply the complete series edit."""
+        self._install(ctx, self.value)
+
+    def undo(self, ctx: CoreContext) -> None:
+        """Restore the saved series, or remove a newly created series."""
+        self._install(ctx, self.previous)
+
+
+class SetAnalyticalTableCommand(Command):
+    """Install one immutable table and retain the previous value for undo."""
+
+    ui_refresh = UiRefresh.POST_PROCESSING | UiRefresh.DOCUMENT
+
+    def __init__(
+        self,
+        table_id: str,
+        value: AnalyticalTableState | None,
+        previous: AnalyticalTableState | None,
+    ) -> None:
+        self.table_id = table_id
+        self.value = value
+        self.previous = previous
+
+    @classmethod
+    def from_change(cls, change: BaseChange, ctx: CoreContext) -> "SetAnalyticalTableCommand":
+        """Validate identity and revision before constructing the undo record."""
+        if not isinstance(change, SetAnalyticalTable):
+            raise TypeError("Expected SetAnalyticalTable")
+        previous = ctx.analytical_tables.get(change.table_id)
+        if change.value is not None and change.value.id_ != change.table_id:
+            raise ValueError("Table identity does not match the change")
+        if change.expected_revision is not None and (
+            previous is None or previous.revision != change.expected_revision
+        ):
+            raise ValueError("The post-processing table changed; discard the outdated edit")
+        return cls(change.table_id, change.value, previous)
+
+    def _install(self, ctx: CoreContext, value: AnalyticalTableState | None) -> None:
+        if value is None:
+            ctx.analytical_tables.pop(self.table_id, None)
+        else:
+            ctx.analytical_tables[self.table_id] = value
+
+    def apply(self, ctx: CoreContext) -> None:
+        """Apply the complete table edit."""
+        self._install(ctx, self.value)
+
+    def undo(self, ctx: CoreContext) -> None:
+        """Restore the saved table, or remove a newly created table."""
+        self._install(ctx, self.previous)
 
 
 class UpdateParameterCommand(Command):
@@ -461,7 +553,7 @@ class RemoveMetadataCommand(Command):
     Stores old metadata for undo; no-op if object had no metadata.
     """
 
-    ui_refresh = UiRefresh.HIERARCHY | UiRefresh.DOCUMENT
+    ui_refresh = UiRefresh.HIERARCHY | UiRefresh.DOCUMENT | UiRefresh.POST_PROCESSING
 
     def __init__(
         self,

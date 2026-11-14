@@ -14,6 +14,7 @@ from numpy.typing import NDArray
 
 from core.dto import BaseDTO, ComponentDTO, RegionDTO, SpectrumDTO
 from core.math_models.base_models import EvaluationLikeFn
+from core.numerics import continuous_axis_slices
 
 
 @dataclass(frozen=True)
@@ -418,7 +419,8 @@ def plot_data_from_evaluation(result: SpectrumEvaluationResult) -> SpectrumPlotD
         summed χ² criterion when at least one region is evaluated.
     """
     curves: list[PlotCurve] = [
-        PlotCurve(x=result.x, y=result.y, kind="raw"),
+        PlotCurve(x=result.x[span], y=result.y[span], kind="raw")
+        for span in continuous_axis_slices(result.x)
     ]
     residual_arrays: list[NDArray] = []
     total_chi_square = 0.0

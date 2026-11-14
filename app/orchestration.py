@@ -13,6 +13,7 @@ from numpy.typing import NDArray
 
 from core.collection import CoreCollection
 from core.metadata import Metadata
+from core.post_processing import LinkConstraints, MatchingResult, MatchingSettings
 from core.services import CoreContext
 
 from .command.changes import (
@@ -39,6 +40,7 @@ from .nn_service import NNService
 from .optimization import OptimizationService
 from .parameters import AppParameters
 from .paths import resolve_resource_path
+from .post_processing import PostProcessingInput
 from .query_service import QueryService
 from .serialization import SerializationService
 from .usecases import (
@@ -48,8 +50,10 @@ from .usecases import (
     EditingUseCases,
     ExportUseCases,
     HierarchyUseCases,
+    PostProcessingUseCases,
 )
 from .usecases.analysis import FitScopePreview
+from .usecases.analytical_tables import AnalyticalTableUseCases
 
 
 class AppOrchestrator:
@@ -99,6 +103,8 @@ class AppOrchestrator:
         self._copy = CopyDecompositionUseCases(self._query)
         self._analysis = AnalysisUseCases(self._query, self._nn, self._optimization, params)
         self._hierarchy = HierarchyUseCases(self._query)
+        self._post_processing = PostProcessingUseCases(self._query)
+        self._tables = AnalyticalTableUseCases(self._query)
         self._export = ExportUseCases(self._query, self._csv_export)
         self._document = DocumentUseCases(
             self._core_collection,
@@ -839,6 +845,146 @@ class AppOrchestrator:
 
     # ---- Serialization ----
 
+    def create_post_processing_series(self, name: str, spectrum_ids: Sequence[str]) -> str:
+        """Create an ordered series and return its stable ID."""
+        change = self._post_processing.create(name, spectrum_ids)
+        self.execute(change)
+        return change.series_id
+
+    def edit_post_processing_series(
+        self,
+        series_id: str,
+        *,
+        name: str | None = None,
+        spectrum_ids: Sequence[str] | None = None,
+        settings: MatchingSettings | None = None,
+        constraints: LinkConstraints | None = None,
+    ) -> None:
+        """Apply one undoable series configuration or analytical-column edit."""
+        self.execute(
+            self._post_processing.edit(
+                series_id,
+                name=name,
+                spectrum_ids=spectrum_ids,
+                settings=settings,
+                constraints=constraints,
+            )
+        )
+
+    def remove_post_processing_series(self, series_id: str) -> None:
+        """Remove a series through command history."""
+        self.execute(self._post_processing.remove(series_id))
+
+    def name_post_processing_track(self, series_id: str, track_id: str, name: str | None) -> None:
+        """Name a track using its persistent component anchor."""
+        self.execute(self._post_processing.name_track(series_id, track_id, name))
+
+    def prepare_post_processing(self, series_id: str) -> PostProcessingInput:
+        """Capture immutable inputs for synchronous matching."""
+        return self._post_processing.prepare(series_id)
+
+    def run_post_processing(self, series_id: str) -> None:
+        """Run matching synchronously and apply the complete result as one undo step."""
+        self.execute(self._post_processing.run(series_id))
+
+    def create_analytical_table(
+        self, name: str, selections: tuple[tuple[str, str], ...] = ()
+    ) -> str:
+        """Create an independent table from selected trends."""
+        change = self._tables.create(name, selections)
+        self.execute(change)
+        return change.table_id
+
+    def edit_analytical_table(
+        self,
+        table_id: str,
+        *,
+        name: str | None = None,
+        selections: tuple[tuple[str, str], ...] | None = None,
+        refresh_alignment: bool = False,
+        column_order: tuple[str, ...] | None = None,
+        plotted_columns: tuple[str, ...] | None = None,
+    ) -> None:
+        """Edit a table and optionally rebuild explicit row correspondence."""
+        self.execute(
+            self._tables.edit(
+                table_id,
+                name=name,
+                selections=selections,
+                refresh_alignment=refresh_alignment,
+                column_order=column_order,
+                plotted_columns=plotted_columns,
+            )
+        )
+
+    def remove_analytical_table(self, table_id: str) -> None:
+        """Remove an independent table through undo history."""
+        self.execute(self._tables.remove(table_id))
+
+    def set_post_processing_link(
+        self, series_id: str, source_id: str, target_id: str, linked: bool
+    ) -> None:
+        """Manually assign or break one adjacent link, with immediate recalculation."""
+        self.execute(self._post_processing.set_link(series_id, source_id, target_id, linked))
+
+    def set_post_processing_settings(self, series_id: str, values: Mapping[str, float]) -> None:
+        """Validate user-supplied matcher parameters behind the app boundary."""
+        self.execute(self._post_processing.edit(series_id, settings=MatchingSettings(**values)))
+
+    def export_analytical_table(
+        self, table_id: str, path: str | Path, *, precision: int | None = None
+    ) -> None:
+        """Export one current independent table and its source/operation definitions."""
+        self._export.export_analytical_table(table_id, path, precision=precision)
+
+    def save_analytical_metric(
+        self,
+        table_id: str,
+        *,
+        name: str,
+        operation: str,
+        tracks: tuple[str, ...],
+        denominator: tuple[str, ...] = (),
+        reference_row_id: str | None = None,
+        metric_id: str | None = None,
+    ) -> None:
+        """Save a column through the validated application use-case."""
+        self.execute(
+            self._tables.save_metric(
+                table_id,
+                name=name,
+                operation=operation,
+                tracks=tracks,
+                denominator=denominator,
+                reference_row_id=reference_row_id,
+                metric_id=metric_id,
+            )
+        )
+
+    def remove_analytical_metric(self, table_id: str, metric_id: str) -> None:
+        """Remove a column through command history."""
+        self.execute(self._tables.remove_metric(table_id, metric_id))
+
+    def export_post_processing(
+        self,
+        series_id: str,
+        path: str | Path,
+        *,
+        view: Literal["components"] = "components",
+        separator: str = ",",
+        precision: int | None = None,
+    ) -> None:
+        """Export current table values and their calculation definitions."""
+        self._export.export_post_processing(
+            series_id, path, view=view, separator=separator, precision=precision
+        )
+
+    def apply_post_processing_result(
+        self, job: PostProcessingInput, result: MatchingResult
+    ) -> None:
+        """Apply a current matching result as one undoable command."""
+        self.execute(self._post_processing.apply_result(job, result))
+
     def dump_collection(
         self,
         path: str | Path | None = None,
@@ -891,6 +1037,7 @@ class AppOrchestrator:
             If None, uses AppParameters.default_serialization_mode (must be append or replace).
         """
         self._document.load_collection(path, mode=mode)
+        self._pending_ui_refresh |= UiRefresh.ALL
 
     def new_collection(self) -> None:
         """

@@ -9,13 +9,20 @@ import gzip
 import json
 import os
 import tempfile
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 import numpy as np
 
 from core.collection import CoreCollection
+from core.io.post_processing import (
+    deserialize_section,
+    deserialize_tables,
+    serialize_series,
+    serialize_table,
+)
 from core.math_models import BaseBackgroundModel, BasePeakModel, ModelRegistry
 from core.metadata import (
     BackgroundMetadata,
@@ -25,12 +32,13 @@ from core.metadata import (
     SpectrumMetadata,
 )
 from core.objects import Background, Component, Peak, Region, Spectrum
+from core.post_processing.analysis import dependency_stamp
 from core.services import MetadataService
 
 LoadMode = Literal["append", "replace", "new"]
 DeserializeResult = CoreCollection | tuple[CoreCollection, MetadataService]
 
-VERSION = "1.0"
+VERSION = "1.2"
 
 
 def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) -> dict[str, Any]:
@@ -58,12 +66,12 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) ->
         x_step = 0.0
         x_num_points = 0
     elif len(x) == 1:
-        x_start = round(x[0], 3)
+        x_start = float(x[0])
         x_step = 0.0
         x_num_points = 1
     else:
-        x_start = round(x[0], 3)
-        x_step = round(x[1] - x[0], 3)
+        x_start = float(x[0])
+        x_step = float((x[-1] - x[0]) / (len(x) - 1))
         x_num_points = len(x)
 
     # Convert y array to list
@@ -78,6 +86,11 @@ def _serialize_spectrum(spectrum: Spectrum, metadata: Metadata | None = None) ->
         "x_num_points": x_num_points,
         "y": y_list,
     }
+    # A document can contain several measured energy windows in one spectrum.
+    # Keep every energy when the compact regular-grid representation is lossy.
+    compact_x = x_start + np.arange(x_num_points) * x_step
+    if not np.allclose(x, compact_x, rtol=0, atol=1e-9):
+        result["x"] = x.tolist()
 
     # Add metadata if available
     if metadata is not None:
@@ -257,7 +270,13 @@ def serialize(
 
     return {
         "version": VERSION,
+        "analytical_tables": [
+            serialize_table(table) for table in collection.analytical_tables.values()
+        ],
         "objects": objects,
+        "post_processing": [
+            serialize_series(series) for series in collection.post_processing.values()
+        ],
     }
 
 
@@ -387,7 +406,11 @@ def _deserialize_spectrum(obj_data: dict[str, Any]) -> Spectrum:
     x_step = obj_data["x_step"]
     x_num_points = obj_data["x_num_points"]
 
-    if x_num_points == 0:
+    if "x" in obj_data:
+        x = np.asarray(obj_data["x"], dtype=np.float64)
+        if x.ndim != 1 or len(x) != x_num_points or not np.all(np.isfinite(x)):
+            raise ValueError("Invalid explicit spectrum energy axis")
+    elif x_num_points == 0:
         x = np.array([], dtype=np.float64)
     elif x_num_points == 1:
         x = np.array([x_start], dtype=np.float64)
@@ -396,6 +419,8 @@ def _deserialize_spectrum(obj_data: dict[str, Any]) -> Spectrum:
 
     # Reconstruct y array
     y = np.array(obj_data["y"], dtype=np.float64)
+    if y.ndim != 1 or len(y) != len(x):
+        raise ValueError("Spectrum energy and intensity arrays must have equal lengths")
 
     # Create Spectrum with explicit ID
     spectrum = Spectrum(x=x, y=y, id_=obj_data["id"])
@@ -528,94 +553,22 @@ def _create_metadata(obj_data: dict[str, Any], obj_type: str) -> Metadata | None
     return None
 
 
-def deserialize(
-    data: dict[str, Any],
-    collection: CoreCollection | None = None,
-    metadata_service: MetadataService | None = None,
-    *,
-    mode: LoadMode = "replace",
-) -> DeserializeResult:
-    r"""
-    Deserialize a dictionary to a CoreCollection (and optionally metadata).
-
-    Parameters
-    ----------
-    data : dict[str, Any]
-        Serialized collection dictionary.
-    collection : CoreCollection, optional
-        Existing collection. Required for replace; used for append; must be
-        None for new.
-    metadata_service : MetadataService, optional
-        Service for storing metadata. Required for replace; used for append;
-        must be None for new.
-    mode : {\"append\", \"replace\", \"new\"}, optional
-        - \"append\": Add deserialized objects to existing collection/metadata;
-          skip objects that already exist by id. collection optional (new
-          if None); metadata_service optional.
-        - \"replace\": Clear collection and metadata in-place, then deserialize
-          into the same instances. Requires both collection and metadata_service.
-        - \"new\": Create new CoreCollection and MetadataService, deserialize
-          into them. Requires collection is None and metadata_service is None.
-          Returns (collection, metadata_service).
-
-    Returns
-    -------
-    CoreCollection or tuple[CoreCollection, MetadataService]
-        For append/replace: the collection. For new: (collection, metadata_service).
-
-    Raises
-    ------
-    ValueError
-        If version is incompatible, data format is invalid, or mode
-        requirements are not met (e.g. new with collection provided).
-    """
-    if mode not in ("append", "replace", "new"):
-        raise ValueError(f"mode must be 'append', 'replace', or 'new'; got {mode!r}")
-
-    version = data.get("version", "unknown")
-    if version != VERSION:
-        raise ValueError(
-            f"Version mismatch: expected {VERSION}, got {version}. "
-            "Deserialization may not work correctly."
-        )
-
-    if mode == "new":
-        if collection is not None or metadata_service is not None:
-            raise ValueError("mode='new' requires collection and metadata_service to be None")
-        collection = CoreCollection()
-        metadata_service = MetadataService(collection)
-    elif mode == "replace":
-        if collection is None or metadata_service is None:
-            raise ValueError("mode='replace' requires both collection and metadata_service")
-        collection.clear()
-        metadata_service.clear()
-
-    # For append: collection may be None (create new); metadata_service optional
-    if mode == "append" and collection is None:
-        collection = CoreCollection()
-
-    assert collection is not None
-
+def _deserialize_objects(
+    data: dict[str, Any], collection: CoreCollection, metadata_service: MetadataService
+) -> None:
+    """Populate staging stores, preserving existing object IDs on append."""
     objects_data = data.get("objects", [])
-    if not objects_data:
-        if mode == "new":
-            assert metadata_service is not None
-            return (collection, metadata_service)
-        return collection
-
+    if not isinstance(objects_data, list):
+        raise ValueError("Document objects must be a list")
     type_order = {"Spectrum": 0, "Region": 1, "Peak": 2, "Background": 2, "Component": 2}
     sorted_objects = sorted(objects_data, key=lambda obj: type_order.get(obj.get("type", ""), 99))
-
     for obj_data in sorted_objects:
         obj_type = obj_data.get("type")
         obj_id = obj_data.get("id")
-
         if obj_id is None:
             raise ValueError("Object missing 'id' field")
-
         if obj_id in collection.objects_index:
             continue
-
         if obj_type == "Spectrum":
             obj = _deserialize_spectrum(obj_data)
         elif obj_type == "Region":
@@ -630,17 +583,98 @@ def deserialize(
             obj = _deserialize_component(obj_data)
         else:
             raise ValueError(f"Unknown object type: {obj_type}")
-
         collection.add(obj)
+        metadata = _create_metadata(obj_data, obj_type)
+        if metadata is not None:
+            metadata_service.set_metadata(obj_id, metadata)
 
+
+def deserialize(
+    data: dict[str, Any],
+    collection: CoreCollection | None = None,
+    metadata_service: MetadataService | None = None,
+    *,
+    mode: LoadMode = "replace",
+) -> DeserializeResult:
+    """Load a complete document transactionally, accepting versions 1.0 and 1.2.
+
+    New returns a fresh (collection, metadata) pair. Replace requires both
+    existing stores and updates them in place. Append preserves existing object
+    IDs and gives incoming series fresh IDs on collisions; their snapshot IDs
+    follow the new series ID. Failed validation leaves the target untouched.
+    Missing source objects and stale fingerprints are retained for inspection.
+    """
+    if mode not in ("append", "replace", "new"):
+        raise ValueError(f"Invalid load mode: {mode}")
+    if data.get("version") not in ("1.0", VERSION):
+        raise ValueError(f"Version mismatch: expected 1.0 or {VERSION}, got {data.get('version')}")
+    if mode == "new" and (collection is not None or metadata_service is not None):
+        raise ValueError("mode='new' requires collection and metadata_service to be None")
+    if mode == "replace" and (collection is None or metadata_service is None):
+        raise ValueError("mode='replace' requires both collection and metadata_service")
+    if data["version"] == "1.0" and data.get("post_processing"):
+        raise ValueError("Version 1.0 cannot contain post-processing series")
+    incoming = deserialize_section(data.get("post_processing", []))
+    incoming_tables = deserialize_tables(data.get("analytical_tables", []))
+    if data["version"] == "1.0" and data.get("analytical_tables"):
+        raise ValueError("Release documents cannot contain independent analytical tables")
+    staged = CoreCollection()
+    staged_metadata = MetadataService(staged)
+    if mode == "append" and collection is not None:
+        staged.objects_index.update(collection.objects_index)
+        staged.post_processing.update(collection.post_processing)
+        staged.analytical_tables.update(collection.analytical_tables)
         if metadata_service is not None:
-            metadata = _create_metadata(obj_data, obj_type)
+            for obj_id in collection.objects_index:
+                metadata = metadata_service.get_metadata(obj_id)
+                if metadata is not None:
+                    staged_metadata.set_metadata(obj_id, metadata)
+    _deserialize_objects(data, staged, staged_metadata)
+    id_map = {}
+    originals = {series.id_: series for series in incoming}
+    for series in incoming:
+        old_id = series.id_
+        if series.id_ in staged.post_processing:
+            series_id = uuid4().hex
+            while series_id in staged.post_processing:
+                series_id = uuid4().hex
+            result = series.result
+            if result is not None:
+                result = replace(result, series=replace(result.series, id_=series_id))
+            series = replace(series, id_=series_id, result=result)
+        id_map[old_id] = series.id_
+        staged.post_processing[series.id_] = series
+    for table in incoming_tables:
+        sources = tuple(
+            replace(source, series_id=id_map.get(source.series_id, source.series_id))
+            for source in table.sources
+        )
+        dependencies = []
+        for sid, stamp in table.dependencies:
+            new_id = id_map.get(sid, sid)
+            if sid in originals and stamp == dependency_stamp(originals[sid]):
+                stamp = dependency_stamp(staged.post_processing[new_id])
+            dependencies.append((new_id, stamp))
+        table_id = table.id_
+        while table_id in staged.analytical_tables:
+            table_id = uuid4().hex
+        staged.analytical_tables[table_id] = replace(
+            table, id_=table_id, sources=sources, dependencies=tuple(dependencies)
+        )
+    if mode == "new":
+        return staged, staged_metadata
+    if collection is None:
+        collection = CoreCollection()
+    collection.clear()
+    collection.objects_index.update(staged.objects_index)
+    collection.post_processing.update(staged.post_processing)
+    collection.analytical_tables.update(staged.analytical_tables)
+    if metadata_service is not None:
+        metadata_service.clear()
+        for obj_id in staged.objects_index:
+            metadata = staged_metadata.get_metadata(obj_id)
             if metadata is not None:
                 metadata_service.set_metadata(obj_id, metadata)
-
-    if mode == "new":
-        assert metadata_service is not None
-        return (collection, metadata_service)
     return collection
 
 

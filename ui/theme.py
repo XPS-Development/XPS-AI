@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QProxyStyle,
     QStyle,
+    QStyleHintReturn,
     QStyleOption,
     QStyleOptionMenuItem,
     QWidget,
@@ -61,6 +62,29 @@ CHECKBOX_RADIUS = 4.0
 _INSTALLED_STYLE: EditorStyle | None = None
 
 APP_STYLESHEET = f"""
+/* --- Shared editor controls --- */
+QPushButton {{
+    background: {SURFACE};
+    color: {TEXT};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    padding: 3px 10px;
+}}
+QPushButton:hover {{ background: {BUTTON_HOVER_BG}; }}
+QPushButton:pressed {{ background: {SELECTION_BG}; }}
+QPushButton:disabled {{ color: {TEXT_DISABLED}; background: {BUTTON_DISABLED_BG}; }}
+QLineEdit, QSpinBox, QDoubleSpinBox {{
+    background: {SURFACE};
+    color: {TEXT};
+    border: 1px solid {BORDER_INPUT_SOFT};
+    border-radius: 4px;
+    padding: 3px 6px;
+}}
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{ border-color: {BORDER_HOVER}; }}
+QMenuBar {{ background: {PANEL_BG}; color: {TEXT}; border: none; }}
+QMenuBar::item {{ background: transparent; padding: 4px 8px; }}
+QMenuBar::item:selected {{ background: {SELECTION_BG}; }}
+
 /* --- Trees (editorRows property selects hairlines vs spaced) --- */
 QTreeView[editorRows="hairlines"],
 QTreeView[editorRows="spaced"] {{
@@ -268,29 +292,114 @@ QDialog {{
 
 /* --- Side panels --- */
 QWidget#SpectrumTreePanel,
-QWidget#PropertiesPanel {{
+QWidget#PropertiesPanel,
+QWidget#PostProcessingSeriesPanel,
+QWidget#PostProcessingPanel {{
     background: {PANEL_BG};
 }}
+QWidget#PostProcessingPanel QLineEdit,
+QDialog#PostProcessingDialog QLineEdit,
 QWidget#SpectrumTreePanel QLineEdit {{
     background: {SURFACE};
     border: 1px solid {BORDER_INPUT_SOFT};
     border-radius: 4px;
     padding: 3px 6px;
 }}
+QDialog#PostProcessingDialog QPushButton,
 QWidget#SpectrumTreePanel QPushButton,
-QWidget#PropertiesPanel QPushButton {{
+QWidget#PropertiesPanel QPushButton,
+QWidget#PostProcessingSeriesPanel QPushButton,
+QWidget#PostProcessingPanel QPushButton {{
     background: {SURFACE};
     border: 1px solid {BORDER};
     border-radius: 4px;
     padding: 3px 10px;
 }}
+QDialog#PostProcessingDialog QPushButton:hover,
 QWidget#SpectrumTreePanel QPushButton:hover,
-QWidget#PropertiesPanel QPushButton:hover {{
+QWidget#PropertiesPanel QPushButton:hover,
+QWidget#PostProcessingSeriesPanel QPushButton:hover,
+QWidget#PostProcessingPanel QPushButton:hover {{
     background: {BUTTON_HOVER_BG};
 }}
-QWidget#PropertiesPanel QPushButton:disabled {{
+QDialog#PostProcessingDialog QPushButton:disabled,
+QWidget#PropertiesPanel QPushButton:disabled,
+QWidget#PostProcessingSeriesPanel QPushButton:disabled,
+QWidget#PostProcessingPanel QPushButton:disabled {{
     color: {TEXT_DISABLED};
     background: {BUTTON_DISABLED_BG};
+}}
+
+/* --- Post-processing tables and navigation --- */
+QDialog#PostProcessingDialog QHeaderView::section {{
+    background: {PANEL_BG};
+    border: none;
+    border-bottom: 1px solid {BORDER_SOFT};
+    color: {TEXT_HEADER};
+    padding: 4px 8px;
+}}
+QWidget#PostProcessingPanel QLabel {{
+    color: {TEXT_MUTED};
+    background: transparent;
+}}
+QWidget#PostProcessingPanel QSplitter::handle,
+QDialog#PostProcessingDialog QSplitter::handle {{
+    background: {BORDER_SOFT};
+    width: 1px;
+}}
+
+QTableView#PostProcessingTable {{
+    background: {SURFACE};
+    alternate-background-color: {PANEL_BG};
+    border: 1px solid {BORDER_SOFT};
+    gridline-color: {HAIRLINE};
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT};
+}}
+QTableView#PostProcessingTable QHeaderView::section {{
+    background: {PANEL_BG};
+    color: {TEXT_HEADER};
+    border: none;
+    border-bottom: 1px solid {BORDER_SOFT};
+    padding: 4px 8px;
+}}
+QDialog#PostProcessingDialog QListWidget,
+QDialog#PostProcessingDialog QTreeWidget,
+QListWidget#AnalyticalTableList,
+QListWidget#PostProcessingTrendList,
+QListWidget#PostProcessingSeriesList,
+QListWidget#PostProcessingTrendColumns {{
+    background: {SURFACE};
+    border: 1px solid {BORDER_SOFT};
+    outline: none;
+    selection-background-color: {SELECTION_BG};
+    selection-color: {TEXT};
+}}
+QDialog#PostProcessingDialog QListWidget::item,
+QDialog#PostProcessingDialog QTreeWidget::item,
+QListWidget#AnalyticalTableList::item,
+QListWidget#PostProcessingTrendList::item,
+QListWidget#PostProcessingSeriesList::item,
+QListWidget#PostProcessingTrendColumns::item {{
+    padding: 4px;
+}}
+QTabWidget#AnalysisModeTabs::pane,
+QTabWidget#PostProcessingViews::pane {{
+    border: none;
+    background: {PANEL_BG};
+}}
+QTabWidget#AnalysisModeTabs QTabBar::tab,
+QTabWidget#PostProcessingViews QTabBar::tab {{
+    background: {PANEL_BG};
+    color: {TEXT_MUTED};
+    padding: 5px 8px;
+    border-bottom: 1px solid {BORDER_SOFT};
+}}
+QTabWidget#AnalysisModeTabs QTabBar::tab:selected,
+QTabWidget#PostProcessingViews QTabBar::tab:selected {{
+    background: {SURFACE};
+    color: {TEXT};
+    border-bottom: 1px solid {TEXT_MUTED};
 }}
 
 /* --- Expression editor popup (chrome only; tree uses editorRows) --- */
@@ -575,6 +684,18 @@ class EditorStyle(QProxyStyle):
         if isinstance(arg, QWidget) and _wants_rounded_popup(arg):
             make_translucent_popup(arg)
         return super().polish(arg)
+
+    def styleHint(
+        self,
+        hint: QStyle.StyleHint,
+        option: QStyleOption | None = None,
+        widget: QWidget | None = None,
+        returnData: QStyleHintReturn | None = None,
+    ) -> int:
+        """Keep dialog actions text-only, consistent across desktop platforms."""
+        if hint == QStyle.StyleHint.SH_DialogButtonBox_ButtonsHaveIcons:
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
 
     def pixelMetric(
         self,
